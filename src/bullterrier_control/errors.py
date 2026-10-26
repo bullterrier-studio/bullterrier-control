@@ -9,6 +9,7 @@ Dependency direction: the bottom layer. It imports nothing from bullterrier_cont
 """
 
 __all__ = [
+    "BackendUnavailableError",
     "BullterrierControlError",
     "FormatError",
     "InvalidError",
@@ -47,6 +48,10 @@ class FormatError(InvalidError):
 
 class ParameterError(InvalidError):
     """The parameter values given to a source, shaper or operation break the rules its `Params` model declares."""
+
+
+class BackendUnavailableError(BullterrierControlError, NotImplementedError):
+    """A feature needs an optional dependency that is not installed; the message says what to install."""
 
 
 class SignalError(BullterrierControlError, ValueError):

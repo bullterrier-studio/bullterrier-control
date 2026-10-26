@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import re
+import sys
 import tomllib
 from pathlib import Path
 
@@ -359,3 +360,50 @@ def test_the_committed_patch_schema_accepts_a_valid_patch_and_rejects_a_misshape
 def test_the_example_patch_is_valid_and_builds_against_the_example_bundle():
     built = load_patch(GLOW).build(load(KICKS))
     assert built["glow"].sample(0.5) == 1.0
+
+
+# ---------------------------------------------------------------- plot
+
+
+def test_plot_writes_a_png_of_the_signal_nodes(tmp_path, capsys):
+    out = tmp_path / "glow.png"
+    assert main(["plot", str(GLOW), "--bundle", str(KICKS), "--to", "2", "--out", str(out)]) == 0
+    assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    assert str(out) in capsys.readouterr().out
+
+
+def test_plot_of_a_node_that_cannot_be_drawn_is_an_error_and_writes_nothing(tmp_path, capsys):
+    out = tmp_path / "strong.png"
+    assert main(["plot", str(GLOW), "strong", "--bundle", str(KICKS), "--to", "2", "--out", str(out)]) == 1
+    assert "strong: gives events" in capsys.readouterr().err
+    assert not out.exists()
+
+
+PLOT_USAGE = {
+    "no output file": ["--to", "2"],
+    "no end": ["--out", "x.png"],
+    "an empty range": ["--from", "2", "--to", "2", "--out", "x.png"],
+    "an end before the start": ["--from", "3", "--to", "2", "--out", "x.png"],
+}
+
+
+@pytest.mark.parametrize("flags", PLOT_USAGE.values(), ids=PLOT_USAGE.keys())
+def test_plot_with_a_range_or_output_that_makes_no_sense_is_a_usage_error(flags, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    patch = a_patch(tmp_path, LEVELS)
+    with pytest.raises(SystemExit) as stop:
+        main(["plot", str(patch), *flags])
+    assert stop.value.code == 2
+    assert "usage:" in capsys.readouterr().err
+    assert not (tmp_path / "x.png").exists()
+
+
+def test_plot_without_matplotlib_is_an_error_saying_what_to_install(tmp_path, capsys, monkeypatch):
+    for name in [name for name in sys.modules if name == "matplotlib" or name.startswith("matplotlib.")]:
+        monkeypatch.setitem(sys.modules, name, None)
+    out = tmp_path / "glow.png"
+    assert main(["plot", str(GLOW), "--bundle", str(KICKS), "--to", "2", "--out", str(out)]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error: ")
+    assert "bullterrier-control[plot]" in err
+    assert "Traceback" not in err

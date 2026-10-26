@@ -13,6 +13,12 @@ def test_the_base_error_is_exported_from_the_package():
     assert bullterrier_control.BullterrierControlError is BullterrierControlError
 
 
+def test_a_missing_optional_dependency_is_a_library_error_and_not_implemented():
+    error = bullterrier_control.BackendUnavailableError("it needs matplotlib")
+    assert isinstance(error, BullterrierControlError)
+    assert isinstance(error, NotImplementedError)
+
+
 def test_a_format_error_is_a_library_error_and_a_value_error():
     error = bullterrier_control.FormatError("rate: must be above 0")
     assert isinstance(error, BullterrierControlError)

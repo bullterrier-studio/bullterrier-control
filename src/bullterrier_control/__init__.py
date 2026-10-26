@@ -9,6 +9,7 @@ from importlib import metadata
 
 from . import lib
 from .errors import (
+    BackendUnavailableError,
     BullterrierControlError,
     FormatError,
     InvalidError,
@@ -24,6 +25,7 @@ from .signal import Signal, from_series, maximum, minimum
 __version__ = metadata.version("bullterrier-control")
 
 __all__ = [
+    "BackendUnavailableError",
     "BullterrierControlError",
     "Bundle",
     "Event",

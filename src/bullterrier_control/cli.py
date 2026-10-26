@@ -1,8 +1,9 @@
-"""Command line: `bt-control validate`, `schema`, `list` and `sample`.
+"""Command line: `bt-control validate`, `schema`, `list`, `sample` and `plot`.
 
 A thin layer over the library; no logic of its own. `validate` loads each file as a Bundle (or, if it ends in `.toml`,
 a Patch) and reports it; `schema` prints the JSON Schema of a Bundle or a Patch; `list` shows the registered sources,
-shapers and operations, as text or as JSON; `sample` reads the signals of a patch at evenly spaced times.
+shapers and operations, as text or as JSON; `sample` reads the signals of a patch at evenly spaced times and `plot`
+draws them.
 """
 
 import argparse
@@ -19,6 +20,7 @@ from . import __version__
 from .errors import BullterrierControlError, InvalidError, UnknownNameError
 from .formats import Bundle, Series, Unit, bundle_schema, dumps, load
 from .patch import load_patch, patch_schema
+from .plotting import plot
 from .registry import all_registered, get
 from .rounding import TOLERANCE
 from .signal import Signal
@@ -83,16 +85,11 @@ def main(argv: list[str] | None = None) -> int:
     listing = command("list", _list, "list the sources, shapers and operations, or show some in full")
     listing.add_argument("names", nargs="*", metavar="NAME", help="show only these, with every parameter")
     listing.add_argument("--json", action="store_true", help="describe them as JSON, for another tool")
-    sampling = command("sample", _sample, "read the signals of a patch at evenly spaced times")
-    sampling.add_argument("patch", type=Path, metavar="PATCH", help="a patch file (TOML)")
-    sampling.add_argument("nodes", nargs="*", metavar="NODE", help="the nodes to read (default: every signal)")
-    sampling.add_argument("--bundle", type=Path, metavar="FILE", help="the bundle its events, series and grid are in")
-    sampling.add_argument(
-        "--from", dest="start", type=_seconds, default=0.0, metavar="S", help="first time (default 0)"
-    )
-    sampling.add_argument("--to", dest="stop", type=_seconds, required=True, metavar="S", help="last time, in seconds")
+    sampling = _patch_command(command("sample", _sample, "read the signals of a patch at evenly spaced times"))
     sampling.add_argument("--rate", type=_hertz, required=True, metavar="HZ", help="samples a second")
     sampling.add_argument("--csv", action="store_true", help="write CSV (t, then a column per node), not a bundle")
+    drawing = _patch_command(command("plot", _plot, "draw the signals of a patch as a PNG"))
+    drawing.add_argument("--out", type=Path, required=True, metavar="FILE", help="the picture to write (PNG)")
     args = parser.parse_args(argv)
     if args.handler is None:
         parser.print_help()
@@ -103,6 +100,16 @@ def main(argv: list[str] | None = None) -> int:
     except (BullterrierControlError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
+
+
+def _patch_command(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    """Add what `sample` and `plot` share: the patch, the nodes, the bundle and the range of time."""
+    parser.add_argument("patch", type=Path, metavar="PATCH", help="a patch file (TOML)")
+    parser.add_argument("nodes", nargs="*", metavar="NODE", help="the nodes to read (default: every signal)")
+    parser.add_argument("--bundle", type=Path, metavar="FILE", help="the bundle its events, series and grid are in")
+    parser.add_argument("--from", dest="start", type=_seconds, default=0.0, metavar="S", help="first time (default 0)")
+    parser.add_argument("--to", dest="stop", type=_seconds, required=True, metavar="S", help="last time, in seconds")
+    return parser
 
 
 def _validate(args: argparse.Namespace) -> int:
@@ -181,4 +188,12 @@ def _sample(args: argparse.Namespace) -> int:
     }
     source = f"bt-control {__version__} sample {args.patch.name}"
     sys.stdout.write(dumps(Bundle(format="bullterrier-control/bundle", version=1, source=source, series=series)))
+    return 0
+
+
+def _plot(args: argparse.Namespace) -> int:
+    if not args.stop > args.start:
+        args.usage_error(f"--to ({args.stop}) must be after --from ({args.start})")
+    plot(_signals(args), start=args.start, stop=args.stop, path=args.out, title=args.patch.name)
+    print(args.out)
     return 0
