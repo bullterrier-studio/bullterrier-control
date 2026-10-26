@@ -9,6 +9,10 @@ README = Path(__file__).resolve().parents[1] / "README.md"
 BLOCKS = re.findall(r"```python\n(.*?)```", README.read_text(encoding="utf-8"), re.DOTALL)
 
 
+def test_the_readme_has_python_examples():
+    assert BLOCKS
+
+
 @pytest.mark.parametrize("block", BLOCKS, ids=[f"example {number}" for number, _ in enumerate(BLOCKS, start=1)])
 def test_the_python_example_runs_and_gives_the_values_the_readme_shows(block):
     """Every block ends with `<signal>.sample(<times>)` and a comment `# array([...])` showing its values."""

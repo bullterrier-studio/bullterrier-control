@@ -94,7 +94,7 @@ DECLARED_KINDS = sorted({kind for name in ALL for kind in registry.get(name).inp
 
 @pytest.mark.parametrize("kind", DECLARED_KINDS)
 def test_every_kind_of_input_a_registered_thing_declares_has_a_row_in_both_tables(kind):
-    # a missing row would otherwise show as a bare KeyError in `make`; here the test names the kind
+    # `make` looks up a row for every input it supplies; this names the kind that lacks one instead of a bare KeyError
     assert kind in SAMPLE_INPUTS
     assert kind in SMALLEST_INPUTS
 
