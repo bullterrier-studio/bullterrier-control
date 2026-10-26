@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"new-source: {error}", file=sys.stderr)
         return 1
     for path in written:
-        print(f"wrote {path.relative_to(ROOT)}")
+        print(f"wrote {path.relative_to(ROOT).as_posix()}")
     return 0
 
 
