@@ -1,0 +1,9 @@
+# lfo: a sine of three quarters of a cycle a second, started a tenth of a cycle in
+format = "bullterrier-control/patch"
+version = 1
+
+[lfo]
+use = "lfo"
+shape = "sine"
+rate = 0.75
+phase = 0.1

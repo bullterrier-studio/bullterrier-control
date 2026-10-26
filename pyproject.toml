@@ -117,6 +117,8 @@ build-check = { sequence = ["uv build --quiet --clear --no-create-gitignore --ou
 # its program differently. zizmor stays offline so the gate needs no network; its online audits need a GitHub token.
 lint-workflows = { sequence = ["uv run actionlint", "zizmor --offline .github"], default_item_type = "cmd", help = "Lint the GitHub workflows (actionlint, zizmor)" }
 check = { sequence = ["ruff format --check .", "ruff check .", { ref = "lint-workflows" }, "vulture", "deptry .", { ref = "build-check" }, "mypy", { ref = "test" }], default_item_type = "cmd", help = "The full gate (format, lint, workflows, dead code, dependencies, distributions, types, tests); stops at the first failure" }
+# Redraw the gallery (docs/gallery/ and docs/gallery.md) from the patches in examples/gallery/; needs matplotlib (uv sync)
+gallery = { cmd = "uv run python tools/gallery.py", help = "Redraw docs/gallery/ and docs/gallery.md from examples/gallery/" }
 # Developer commands that need a source checkout (tools/dev.py); extra arguments go to the script
 new-source = { cmd = "uv run python tools/dev.py new-source", help = "Write a new source, shaper or operation and its test from the templates (NAME --kind source|shaper|operation)" }
 # Release from main in one command: checks, plan, [y/N], version bump, changelog section, commit, annotated tag and an

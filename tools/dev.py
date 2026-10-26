@@ -4,7 +4,8 @@
 
 writes `src/bullterrier_control/builtin/NAME.py` and `tests/builtin/test_NAME.py` from `tools/templates/`: a working
 source (or shaper, or operation) with one example parameter and one example test, which pass the gate as written.
-Replace the parameter, the body and the test with the real ones (CLAUDE.md, "Adding a source or shaper").
+A source or shaper also gets `examples/gallery/NAME.toml`, the patch its gallery picture is drawn from. Replace the
+parameter, the body, the test and the patch with the real ones (CLAUDE.md, "Adding a source or shaper").
 
 Interface: main(argv) -> exit code: 0 written, 1 refused (the reason on stderr), 2 wrong usage (argparse explains).
 """
@@ -21,21 +22,25 @@ NAME = re.compile(r"[a-z][a-z0-9_]*")
 
 
 def new_source(name: str, kind: str, root: Path) -> list[Path]:
-    """Write the module and the test file of a new source, shaper or operation; return their paths.
+    """Write the module, the test file and, for a source or shaper, the gallery patch of a new thing; return the paths.
 
-    `ValueError` if refused."""
+    `ValueError` if refused: a name that is malformed, or a file that exists already (nothing is written then)."""
     if not NAME.fullmatch(name):
         raise ValueError(f"{name!r}: a name is lower case letters, digits and _, starting with a letter")
     module = root / "src" / "bullterrier_control" / "builtin" / f"{name}.py"
     test = root / "tests" / "builtin" / f"test_{name}.py"
-    for path in (module, test):
+    made = [(f"{kind}.py.tmpl", module), (f"test_{kind}.py.tmpl", test)]
+    if kind != "operation":  # an operation gives events or a series: there is no signal to draw
+        made.append((f"gallery_{kind}.toml.tmpl", root / "examples" / "gallery" / f"{name}.toml"))
+    for _, path in made:
         if path.exists():
-            raise ValueError(f"{path.relative_to(root)} exists already")
+            raise ValueError(f"{path.relative_to(root).as_posix()} exists already")
     values = {"name": name, "title": "".join(part.title() for part in name.split("_"))}
-    for template, path in ((f"{kind}.py.tmpl", module), (f"test_{kind}.py.tmpl", test)):
+    for template, path in made:
         text = Template((TEMPLATES / template).read_text(encoding="utf-8")).substitute(values)
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-    return [module, test]
+    return [path for _, path in made]
 
 
 def main(argv: list[str] | None = None) -> int:

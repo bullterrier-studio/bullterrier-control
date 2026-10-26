@@ -1,0 +1,15 @@
+# gate: a triangle wave as 0 and 1, opening at 0.6 and closing below 0.4
+format = "bullterrier-control/patch"
+version = 1
+
+# a triangle wave, for a shaper to work on
+[input]
+use = "lfo"
+shape = "triangle"
+rate = 0.6
+
+[gate]
+use = "gate"
+signal = "input"
+open = 0.6
+close = 0.4

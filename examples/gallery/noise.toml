@@ -1,0 +1,9 @@
+# noise: seeded random values, two a second, eased between
+format = "bullterrier-control/patch"
+version = 1
+
+[noise]
+use = "noise"
+shape = "smooth"
+rate = 2
+seed = 7

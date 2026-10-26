@@ -1,0 +1,12 @@
+# keyframes: values at chosen times, eased between
+format = "bullterrier-control/patch"
+version = 1
+
+[keyframes]
+use = "keyframes"
+points = [
+    { t = 0, value = 0.1, ease = "in-out" },
+    { t = 1.5, value = 0.9, ease = "out" },
+    { t = 3, value = 0.25, ease = "in-out" },
+    { t = 4, value = 0.75 },
+]

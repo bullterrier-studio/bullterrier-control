@@ -1,0 +1,14 @@
+# delay: the staircase half a second late
+format = "bullterrier-control/patch"
+version = 1
+
+# a staircase with jumps, for a shaper to work on
+[input]
+use = "steps"
+values = [0.1, 0.9, 0.3, 1.0, 0.0, 0.7]
+rate = 1.5
+
+[delay]
+use = "delay"
+signal = "input"
+lag = 0.5

@@ -1,0 +1,16 @@
+# remap: a triangle wave put onto 0.2 to 0.8, bent by an in-out ease
+format = "bullterrier-control/patch"
+version = 1
+
+# a triangle wave, for a shaper to work on
+[input]
+use = "lfo"
+shape = "triangle"
+rate = 0.6
+
+[remap]
+use = "remap"
+signal = "input"
+low = 0.2
+high = 0.8
+ease = "in-out"

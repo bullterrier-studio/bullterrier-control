@@ -1,0 +1,13 @@
+# hold: a sine sampled at four events and held until the next
+format = "bullterrier-control/patch"
+version = 1
+
+# a slow sine, read only where the events fall
+[input]
+use = "lfo"
+rate = 0.5
+
+[hold]
+use = "hold"
+signal = "input"
+events = [{ t = 0.5 }, { t = 1.3 }, { t = 2.2 }, { t = 3.1 }]

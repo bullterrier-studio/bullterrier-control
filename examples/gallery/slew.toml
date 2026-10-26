@@ -1,0 +1,15 @@
+# slew: the staircase, climbing no faster than 1 in 1.2 s and falling no faster than 1 in 0.6 s
+format = "bullterrier-control/patch"
+version = 1
+
+# a staircase with jumps, for a shaper to work on
+[input]
+use = "steps"
+values = [0.1, 0.9, 0.3, 1.0, 0.0, 0.7]
+rate = 1.5
+
+[slew]
+use = "slew"
+signal = "input"
+rise = 1.2
+fall = 0.6

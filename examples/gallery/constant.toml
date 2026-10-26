@@ -1,0 +1,7 @@
+# constant: one value at every time
+format = "bullterrier-control/patch"
+version = 1
+
+[constant]
+use = "constant"
+value = 0.6

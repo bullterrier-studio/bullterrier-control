@@ -1,0 +1,15 @@
+# follow: the staircase chased quickly upward and slowly downward
+format = "bullterrier-control/patch"
+version = 1
+
+# a staircase with jumps, for a shaper to work on
+[input]
+use = "steps"
+values = [0.1, 0.9, 0.3, 1.0, 0.0, 0.7]
+rate = 1.5
+
+[follow]
+use = "follow"
+signal = "input"
+attack = 0.05
+release = 0.6

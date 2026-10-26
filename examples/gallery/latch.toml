@@ -1,0 +1,10 @@
+# latch: 0.1 until the event labelled drop at 1.5 s, 0.9 from then on
+format = "bullterrier-control/patch"
+version = 1
+
+[latch]
+use = "latch"
+events = [{ t = 0.4, label = "kick" }, { t = 1.5, label = "drop" }]
+label = "drop"
+before = 0.1
+after = 0.9
