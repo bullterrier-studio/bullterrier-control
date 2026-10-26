@@ -271,13 +271,14 @@ DEP004 = ["packaging"]
 root_package = "bullterrier_control"
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > signal | params > formats > errors"
+name = "Layers: app > rendered > signal | params > formats > errors"
 type = "layers"
 containers = ["bullterrier_control"]
 exhaustive = true  # a new top-level module must be placed in a layer here
 layers = [
     "__main__",  # `python -m bullterrier_control`: runs the command line
     "cli",  # app: the command line
+    "rendered",  # a signal that needs history, rendered once
     "signal | params",  # what a signal is and how it is read | how a source or shaper declares its parameters
     "formats",  # the plain-data formats
     "errors",  # the exceptions: they import nothing, so every layer may raise them

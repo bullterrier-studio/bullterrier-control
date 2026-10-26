@@ -2,6 +2,7 @@
 import only the layers below it:
 
     app        __main__ > cli
+    rendered   a signal that needs history, rendered once
     signal | params   what a signal is and how it is read | how a source or shaper declares its parameters
     formats    bundle > series | event | grid > model | units (each format builds on the base and the units only)
     errors     the exceptions; import nothing from bullterrier_control, so every layer may raise them
@@ -25,7 +26,7 @@ PACKAGE = Path(bullterrier_control.__file__).parent
 ROOT = PACKAGE.parent.parent  # the repository: pyproject.toml holds the contracts
 LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-imports` from the repository root
 
-LAYERS = "Layers: app > signal | params > formats > errors"
+LAYERS = "Layers: app > rendered > signal | params > formats > errors"
 FORMATS = "Formats: bundle > series | event | grid > model | units"
 CONTRACTS = [LAYERS, FORMATS]
 
@@ -71,6 +72,8 @@ FORBIDDEN = {
     ),
     "signal to params": ("signal.py", "import bullterrier_control.params", "bullterrier_control.signal", LAYERS),
     "params to signal": ("params.py", "import bullterrier_control.signal", "bullterrier_control.params", LAYERS),
+    "signal to rendered": ("signal.py", "import bullterrier_control.rendered", "bullterrier_control.signal", LAYERS),
+    "params to rendered": ("params.py", "import bullterrier_control.rendered", "bullterrier_control.params", LAYERS),
     "errors to formats": ("errors.py", "import bullterrier_control.formats", "bullterrier_control.errors", LAYERS),
     "formats to cli": (
         "formats/series.py",
@@ -132,6 +135,9 @@ ALLOWED = {
     "params to formats": ("params.py", "import bullterrier_control.formats.model"),
     "cli to params": ("cli.py", "import bullterrier_control.params"),
     "cli to signal": ("cli.py", "import bullterrier_control.signal"),
+    "cli to rendered": ("cli.py", "import bullterrier_control.rendered"),
+    "rendered to signal": ("rendered.py", "import bullterrier_control.signal"),
+    "rendered to errors": ("rendered.py", "import bullterrier_control.errors"),
     "signal to formats": ("signal.py", "import bullterrier_control.formats.series"),
     "series to model": ("formats/series.py", "import bullterrier_control.formats.model"),
     "event to units": ("formats/event.py", "import bullterrier_control.formats.units"),
