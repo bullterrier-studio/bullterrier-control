@@ -36,7 +36,8 @@ a parameter unit, not a second clock: a value in `beats` is turned into seconds 
 **Formats this package owns** (plain data, documented and versioned here; changing one is a breaking release): **Series** (values at
 a fixed rate from a start time, with a unit and a documented scaling), **Event** (a moment in seconds, a strength, an optional
 duration, label and pitch: one type for onsets, beats, notes and sections), **Grid** (tempo map, beat and downbeat times, meter;
-converts beats and seconds). `bullterrier-audio` writes them **without importing this package**:
+converts beats and seconds), carried in one file, the **Bundle**; the rules are in `docs/formats.md`, the machine-readable form is
+`schemas/bundle-1.schema.json`. `bullterrier-audio` writes them **without importing this package**:
 the schema is a file here, audio checks its output against a copy. A format is never shared as code.
 
 ## Names

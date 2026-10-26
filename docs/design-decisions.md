@@ -19,6 +19,13 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
   validates its output against a copy of the schema published here. *Reason:* the ecosystem rule is that packages connect through
   data formats, not code, so audio stays installable without control. *Cost:* the format is known in two places; it is kept tiny
   and each side tests against the schema. Specified in `docs/formats.md` (batch C0).
+- **One file type, the Bundle.** Series, Event lists and a Grid travel together in one JSON file with a `format` and a
+  `version`. *Reason:* one thing to load, validate and version; audio's `analyse()` result is one file. *Cost:* a consumer that
+  wants one signal reads the whole file; acceptable at the sizes involved, and a binary version can follow as `version` 2.
+- **Grid stores beat times, not a tempo.** Tempo is derived from the intervals. *Reason:* a tempo map plus beats can disagree;
+  beat times are what beat trackers produce and what a renderer needs, and tempo changes then need no extra field.
+- **Non-finite numbers are rejected in files.** *Reason:* Python's JSON accepts `NaN` and `Infinity`, other languages' parsers
+  do not; an undefined stretch is an Event or an absent series, never `NaN`.
 
 ## Dependencies
 

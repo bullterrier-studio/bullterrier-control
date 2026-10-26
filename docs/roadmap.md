@@ -23,9 +23,9 @@ The contract `bullterrier-audio` writes and `bullterrier-video` reads. Spec firs
 - **Series**: `start` (s), `rate` (Hz), `values`, `unit`, documented `scaling` (how 0..1 was reached, if it was).
 - **Event**: `t` (s), `strength` (0..1), optional `duration` (s), `label`, `pitch` (MIDI). One type covers onsets, beats,
   notes, sections, risers.
-- **Grid**: tempo map (piecewise constant BPM at first), beat times, downbeat times, meter; converts beats ↔ seconds.
-- JSON Schema files in the package (data, not code), plus loaders and writers that validate at the boundary.
-- A file holds a set of named Series, Events lists and one Grid (the shape audio's `analyse()` writes).
+- **Grid**: beat times, meter and first downbeat (tempo is derived, never stored); fixes the meaning of beats ↔ seconds.
+- One file type, the Bundle: named Series, named Event lists and an optional Grid (the shape audio's `analyse()` writes).
+- JSON Schema in `schemas/` (generated, committed), plus `load` and `save` that validate at the boundary.
 
 Plan: `.superpowers/plans/2026-10-26-c0-formats.md` (git-ignored).
 Also: `bt-control validate` and `bt-control schema`; CLAUDE.md gains a short Formats pointer to `docs/formats.md`.
@@ -36,6 +36,7 @@ copyable by audio for its conformance test.
 ## C1 Core
 
 - `Signal`: `sample(times) -> values` (vectorised, seconds), a domain (start, end), a unit.
+- Grid conversions (`seconds_at(beat)`, `beat_at(seconds)`) as specified in `docs/formats.md`; numpy joins here.
 - Evaluation: analytic signals are exact at any time; stateful shapers (slew, followers) render on an internal grid at a
   declared rate and are read by interpolation. Reading at t never depends on earlier reads.
 - Signal from a Series (interpolation: linear, hold), constant, combine (add, multiply, min, max, crossfade).
