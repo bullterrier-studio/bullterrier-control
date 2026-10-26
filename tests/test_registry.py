@@ -6,7 +6,7 @@ import pytest
 
 from bullterrier_control import BullterrierControlError, ParameterError, UnknownNameError, registry
 from bullterrier_control.params import Params, param
-from bullterrier_control.plugin import Constant, Signal, shaper, source
+from bullterrier_control.plugin import Constant, Keyframe, Signal, shaper, source
 from bullterrier_control.validated import Finite
 
 
@@ -86,6 +86,103 @@ def test_a_value_that_breaks_a_rule_is_refused_naming_the_registered_thing_and_t
     reports(unknown.value, "speed")
 
 
+POINTS = [{"t": 0.5, "value": 2.0, "ease": "in"}, {"t": 1.5, "value": -1.0}, {"t": 4, "value": 0.25, "ease": "out"}]
+POINTS_AS_KEYFRAMES = (
+    Keyframe(t=0.5, value=2.0, ease="in"),
+    Keyframe(t=1.5, value=-1.0, ease="linear"),
+    Keyframe(t=4.0, value=0.25, ease="out"),
+)
+
+
+def test_a_required_input_arrives_validated_as_a_tuple_of_keyframes():
+    received = []
+
+    @source(params=Level)
+    def track(params: Level, *, points: tuple[Keyframe, ...]) -> Signal:
+        received.append(points)
+        return Constant(params.value)
+
+    assert track(points=POINTS, value=0.75).sample(0.0).tolist() == 0.75  # the parameters still work beside it
+    assert received == [POINTS_AS_KEYFRAMES]
+    assert type(received[0]) is tuple
+    assert track.inputs == {"points": True}
+
+
+def test_a_shaper_takes_its_input_after_its_signal_and_parameters():
+    received = []
+
+    @shaper(params=Level)
+    def follow(signal: Signal, params: Level, *, points: tuple[Keyframe, ...]) -> Signal:
+        received.append(points)
+        return signal * params.value
+
+    assert follow(Constant(4.0), points=POINTS, value=0.25).sample(0.0).tolist() == 1.0
+    assert received == [POINTS_AS_KEYFRAMES]
+
+
+def test_an_optional_input_arrives_as_none_when_left_out_and_validated_when_given():
+    received = []
+
+    @source(params=Nothing)
+    def maybe(params: Nothing, *, points: tuple[Keyframe, ...] | None = None) -> Signal:
+        received.append(points)
+        return Constant(0.0)
+
+    maybe()
+    maybe(points=POINTS)
+    assert received == [None, POINTS_AS_KEYFRAMES]
+    assert maybe.inputs == {"points": False}
+
+
+def test_a_thing_without_inputs_declares_none():
+    @source(params=Nothing)
+    def plain(params: Nothing) -> Signal:
+        return Constant(0.0)
+
+    assert plain.inputs == {}
+
+
+def test_a_missing_required_input_is_a_type_error_naming_it():
+    @source(params=Nothing)
+    def track(params: Nothing, *, points: tuple[Keyframe, ...]) -> Signal:
+        return Constant(0.0)
+
+    with pytest.raises(TypeError, match=r"track.*points"):
+        track()
+
+
+def test_an_input_the_function_does_not_declare_is_a_type_error_naming_it():
+    @source(params=Level)
+    def level(params: Level) -> Signal:
+        return Constant(params.value)
+
+    with pytest.raises(TypeError, match="source 'level' takes no input 'points'"):
+        level(points=POINTS)
+
+
+def test_an_input_that_breaks_a_rule_is_a_parameter_error_naming_the_thing_and_the_path(reports):
+    @source(params=Nothing)
+    def track(params: Nothing, *, points: tuple[Keyframe, ...]) -> Signal:
+        return Constant(0.0)
+
+    with pytest.raises(ParameterError, match="source 'track'") as bad_ease:
+        track(points=[{"t": 0, "value": 1}, {"t": 1, "value": 1, "ease": "wobble"}])
+    reports(bad_ease.value, "points[1].ease")
+    with pytest.raises(ParameterError, match="source 'track'") as unsorted:
+        track(points=[{"t": 2, "value": 1}, {"t": 1, "value": 1}])
+    reports(unsorted.value, "points[1].t")
+
+
+def test_an_unknown_name_beside_an_input_is_still_a_parameter_error(reports):
+    @source(params=Level)
+    def track(params: Level, *, points: tuple[Keyframe, ...]) -> Signal:
+        return Constant(params.value)
+
+    with pytest.raises(ParameterError) as unknown:
+        track(points=POINTS, speed=1)
+    reports(unknown.value, "speed")
+
+
 def test_listings_are_sorted_and_split_by_kind():
     @source(params=Nothing)
     def zero(params: Nothing) -> Signal:
@@ -150,6 +247,53 @@ def _named(name):
 def test_a_broken_registration_is_refused_and_registers_nothing(register):
     before = dict(registry.all_registered())
     with pytest.raises(ValueError, match=r"\w"):
+        register()
+    assert dict(registry.all_registered()) == before
+
+
+class Pointed(Params):
+    """Parameters with a field named like an input."""
+
+    points: Finite = param(0.5, doc="Clashes with the input of the same name.", unit="count", min=0, max=1)
+
+
+def unknown_input(params: Nothing, *, colour: object) -> Signal:
+    return Constant(0.0)
+
+
+def odd_default(params: Nothing, *, points: object = ()) -> Signal:
+    return Constant(0.0)
+
+
+def takes_kwargs(params: Nothing, **extra: object) -> Signal:
+    return Constant(0.0)
+
+
+def takes_args(params: Nothing, *extra: object) -> Signal:
+    return Constant(0.0)
+
+
+def kwargs_named_like_an_input(params: Nothing, **points: object) -> Signal:
+    return Constant(0.0)
+
+
+BROKEN_INPUTS = {
+    "a keyword-only argument that is no input": (lambda: source(params=Nothing)(unknown_input), "colour"),
+    "an input with a default other than None": (lambda: source(params=Nothing)(odd_default), "points"),
+    "arbitrary keyword arguments": (lambda: source(params=Nothing)(takes_kwargs), "extra"),
+    "arbitrary positional arguments": (lambda: source(params=Nothing)(takes_args), "extra"),
+    "arbitrary keyword arguments named like an input": (
+        lambda: source(params=Nothing)(kwargs_named_like_an_input),
+        "points",
+    ),
+    "a parameter named like an input": (lambda: source(params=Pointed)(_named("pointy")), "points"),
+}
+
+
+@pytest.mark.parametrize(("register", "named"), BROKEN_INPUTS.values(), ids=BROKEN_INPUTS.keys())
+def test_a_registration_with_a_wrong_input_is_refused_naming_it_and_registers_nothing(register, named):
+    before = dict(registry.all_registered())
+    with pytest.raises(ValueError, match=named):
         register()
     assert dict(registry.all_registered()) == before
 

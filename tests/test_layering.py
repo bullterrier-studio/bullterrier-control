@@ -5,7 +5,7 @@ import only the layers below it:
     builtin | lib   bullterrier-control's own sources and shapers (never importing each other) | all of them by name
     plugin     the author API: the names a package of sources and shapers uses
     registry   the table of sources and shapers, and the queries over it
-    rendered   a signal that needs history, rendered once
+    rendered | inputs   a signal that needs history, rendered once | the data a source takes besides parameters
     signal | params | easing   what a signal is and how it is read | how a source or shaper declares its parameters |
                               how progress is reshaped (easing curves)
     formats    bundle > series | event | grid > model | units (each format builds on the base and the units only)
@@ -32,7 +32,7 @@ ROOT = PACKAGE.parent.parent  # the repository: pyproject.toml holds the contrac
 LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-imports` from the repository root
 
 LAYERS = (
-    "Layers: app > builtin | lib > plugin > registry > rendered > signal | params | easing"
+    "Layers: app > builtin | lib > plugin > registry > rendered | inputs > signal | params | easing"
     " > formats > validated > errors"
 )
 SOURCES_APART = "Built-in sources never import each other"
@@ -147,6 +147,15 @@ FORBIDDEN = {
         "bullterrier_control.builtin.clip",
         SOURCES_APART,
     ),
+    "inputs to registry": ("inputs.py", "import bullterrier_control.registry", "bullterrier_control.inputs", LAYERS),
+    "inputs to rendered": ("inputs.py", "import bullterrier_control.rendered", "bullterrier_control.inputs", LAYERS),
+    "signal to inputs": ("signal.py", "import bullterrier_control.inputs", "bullterrier_control.signal", LAYERS),
+    "a source to the inputs module": (
+        "builtin/clip.py",
+        "import bullterrier_control.inputs",
+        "bullterrier_control.builtin.clip",
+        SOURCES_DOOR,
+    ),
     "errors to formats": ("errors.py", "import bullterrier_control.formats", "bullterrier_control.errors", LAYERS),
     "formats to cli": (
         "formats/series.py",
@@ -216,6 +225,9 @@ ALLOWED = {
     "cli to plugin": ("cli.py", "import bullterrier_control.plugin"),
     "cli to sources": ("cli.py", "import bullterrier_control.builtin"),
     "a source to the plugin api": ("builtin/clip.py", "import bullterrier_control.plugin"),
+    "registry to inputs": ("registry.py", "import bullterrier_control.inputs"),
+    "inputs to easing": ("inputs.py", "import bullterrier_control.easing"),
+    "inputs to validated": ("inputs.py", "import bullterrier_control.validated"),
     "rendered to errors": ("rendered.py", "import bullterrier_control.errors"),
     "signal to formats": ("signal.py", "import bullterrier_control.formats.series"),
     "series to model": ("formats/series.py", "import bullterrier_control.formats.model"),

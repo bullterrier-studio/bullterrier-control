@@ -284,7 +284,7 @@ DEP004 = ["packaging"]
 root_package = "bullterrier_control"
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > builtin | lib > plugin > registry > rendered > signal | params | easing > formats > validated > errors"
+name = "Layers: app > builtin | lib > plugin > registry > rendered | inputs > signal | params | easing > formats > validated > errors"
 type = "layers"
 containers = ["bullterrier_control"]
 exhaustive = true  # a new top-level module must be placed in a layer here
@@ -294,7 +294,7 @@ layers = [
     "builtin | lib",  # bullterrier-control's own sources and shapers (found through the entry point) | every one by name
     "plugin",  # the author API: the names a package of sources and shapers uses
     "registry",  # the table of sources and shapers, and the queries over it
-    "rendered",  # a signal that needs history, rendered once
+    "rendered | inputs",  # a signal that needs history, rendered once | the data a source takes besides parameters (keyframes)
     "signal | params | easing",  # what a signal is and how it is read | how a source or shaper declares its parameters | easing curves
     "formats",  # the plain-data formats
     "validated",  # the base of every validated model and its strict value types
@@ -316,6 +316,7 @@ forbidden_modules = [
     "bullterrier_control.easing",
     "bullterrier_control.errors",
     "bullterrier_control.formats",
+    "bullterrier_control.inputs",
     "bullterrier_control.lib",
     "bullterrier_control.params",
     "bullterrier_control.registry",

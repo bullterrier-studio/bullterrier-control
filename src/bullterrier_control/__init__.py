@@ -17,6 +17,7 @@ from .errors import (
     UnknownNameError,
 )
 from .formats import Bundle, Event, Grid, Series, Unit, load, save
+from .inputs import Keyframe
 from .signal import Signal, from_series, maximum, minimum
 
 __version__ = metadata.version("bullterrier-control")
@@ -28,6 +29,7 @@ __all__ = [
     "FormatError",
     "Grid",
     "InvalidError",
+    "Keyframe",
     "ParameterError",
     "Series",
     "Signal",

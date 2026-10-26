@@ -21,6 +21,7 @@ the group `bullterrier_control.sources` in its `pyproject.toml`:
 
 from .easing import EASES, curve
 from .errors import InvalidError, ParameterError
+from .inputs import Keyframe
 from .params import Params, param
 from .registry import shaper, source
 from .rendered import Rendered
@@ -32,6 +33,7 @@ __all__ = [
     "Constant",
     "Finite",
     "InvalidError",
+    "Keyframe",
     "ParameterError",
     "Params",
     "Rendered",
