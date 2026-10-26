@@ -145,10 +145,11 @@ xfail_strict = true
 # Every warning fails the test that raised it: a leaked file or process (ResourceWarning), a deprecated call, and, when
 # PYTHONWARNDEFAULTENCODING=1 is set (`poe test` sets it), text IO that relies on the locale's encoding (EncodingWarning,
 # PEP 597).
-# One exception, for code that is not ours: matplotlib writes its font cache with the locale's encoding when it is
-# first imported on a machine (a fresh CI runner), which `PYTHONWARNDEFAULTENCODING` reports. Only that module is
-# exempt, and only for that warning; the later entry wins over "error".
-filterwarnings = ["error", "ignore::EncodingWarning:matplotlib"]
+# Two exceptions, for code that is not ours, each only for matplotlib's own modules and only for that warning (the later
+# entries win over "error"): matplotlib writes its font cache with the locale's encoding when it is first imported on a
+# machine (a fresh CI runner), which `PYTHONWARNDEFAULTENCODING` reports; and before 3.10.7 it calls pyparsing's
+# camelCase names, which pyparsing 3.3 deprecates (the lowest-dependency run uses matplotlib 3.8, our floor).
+filterwarnings = ["error", "ignore::EncodingWarning:matplotlib", "ignore::DeprecationWarning:matplotlib"]
 
 [tool.ruff]
 line-length = 120

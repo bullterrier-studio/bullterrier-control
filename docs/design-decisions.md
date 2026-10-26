@@ -347,7 +347,9 @@ separate ramp. Changed:
   pydantic only; a picture is a convenience of the command line and the gallery. Without it `plot` is a
   `BackendUnavailableError` (as in image) naming the extra. A PNG carries no version or date, so a rerun writes the same
   bytes. matplotlib writes its font cache with the locale's encoding when first imported, which the warning gate reports,
-  so that one warning from that module is exempt in `filterwarnings`.
+  and before 3.10.7 it calls pyparsing names that pyparsing 3.3 deprecates (the floor, 3.8, fails the lowest-dependency
+  run at import). Both warnings are exempt in `filterwarnings`, only from matplotlib's own modules: the floor stays at
+  what the code needs, not at what keeps a third party quiet.
 - **The gallery is one patch per built-in source and shaper, a picture of each, and one generated page.** The patch is
   `examples/gallery/<name>.toml` (its node `<name>` is the thing, its other nodes feed it), drawn over four seconds into
   `docs/gallery/<name>.png`; `poe new-source` writes the patch. No picture is compared (it depends on the drawing library);
