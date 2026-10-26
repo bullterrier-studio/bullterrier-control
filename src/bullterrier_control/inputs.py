@@ -14,17 +14,21 @@ Promises:
   as `path: rule` with the path from the input's name (`points[1].ease`). Mappings are parsed into their model.
 - `points`: a non-empty list or tuple of `Keyframe` or mappings; `t` strictly increases. Checked, it is a
   `tuple[Keyframe, ...]`.
+- `events`: a list or tuple of `Event` or mappings, possibly empty, in any order. Checked, it is a `tuple[Event, ...]`
+  sorted by `t`; events at the same time keep the order they were given in.
 """
 
 from collections.abc import Callable, Mapping
+from functools import partial
 from itertools import pairwise
 from types import MappingProxyType
-from typing import Annotated, ClassVar, NamedTuple
+from typing import Annotated, Any, ClassVar, NamedTuple
 
-from pydantic import AfterValidator, BeforeValidator, Field, model_validator
+from pydantic import AfterValidator, BeforeValidator, Field, field_validator, model_validator
 
 from .easing import EASES, curve
 from .errors import InvalidError, ParameterError
+from .formats import Event
 from .validated import Finite, Text, ValidatedModel
 
 __all__ = ["INPUTS", "Input", "Keyframe"]
@@ -48,7 +52,7 @@ class Keyframe(ValidatedModel):
 def _list_or_tuple(value: object) -> object:
     # pydantic would also take a set, a generator or (iterating its fields) a single model: the order must be given
     if not isinstance(value, list | tuple):
-        raise InvalidError(f"must be a list or tuple of keyframes (got {type(value).__name__})")
+        raise InvalidError(f"must be a list or tuple (got {type(value).__name__})")
     return value
 
 
@@ -69,9 +73,22 @@ class _Points(ValidatedModel):
         return self
 
 
-def _check_points(value: object) -> tuple[Keyframe, ...]:
+class _Events(ValidatedModel):
+    """The `events` input as a model, for the same reason as `_Points`."""
+
+    error: ClassVar[type[InvalidError]] = ParameterError
+    events: Annotated[tuple[Event, ...], BeforeValidator(_list_or_tuple)]
+
+    @field_validator("events")
+    @classmethod
+    def _by_time(cls, events: tuple[Event, ...]) -> tuple[Event, ...]:
+        return tuple(sorted(events, key=lambda event: event.t))  # stable: equal times keep the order given
+
+
+def _checked(holder: type[ValidatedModel], field: str, value: object) -> Any:
+    """`value` as the holder model's `field`, or a `ParameterError` listing each broken rule as `path: rule`."""
     try:
-        return _Points.parse({"points": value}).points
+        return getattr(holder.parse({field: value}), field)
     except ParameterError as error:
         # the model's own message starts with its private name; the registry names the source or shaper instead
         raise ParameterError("; ".join(f"{path}: {rule}" for path, rule in error.problems), error.problems) from None
@@ -92,7 +109,11 @@ INPUTS: Mapping[str, Input] = MappingProxyType(
                 " of the segment that starts there (ignored on the last point; default linear): one of"
                 f" {', '.join(EASES)}, or cubic-bezier(x1, y1, x2, y2)."
             ),
-            check=_check_points,
-        )
+            check=partial(_checked, _Points, "points"),
+        ),
+        "events": Input(
+            doc="Events: a list of {t, strength, duration, label, pitch}, as in a bundle, sorted by t.",
+            check=partial(_checked, _Events, "events"),
+        ),
     }
 )

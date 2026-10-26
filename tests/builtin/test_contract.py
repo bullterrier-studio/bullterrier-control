@@ -7,7 +7,7 @@ covered the moment it is registered and no test names it.
 import numpy as np
 import pytest
 
-from bullterrier_control import Keyframe, ParameterError, Series, Signal, SignalError, Unit, registry
+from bullterrier_control import Event, Keyframe, ParameterError, Series, Signal, SignalError, Unit, registry
 from bullterrier_control.signal import from_series
 
 ALL = sorted(registry.all_registered())
@@ -30,9 +30,10 @@ SAMPLE_INPUTS: dict[str, object] = {
         Keyframe(t=0, value=0, ease="in-out"),
         Keyframe(t=4, value=1, ease="overshoot"),
         Keyframe(t=8, value=-0.5),
-    )
+    ),
+    "events": (Event(t=0.5, strength=1.0), Event(t=1.0, strength=0.6), Event(t=1.5, strength=1.0)),
 }
-SMALLEST_INPUTS: dict[str, object] = {"points": (Keyframe(t=0, value=0.5),)}
+SMALLEST_INPUTS: dict[str, object] = {"points": (Keyframe(t=0, value=0.5),), "events": ()}
 
 
 def make(
