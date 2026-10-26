@@ -152,3 +152,21 @@ separate ramp. Changed:
   last. *Reason:* fewer knobs; zero outside the points is one more point.
 - **No wall-clock performance test; the read uses `searchsorted`.** *Reason:* timing assertions are flaky; the algorithm is
   fixed instead.
+
+## Decided in C2b
+
+- **A moment is an event that never ends and has sustain 0.** *Reason:* one formula serves a kick and a held note;
+  there is no second code path for events without a duration.
+- **An exponential tail is dropped once it is below 1e-9 times its strength** (ln(1e9), about 20.7 time constants into
+  the fall). *Reason:* it bounds the reads each event touches, so memory is O(times + events), not their product. Each
+  event is within that of the uncut formula; under `sum` the errors of many events add up. A linear fall ends exactly,
+  so it is not cut.
+- **The input check returns `events` sorted by `t`, stably** (equal times keep the order given). *Reason:* the result
+  does not depend on the order the caller gave (a float `sum` is not associative), and callers need not sort.
+- **The `path: rule` message join lives once in `inputs.py`**, in the helper both kinds use. *Reason:* one place
+  decides how an input error reads (`events[1].strength: ...`), and the registry still names no kind.
+- **`latch` ignores strength and duration.** *Reason:* it answers "has the first matching event happened?"; a level
+  that follows strength is what `envelope` is for.
+- **A moment with `attack` 0 and `decay` 0 is invisible: the value is 0 everywhere.** *Reason:* it rises and falls in
+  zero time, and a read at one time cannot see a spike of no width. It is the formula's own limit, so there is no
+  special case; the parameter docs say that 0 falls at once.

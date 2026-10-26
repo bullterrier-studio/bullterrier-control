@@ -5,7 +5,7 @@
 
     track(points=[{"t": 0, "value": 0}, {"t": 2, "value": 1, "ease": "in-out"}])
 
-A parameter is a number or a choice; an input is a structure (keyframes, later events, a grid). A function declares the
+A parameter is a number or a choice; an input is a structure (keyframes, events, a grid). A function declares the
 inputs it takes as keyword-only arguments named in `INPUTS`; the registry knows no kind by name: it looks the argument
 up here and calls `check`. Adding a kind is one entry in `INPUTS`.
 

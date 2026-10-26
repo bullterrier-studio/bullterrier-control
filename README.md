@@ -26,6 +26,16 @@ ramp.sample([1.0, 2.5, 7.0])  # the ease belongs to the segment that starts at i
 # array([0.0936, 0.45  , 0.9   ])
 ```
 
+Envelopes: a flare on each event, here a kick at 0.5 s that fades with a time constant of 0.25 s:
+
+```python
+from bullterrier_control import lib
+
+flare = lib.envelope(events=[{"t": 0.5}], decay=0.25)
+flare.sample([0.25, 0.5, 0.75, 1.0])  # 0 before the kick, 1 at it, then e^-1 and e^-2
+# array([0.    , 1.    , 0.3679, 0.1353])
+```
+
 ## Concepts
 
 - **Signal**: a value at every time. `signal.sample(times)` takes a number or an array of times in seconds and returns the
@@ -51,8 +61,9 @@ bt-control schema                    # the JSON Schema of a bundle, for tools in
 
 ## Status
 
-Pre-alpha, not yet on PyPI. The formats and the core exist, with the sources `constant` and `keyframes` and the shapers
-`clip` and `slew`; envelopes on events, LFOs, step sequences and noise come next ([docs/roadmap.md](docs/roadmap.md)).
+Pre-alpha, not yet on PyPI. The formats and the core exist, with the sources `constant`, `keyframes`,
+`envelope` and `latch` and the shapers `clip` and `slew`; LFOs, step sequences and noise come next
+([docs/roadmap.md](docs/roadmap.md)).
 
 ## Development
 

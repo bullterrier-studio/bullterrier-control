@@ -11,7 +11,7 @@ working session, **M** two or three. Decisions behind the batches: [design-decis
 | C1 | Core: Signal, `Rendered`, parameters, registry; `constant`, `clip`, `slew` | M | done |
 | C1.5 | Developer experience: `lib`, `builtin`, errors by kind, `poe new-source`, worked examples | S | done |
 | C2a | Inputs for sources; easing; `keyframes` (example 2) | M | done |
-| C2b | `envelope`, `latch` (examples 1 and 5) | M | |
+| C2b | `envelope`, `latch` (examples 1 and 5) | M | done |
 | C2c | `lfo`, `steps` (example 4) | S | |
 | C2d | `noise` (seeded, read at any time) | S | |
 | C3 | Shapers and event operations | M | |
@@ -75,12 +75,11 @@ test; `docs/ecosystem.md` so the repository stands on its own.
 
 ## C2b Envelopes and the latch
 
-- `envelope`, started by events: a moment (no duration) rises over `attack` and falls to 0 over `decay`; an event with a
-  duration rises, falls toward `sustain` while it lasts, then falls to 0 over `release`. Exponential or linear; overlapping
-  events take the larger (`max`) or add up (`sum`); a `label` picks events. Memory O(times + events).
-- Ducking is arithmetic: `1 - depth * envelope`.
+- The `events` input (a list of `Event` or dicts, sorted by `t`); `Event` joins the `plugin` names.
+- `envelope`: on each event, attack, decay toward a sustain level and, for an event with a duration, release;
+  exponential or linear; overlapping events take the larger (`max`) or add up (`sum`); a `label` picks events. Memory
+  O(times + events).
 - `latch`: one value before the first (labelled) event, another from it on.
-- Adds the `events` input.
 - Examples 1 and 5 pass.
 
 ## C2c LFOs and step sequences
