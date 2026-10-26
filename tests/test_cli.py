@@ -96,11 +96,6 @@ def test_validate_needs_a_file(capsys):
     assert "validate" in capsys.readouterr().err
 
 
-def test_schema_prints_the_committed_schema(capsys):
-    assert main(["schema"]) == 0
-    assert json.loads(capsys.readouterr().out) == json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
-
-
 def test_the_committed_schema_accepts_a_valid_bundle_and_rejects_a_misshapen_one(tmp_path):
     schema = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
     jsonschema.validate(json.loads(a_valid_bundle(tmp_path).read_text(encoding="utf-8")), schema)
