@@ -29,6 +29,7 @@ classifiers = [
 # None yet: deptry fails on a dependency nothing imports. numpy (>=1.26.4, the first series with Python 3.12 wheels; no
 # upper bound) is added with the first signal, and it stays the only one (docs/design-decisions.md).
 dependencies = [
+    "numpy>=1.26.4",
     "pydantic>=2.7.1",
 ]
 
@@ -227,6 +228,9 @@ ignore_decorators = [
 ]
 ignore_names = [
     "model_config",  # pydantic reads each model's settings from this class attribute
+    "downbeats",  # `Grid`: the public conversions of a format, called by users and other packages' readers, not in the package yet
+    "seconds_at",
+    "beat_at",
     "parse",  # `FormatModel.parse`: the public way in for data from outside, called by users, tools and tests
     # format fields and vocabulary: data that consumers read (a Series' rate, an Event's t, strength, label and pitch,
     # a Bundle's format, source and grid, the Unit members), not all of it used inside the package

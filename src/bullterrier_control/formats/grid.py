@@ -1,7 +1,13 @@
-"""Grid: the musical clock, stored as the time of every beat (docs/formats.md)."""
+"""Grid: the musical clock, stored as the time of every beat (docs/formats.md), and its conversions.
+
+grid.seconds_at(2.5)      # the time of beat position 2.5 (halfway between the third and fourth beat)
+grid.beat_at(12.4)        # the beat position at 12.4 s
+"""
 
 from typing import Annotated
 
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
 from pydantic import Field, model_validator
 
 from ..errors import FormatError
@@ -29,3 +35,32 @@ class Grid(FormatModel):
                 f"{self.first_downbeat} must be a beat inside a bar of meter = {self.meter} ({len(self.beats)} beats)",
             )
         return self
+
+    @property
+    def downbeats(self) -> tuple[float, ...]:
+        """The time of the first beat of every bar: `beats[first_downbeat::meter]`."""
+        return self.beats[self.first_downbeat :: self.meter]
+
+    def seconds_at(self, beats: ArrayLike) -> NDArray[np.float64]:
+        """The time in seconds of each beat position in `beats` (a number or an array; the result has its shape).
+
+        Position 0 is the first beat, 1 the second, and so on; a fraction is linear between two beats. Before the first
+        beat and after the last, the first or last beat length continues, so every position has a time.
+        """
+        position = np.asarray(beats, dtype=np.float64)
+        times = np.asarray(self.beats, dtype=np.float64)
+        last = len(times) - 1
+        inside = np.interp(position, np.arange(last + 1), times)
+        before = times[0] + position * (times[1] - times[0])
+        after = times[-1] + (position - last) * (times[-1] - times[-2])
+        return np.asarray(np.where(position < 0, before, np.where(position > last, after, inside)))
+
+    def beat_at(self, seconds: ArrayLike) -> NDArray[np.float64]:
+        """The beat position of each time in `seconds`: the inverse of `seconds_at`, with the same shape."""
+        moment = np.asarray(seconds, dtype=np.float64)
+        times = np.asarray(self.beats, dtype=np.float64)
+        last = len(times) - 1
+        inside = np.interp(moment, times, np.arange(last + 1))
+        before = (moment - times[0]) / (times[1] - times[0])
+        after = last + (moment - times[-1]) / (times[-1] - times[-2])
+        return np.asarray(np.where(moment < times[0], before, np.where(moment > times[-1], after, inside)))
