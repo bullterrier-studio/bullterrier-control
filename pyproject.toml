@@ -28,7 +28,9 @@ classifiers = [
 ]
 # None yet: deptry fails on a dependency nothing imports. numpy (>=1.26.4, the first series with Python 3.12 wheels; no
 # upper bound) is added with the first signal, and it stays the only one (docs/design-decisions.md).
-dependencies = []
+dependencies = [
+    "pydantic>=2.7.1",
+]
 
 [project.urls]
 Repository = "https://github.com/bullterrier-studio/bullterrier-control"
@@ -216,6 +218,21 @@ disallow_incomplete_defs = false
 [tool.vulture]
 paths = ["src"]
 min_confidence = 60
+ignore_decorators = [
+    "@model_validator",  # pydantic runs validators when a model is built
+]
+ignore_names = [
+    "model_config",  # pydantic reads each model's settings from this class attribute
+    "parse",  # `FormatModel.parse`: the public way in for data from outside, called by users, tools and tests
+    "start",  # format fields: the data consumers read (a Series' start and rate, the Unit vocabulary), not used inside the package
+    "rate",
+    "DECIBELS",
+    "HERTZ",
+    "MIDI",
+    "RATIO",
+    "SECONDS",
+    "BEATS",
+]
 
 # Every import is declared, and only once in the right place (`uv run deptry .`, in `poe check`): a missing, unused,
 # transitive-only or development-only dependency fails. tests/ is not scanned (deptry's default): tests may use the
@@ -234,15 +251,25 @@ DEP004 = ["packaging"]
 root_package = "bullterrier_control"
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > errors"
+name = "Layers: app > formats > errors"
 type = "layers"
 containers = ["bullterrier_control"]
 exhaustive = true  # a new top-level module must be placed in a layer here
 layers = [
     "__main__",  # `python -m bullterrier_control`: runs the command line
     "cli",  # app: the command line
+    "formats",  # the plain-data formats
     "errors",  # the exceptions: they import nothing, so every layer may raise them
 ]
+
+[[tool.importlinter.contracts]]
+name = "Formats: series > model | units"
+type = "layers"
+containers = ["bullterrier_control.formats"]
+exhaustive = true  # a new format module must be placed in a layer here
+# each format builds on the shared base and the units, never on another format; the formats are siblings (Tasks add them
+# to the sibling group as they arrive)
+layers = ["series", "model | units"]
 
 # Read by git-cliff when `uv run poe release` writes a release's section of CHANGELOG.md: the Conventional Commits since
 # the last tag, grouped as Keep a Changelog does. A commit only appears if a parser below names its group; the rest

@@ -2,6 +2,7 @@
 import only the layers below it:
 
     app        __main__ > cli
+    formats    series > model | units (each format builds on the base and the units, never on another format)
     errors     the exceptions; import nothing from bullterrier_control, so every layer may raise them
 
 These are architecture tests: their subject is the package's structure (its import graph and its source files), so,
@@ -23,8 +24,9 @@ PACKAGE = Path(bullterrier_control.__file__).parent
 ROOT = PACKAGE.parent.parent  # the repository: pyproject.toml holds the contracts
 LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-imports` from the repository root
 
-LAYERS = "Layers: app > errors"
-CONTRACTS = [LAYERS]
+LAYERS = "Layers: app > formats > errors"
+FORMATS = "Formats: series > model | units"
+CONTRACTS = [LAYERS, FORMATS]
 
 
 def lint(cwd: Path, pythonpath: Path | None = None) -> subprocess.CompletedProcess:
@@ -54,6 +56,25 @@ def test_the_package_keeps_every_import_contract():
 # One forbidden import per rule, each in a copy of the package: the linter must fail, naming the module and the rule.
 FORBIDDEN = {
     "errors to cli": ("errors.py", "import bullterrier_control.cli", "bullterrier_control.errors", LAYERS),
+    "errors to formats": ("errors.py", "import bullterrier_control.formats", "bullterrier_control.errors", LAYERS),
+    "formats to cli": (
+        "formats/series.py",
+        "import bullterrier_control.cli",
+        "bullterrier_control.formats.series",
+        LAYERS,
+    ),
+    "units to series": (
+        "formats/units.py",
+        "import bullterrier_control.formats.series",
+        "bullterrier_control.formats.units",
+        FORMATS,
+    ),
+    "model to series": (
+        "formats/model.py",
+        "import bullterrier_control.formats.series",
+        "bullterrier_control.formats.model",
+        FORMATS,
+    ),
     "cli to main": ("cli.py", "import bullterrier_control.__main__", "bullterrier_control.cli", LAYERS),
 }
 
@@ -68,6 +89,8 @@ def test_a_forbidden_import_breaks_its_contract(module, line, importer, contract
 
 ALLOWED = {
     "cli to errors": ("cli.py", "import bullterrier_control.errors"),
+    "cli to formats": ("cli.py", "import bullterrier_control.formats"),
+    "series to model": ("formats/series.py", "import bullterrier_control.formats.model"),
 }
 
 

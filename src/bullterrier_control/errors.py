@@ -8,8 +8,12 @@ message says what was wrong and what is valid. A subclass also inherits the buil
 Dependency direction: the bottom layer. It imports nothing from bullterrier_control, so every layer may raise them.
 """
 
-__all__ = ["BullterrierControlError"]
+__all__ = ["BullterrierControlError", "FormatError"]
 
 
 class BullterrierControlError(Exception):
     """The base of every exception bullterrier-control raises on purpose."""
+
+
+class FormatError(BullterrierControlError, ValueError):
+    """Data does not follow a format of docs/formats.md: the message names each field path, the rule and the value."""

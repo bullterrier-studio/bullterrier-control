@@ -6,8 +6,9 @@ answers "what is this value at 12.4 s?". The public names are listed in `__all__
 
 from importlib import metadata
 
-from .errors import BullterrierControlError
+from .errors import BullterrierControlError, FormatError
+from .formats import Series, Unit
 
 __version__ = metadata.version("bullterrier-control")
 
-__all__ = ["BullterrierControlError", "__version__"]
+__all__ = ["BullterrierControlError", "FormatError", "Series", "Unit", "__version__"]

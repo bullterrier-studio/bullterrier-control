@@ -107,6 +107,9 @@ wheels = [
 name = "bullterrier-control"
 version = "0.0.0"
 source = { editable = "." }
+dependencies = [
+    { name = "pydantic" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -133,6 +136,7 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.7.1" }]
 
 [package.metadata.requires-dev]
 dev = [
