@@ -58,3 +58,39 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
   declaring it now would be configuration nothing reads.
 - **The version is 0.0.0 until the first release.** `poe release` accepts only a version above the one in `pyproject.toml`, so
   the first release (0.1.0rc1, then 0.1.0) needs a lower starting point.
+
+## Core (batch C1)
+
+- **A signal is total.** `Signal.sample(times)` is defined for every time: time before 0 reads as time 0, and a signal made
+  from a Series holds its first and last value beyond its ends. *Reason:* a consumer asks for any time without checking a
+  domain first, and a signal that returns "undefined" for some times pushes that case onto every caller.
+- **One validated entry, one hook.** `sample` is final in the base class (float64, the input's shape, NaN and infinity refused
+  with `SignalError`); a signal implements `compute`. *Reason:* the check at the boundary is written once, not in every signal.
+- **Combining is arithmetic, not a registered shaper.** `+`, `-`, `*`, negation, `minimum` and `maximum` on signals (floats
+  allowed). *Reason:* they have no parameters to declare, and a crossfade is `a * (1 - m) + b * m`.
+- **Stateful shapers render once and are read by interpolation** (`Rendered`): the shaper's `run` is a causal function from the
+  input sampled on a grid at a declared `rate` (an advanced parameter) to an output of equal length. *Reason:* causality makes
+  a read independent of what was read before, whatever the order or chunking; a limit on the number of samples keeps a read
+  at an absurd time from filling memory.
+- **Parameters are declared with `param(default, doc=, unit=, min=, max=)`** on a `Params` model; the rules are checked when the
+  class is made. *Reason:* a broken declaration fails at import, naming the field, not in some patch much later.
+- **One entry-point group, `bullterrier_control.sources`, for sources and shapers.** *Reason:* naming.md names the group; a shaper
+  is a source of signals made from a signal, and one group means one loading rule.
+- **`slew` and `clip` ship in C1** (they were C3 items): the contract tests need a stateless and a stateful shaper to run over.
+- **Errors of declared rules are `FormatError`** (a format's fields, a source's parameters): one wording, one place.
+
+## Build or adopt
+
+Checked once, with a quick search (four queries; a first pass, not a survey):
+- **Easing curves (C2).** Python libraries exist (`pytweening`, `easing-functions` with the Penner set including elastic and
+  back-overshoot, `rpeasings`, `easings` with Bezier and Catmull-Rom). Adopt the formulas with the source cited, or depend on
+  one if it is small, typed and maintained; check cubic-bezier easing and the overshoot ("slam") curve against `easings` and
+  `easing-functions`. Do not port photo-fx's old `timing.py` curves without the same check.
+- **Filters and slew (C3).** `scipy.signal` would do some of it, but scipy is not a dependency and control installs with numpy
+  and pydantic only; the filters stay ours (a causal recurrence each, tested against a hand-computed response).
+- **LFOs, envelopes on events, tempo sync, the Grid (C2).** No standalone Python library found that reads a value at any time in
+  seconds; synthesis libraries (SignalFlow, Pyo) are real-time engines with their own graphs. New code.
+- **JAMS** is a JSON annotation format for music (beats, onsets, segments, chords) with a schema, validation and a mir_eval bridge.
+  It overlaps Event and Grid. Keep the strict Bundle (its Series, one file for analysis and curves, and the rules in
+  docs/formats.md are what audio and video need); a JAMS import and export adapter is possible later. JAMS's field layout was
+  not read in this check: read it before claiming how close the two are.

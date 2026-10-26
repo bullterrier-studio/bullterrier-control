@@ -8,7 +8,7 @@ Prior experiments with reusable code: `.local/prior-work.md` (git-ignored; machi
 |---|---|---|---|
 | — | Scaffold: gate, hooks, CI, release tooling, CLAUDE.md | S | done |
 | C0 | Formats: Series, Event, Grid | M | done (merged) |
-| C1 | Core: Signal, evaluation, parameters, registry | M | next |
+| C1 | Core: Signal, evaluation, parameters, registry | M | in progress (`.superpowers/plans/2026-10-26-c1-core.md`) |
 | C2 | Sources | M–L | |
 | C3 | Shapers and event operations | M | |
 | C4 | Patch files, CLI, curve gallery | M | |
@@ -35,11 +35,14 @@ copyable by audio for its conformance test.
 
 ## C1 Core
 
-- `Signal`: `sample(times) -> values` (vectorised, seconds), a domain (start, end), a unit.
+- `Signal`: `sample(times) -> values` (vectorised, seconds); total: defined for every time (before 0 reads as 0, a Series holds
+  its ends). `+ - *`, negation, `minimum`, `maximum` combine signals.
 - Grid conversions (`seconds_at(beat)`, `beat_at(seconds)`) as specified in `docs/formats.md`; numpy joins here.
 - Evaluation: analytic signals are exact at any time; stateful shapers (slew, followers) render on an internal grid at a
   declared rate and are read by interpolation. Reading at t never depends on earlier reads.
-- Signal from a Series (interpolation: linear, hold), constant, combine (add, multiply, min, max, crossfade).
+- Signal from a Series (interpolation: linear, hold); `Rendered` for causal stateful shapers read by interpolation.
+- Built-ins that give the contract tests every kind of subject: source `constant`; shapers `clip` (stateless) and `slew`
+  (stateful), moved here from C3.
 - Parameters declared once with pydantic (as bullterrier-image): unit, range, description, default. Unit `beats` is
   resolved through a Grid.
 - Registry of sources and shapers by name, entry-point group `bullterrier_control.sources`.
