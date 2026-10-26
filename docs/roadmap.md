@@ -14,7 +14,7 @@ working session, **M** two or three. Decisions behind the batches: [design-decis
 | C2b | `envelope`, `latch` (examples 1 and 5) | M | done |
 | C2c | `lfo`, `steps` (example 4) | S | done |
 | C2d | `noise` (seeded, read at any time) | S | done |
-| C3a | Causal shapers; the scenes example | M | |
+| C3a | Causal shapers; the scenes example | M | done |
 | C3b | Operations on events and series | M | |
 | C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | |
 | C5 | First release | S | |
@@ -103,7 +103,7 @@ Split by the signal contract ([design-decisions.md](design-decisions.md), "Decid
 whatever needs the whole data or its future (percentiles, a lead, snapping to the nearest beat) works on the data before
 it becomes a signal. (`slew` and `clip` shipped in C1.)
 
-### C3a Causal shapers; the scenes example
+### C3a Causal shapers; the scenes example (done)
 
 - First, example 6: sections (events with a duration) through `envelope` give a scene intensity, with no new code.
 - `follow` (attack/release follower; equal times are one-pole smoothing), `gate` (hysteresis), `hold` (sample and hold at

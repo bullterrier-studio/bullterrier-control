@@ -31,7 +31,7 @@ synthesizers modulation.
 <table>
   <tr>
     <td width="33%" valign="top"><b>Read at any moment</b><br>A signal has a value at every time. <code>sample(times)</code> takes a number or an array of seconds, in any order, and returns values in the same shape. No clock, no frames.</td>
-    <td width="33%" valign="top"><b>Sources and shapers</b><br>Keyframes, LFOs, envelopes, steps, noise and latches make signals; slew and clip shape them. Signals combine with <code>+</code>, <code>-</code>, <code>*</code>, <code>minimum</code> and <code>maximum</code>.</td>
+    <td width="33%" valign="top"><b>Sources and shapers</b><br>Keyframes, LFOs, envelopes, steps, noise and latches make signals; slew, follow, gate, hold, remap, delay and clip shape them. Signals combine with <code>+</code>, <code>-</code>, <code>*</code>, <code>minimum</code> and <code>maximum</code>.</td>
     <td width="33%" valign="top"><b>Deterministic</b><br>The same inputs and seed give the same values, whatever the order or number of earlier reads. Noise is the same on every machine.</td>
   </tr>
   <tr>
@@ -116,9 +116,14 @@ parameter with its unit and range.
 | `latch` | source | One value until the first event with a label, another from then on |
 | `constant` | source | One value at every time |
 | `slew` | shaper | Follows its input but climbs and falls no faster than allowed |
+| `follow` | shaper | Chases its input with its own attack and release times (equal times smooth) |
+| `gate` | shaper | Turns its input into 0 and 1, opening and closing at two levels |
+| `hold` | shaper | Takes the input's value at each event and keeps it until the next |
+| `remap` | shaper | Puts a 0 to 1 input onto a range, bent by an ease |
+| `delay` | shaper | Shows its input a fixed time late |
 | `clip` | shaper | Follows its input but never leaves a range |
 
-More shapers come next ([docs/roadmap.md](docs/roadmap.md)). A package of your own imports `bullterrier_control.plugin` and
+Operations on events and series come next ([docs/roadmap.md](docs/roadmap.md)). A package of your own imports `bullterrier_control.plugin` and
 names its module as an entry point of the group `bullterrier_control.sources`; its sources then appear in `btc.lib`.
 
 ## Concepts
@@ -147,7 +152,7 @@ bt-control schema                    # the JSON Schema of a bundle, for tools in
 ## Status
 
 Pre-alpha, not yet on PyPI. The formats and the core exist, with the sources `constant`, `keyframes`, `envelope`, `latch`,
-`lfo`, `steps` and `noise` and the shapers `clip` and `slew`.
+`lfo`, `steps` and `noise` and the shapers `clip`, `delay`, `follow`, `gate`, `hold`, `remap` and `slew`.
 
 ## Development
 

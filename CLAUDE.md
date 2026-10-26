@@ -28,8 +28,8 @@ uv run poe check                     # the whole gate, before you report or merg
 | find what is planned | `docs/roadmap.md`: work goes in small batches, each planned before it starts |
 
 **State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`), inputs (`points`, `events`, `grid`, `values`), easing, cadence, hashing and scaling, and
-the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps`, `noise`, `clip` and `slew` exist. Next: batch C3
-(`docs/roadmap.md`).
+the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `noise` and the shapers `clip`, `slew`, `follow`,
+`gate`, `hold`, `remap` and `delay` exist. Next: batch C3b (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.

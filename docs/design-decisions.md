@@ -225,3 +225,28 @@ separate ramp. Changed:
 - **The scenes example comes first.** Sections are events with a duration, and `envelope` turns them into a scene
   intensity with no new code. *Reason:* it checks long events through `envelope` before the new shapers build on it, and
   shows a consumer the pattern.
+
+## Decided in C3a
+
+- **`follow` replaces "one-pole smoothing".** Symmetric smoothing is `follow` with `attack == release`. *Reason:* one
+  shaper, one formula; a `smooth` alias would be a second name for one decision.
+- **`remap`'s response curve is an ease** (the names keyframes use, and `cubic-bezier(...)` for any custom curve).
+  *Reason:* one vocabulary of curves. Gamma and exponential curves wait for a consumer that needs them.
+- **`remap` does not clip its input itself.** *Reason:* the ease already reads its progress clipped to 0..1 (an input
+  below 0 gives `low`, above 1 gives `high`); a second clip would be a second copy of that rule. The test pins it.
+- **`hold` has no `label` parameter.** *Reason:* C3b's `select` picks events for every consumer; `envelope` and `latch`
+  keep theirs.
+- **`hold` reads the input at time 0 before the first event, and everywhere when there are no events.** *Reason:* the
+  signal stays total and causal, with no invented 0. Events at the same time are one event; strength, duration, label
+  and pitch are ignored.
+- **`delay` only lags** (`lag` 0 or more). *Reason:* a lead would read the input's future; it exists for events only
+  (C3b `shift`). Before `lag` seconds have passed it shows the input at time 0.
+- **The formulas of `follow` and `gate`.** `follow` writes `level = x + (level - x) * d`,
+  `d = e^(-1 / (rate * time))`, with `d = 0` for a time of 0 (no division, and the output is the input exactly, which
+  `level + (x - level) * 1` is not in floats). It stays between the lowest and highest input so far to within float
+  rounding. `gate` opens at `x >= open` and closes at `x < close`, so equality opens and does not close; `close` above
+  `open` is refused, and `close == open` is a plain threshold.
+- **The causality contract test builds each shaper from the sample inputs** (it built them from a signal alone, which
+  a shaper with a required input, `hold`, cannot be), and the sample events gain one after the time the two inputs
+  differ at. *Reason:* a shaper that reads the input only at events would otherwise show no difference after the
+  change, and the test's own "it can fail" check would refuse it.
