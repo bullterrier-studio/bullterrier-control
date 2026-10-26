@@ -447,6 +447,51 @@ def test_a_registration_with_a_wrong_input_is_refused_naming_it_and_registers_no
     assert dict(registry.all_registered()) == before
 
 
+LAZY_ANNOTATIONS = """
+from __future__ import annotations
+
+from bullterrier_control.plugin import Event, Params, Series, operation
+
+
+class NothingParams(Params):
+    \"\"\"No parameters.\"\"\"
+
+
+@operation(params=NothingParams)
+def lazy_events(params: NothingParams, *, events: tuple[Event, ...]) -> tuple[Event, ...]:
+    return events
+
+
+@operation(params=NothingParams)
+def lazy_series(params: NothingParams, *, series: Series) -> Series:
+    return series
+"""
+
+
+def test_a_module_with_postponed_annotations_registers_its_operations(tmp_path):
+    path = tmp_path / "lazy_package.py"
+    path.write_text(LAZY_ANNOTATIONS, encoding="utf-8")
+    with registry.isolated():
+        import_from_file(path, "lazy_package")
+        assert registry.get("lazy_events").returns == "events"
+        assert registry.get("lazy_series").returns == "series"
+        assert registry.get("lazy_events")(events=[{"t": 1.0}])[0].t == 1.0
+
+
+def test_an_operation_whose_postponed_annotation_names_nothing_is_refused_saying_so(tmp_path):
+    path = tmp_path / "broken_lazy.py"
+    path.write_text(LAZY_ANNOTATIONS.replace("-> Series:", "-> Missing:"), encoding="utf-8")
+    with registry.isolated(), pytest.raises(ValueError, match=r"lazy_series.*Missing"):
+        import_from_file(path, "broken_lazy")
+
+
+def test_an_operation_whose_return_annotation_is_wrong_says_what_it_found():
+    with pytest.raises(ValueError, match="found list"):
+        operation(params=Nothing)(returns_a_list)  # type: ignore[type-var]  # the declaration is the case
+    with pytest.raises(ValueError, match="found none"):
+        operation(params=Nothing)(returns_nothing_declared)
+
+
 def test_a_second_function_with_a_registered_name_is_refused_naming_both():
     @source(params=Nothing)
     def clash(params: Nothing) -> Signal:

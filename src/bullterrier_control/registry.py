@@ -82,13 +82,11 @@ class Registered[P: Params, R]:
         kind: _Kind,
         params_model: type[P],
         inputs: Mapping[str, bool],
+        returns: str,
     ) -> None:
         """Wrap `function`; the registry does this, after checking every rule."""
         self.function, self.kind, self.params_model, self.inputs = function, kind, params_model, inputs
-        self.name = function.__name__
-        self.returns = (
-            _OPERATION_RESULTS[inspect.signature(function).return_annotation] if kind == "operation" else "Signal"
-        )
+        self.name, self.returns = function.__name__, returns
         first_paragraph = (inspect.getdoc(function) or "").split("\n\n")[0]
         self.summary = " ".join(first_paragraph.split())
         self.__doc__ = _documentation(self, inspect.getdoc(function) or "")
@@ -203,17 +201,33 @@ def _register[P: Params, R](function: Callable[..., R], kind: _Kind, params: typ
     if clashing:
         raise ValueError(f"{kind} {name!r}: the parameter {clashing[0]!r} has the name of an input")
     inputs = _declared_inputs(function, kind)
-    if kind == "operation" and inspect.signature(function).return_annotation not in _OPERATION_RESULTS:
-        raise ValueError(f"{kind} {name!r}: the return annotation must be tuple[Event, ...] or Series")
+    returns = _operation_result(function) if kind == "operation" else "Signal"
     existing = _TABLE.get(name)
     if existing is not None and not _same_function(existing, function, kind):
         raise ValueError(
             f"{kind} {name!r}: the name is taken by the {existing.kind} defined as"
             f" {existing.function.__module__}.{existing.function.__qualname__}"
         )
-    registered = Registered(function, kind, params, inputs)
+    registered = Registered(function, kind, params, inputs, returns)
     _TABLE[name] = registered
     return registered
+
+
+def _operation_result(function: Callable[..., Any]) -> str:
+    """What an operation returns, as `help()` names it: `events` or `series`; `ValueError` if its return annotation is
+    anything else. The annotation is resolved, so a module with postponed annotations (`from __future__ import
+    annotations`, where it is the text `"tuple[Event, ...]"`) registers as one without."""
+    name = function.__name__
+    try:
+        returned = inspect.signature(function, eval_str=True).return_annotation
+    except NameError as error:
+        raise ValueError(f"operation {name!r}: cannot resolve the return annotation ({error})") from None
+    if returned not in _OPERATION_RESULTS:
+        found = "none" if returned is inspect.Signature.empty else repr(returned)
+        raise ValueError(
+            f"operation {name!r}: the return annotation must be tuple[Event, ...] or Series (found {found})"
+        )
+    return _OPERATION_RESULTS[returned]
 
 
 def _declared_inputs(function: Callable[..., Any], kind: _Kind) -> Mapping[str, bool]:
