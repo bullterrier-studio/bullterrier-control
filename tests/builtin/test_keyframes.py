@@ -114,3 +114,15 @@ def test_values_near_the_float_limit_are_read_exactly_at_the_points_and_half_way
     # b - a would overflow to infinity here; half way between -1e308 and 1e308 is 0, and the points give their values
     signal = lib.keyframes(points=[Keyframe(t=0, value=-1e308), Keyframe(t=2, value=1e308)])
     assert signal.sample([0.0, 1.0, 2.0]).tolist() == [-1e308, 0.0, 1e308]
+
+
+FLAT_TIMES = np.concatenate([np.linspace(0.0, 1.0, 501), np.linspace(2.0, 6.0, 2001), [2.0 + 1 / 3, 5 + 0.1, 1e6]])
+
+
+@pytest.mark.parametrize("value", [1 / 3, -7.7, 0.45, 1e-5, 1e300], ids=repr)
+@pytest.mark.parametrize("ease", ["linear", "in-out", "overshoot"])
+def test_where_a_value_holds_it_is_returned_exactly(value, ease):
+    # before the first point, from the last point on (also within a second of it), and between two equal values
+    points = [Keyframe(t=1, value=value, ease=ease), Keyframe(t=2, value=value, ease=ease), Keyframe(t=4, value=value)]
+    held = lib.keyframes(points=points).sample(FLAT_TIMES)
+    assert (held == value).all()

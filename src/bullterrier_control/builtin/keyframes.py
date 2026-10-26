@@ -38,8 +38,10 @@ class _Keyframed(Signal):
         for code, ease in enumerate(self._curves):
             chosen = ease_of_read == code
             eased[chosen] = ease(progress[chosen])
-        # not a + (b - a) * e: b - a overflows for values near the float limit, and this is exact at e = 0 and e = 1
-        return (1 - eased) * self._from[segment] + eased * self._to[segment]
+        # a + (b - a) * e would overflow for values near the float limit; (1 - e) * a + e * b is exact at e = 0 and
+        # e = 1 but not when a == b (a held value must read back exactly), so that case is taken as it is
+        start, end = self._from[segment], self._to[segment]
+        return np.where(start == end, start, (1 - eased) * start + eased * end)
 
 
 @source(params=KeyframesParams)
