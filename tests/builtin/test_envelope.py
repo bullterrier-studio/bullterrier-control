@@ -224,9 +224,23 @@ def test_label_chooses_the_events_that_count(label, expected):
     )
 
 
-def test_no_events_give_zeros_without_a_warning():
-    # every warning is an error in this suite
-    assert lib.envelope(events=[]).sample([0.0, 1.0, 1e6]).tolist() == [0.0, 0.0, 0.0]
+@pytest.mark.parametrize(
+    ("events", "times", "expected"),
+    [
+        pytest.param([], [0.0, 1.0, 1e6], [0.0, 0.0, 0.0], id="no events: zeros"),
+        pytest.param(
+            [Event(t=1e308, duration=1e308)],
+            [0.0, 1e308, 1.7e308],
+            [0.0, 1.0, 0.5],
+            # its end and reach overflow to infinity; 0.7e308 s in, it is still held and long fallen to the sustain
+            id="an event whose end is past the largest float: 0 before, 1 at it, then the sustain 0.5",
+        ),
+    ],
+)
+def test_building_and_reading_give_no_warning(events, times, expected):
+    # every warning is an error in this suite, the building included (sample alone silences numpy's)
+    envelope = lib.envelope(events=events, sustain=0.5, release=1.0)
+    assert envelope.sample(times).tolist() == expected
 
 
 def test_reading_before_the_first_event_gives_zero():

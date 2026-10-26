@@ -97,11 +97,13 @@ class _Envelope(Signal):
         self._strengths = np.array([event.strength for event in counted])
         self._ends = np.array([math.inf if event.duration is None else event.duration for event in counted])
         self._sustains = np.array([0.0 if event.duration is None else params.sustain for event in counted])
-        # a duration is seen until its release is over; a moment until its decay is
-        self._reach_ends = self._starts + np.where(
-            np.isinf(self._ends), params.attack + decay_reach, self._ends + release_reach
-        )
-        with np.errstate(over="ignore"):  # a span far shorter than an end overflows to a fall that is long over
+        # an overflow here is right: a span far shorter than an end gives a fall long over, an end near the largest
+        # float a reach that never ends
+        with np.errstate(over="ignore"):
+            # a duration is seen until its release is over; a moment until its decay is
+            self._reach_ends = self._starts + np.where(
+                np.isinf(self._ends), params.attack + decay_reach, self._ends + release_reach
+            )
             self._levels_at_end = self._held(self._ends, self._strengths, self._sustains)
 
     def _held(
@@ -124,14 +126,16 @@ class _Envelope(Signal):
         # each event touches only the reads from its start to its reach end: memory is O(times + events)
         firsts = np.searchsorted(ordered, self._starts, side="left")
         lasts = np.searchsorted(ordered, self._reach_ends, side="right")
+        # only events with a read in their window: a single read does not pay for the events nowhere near it
+        seen = firsts < lasts
         for first, last, start, strength, end, sustain, level in zip(
-            firsts.tolist(),
-            lasts.tolist(),
-            self._starts.tolist(),
-            self._strengths.tolist(),
-            self._ends.tolist(),
-            self._sustains.tolist(),
-            self._levels_at_end.tolist(),
+            firsts[seen].tolist(),
+            lasts[seen].tolist(),
+            self._starts[seen].tolist(),
+            self._strengths[seen].tolist(),
+            self._ends[seen].tolist(),
+            self._sustains[seen].tolist(),
+            self._levels_at_end[seen].tolist(),
             strict=True,
         ):
             since = ordered[first:last] - start
