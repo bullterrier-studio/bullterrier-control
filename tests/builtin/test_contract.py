@@ -31,7 +31,13 @@ SAMPLE_INPUTS: dict[str, object] = {
         Keyframe(t=4, value=1, ease="overshoot"),
         Keyframe(t=8, value=-0.5),
     ),
-    "events": (Event(t=0.5, strength=1.0), Event(t=1.0, strength=0.6), Event(t=1.5, strength=1.0)),
+    # the last is after CHANGE_AT, so a shaper that reads the input at events sees the change in its output
+    "events": (
+        Event(t=0.5, strength=1.0),
+        Event(t=1.0, strength=0.6),
+        Event(t=1.5, strength=1.0),
+        Event(t=3.5, strength=0.4),
+    ),
     # a steady 120 BPM: a beat every half second, 40 of them (20 s)
     "grid": Grid(beats=tuple(index * 0.5 for index in range(40)), meter=4, first_downbeat=0),
     "values": (0.2, -0.5, 1.0, 0.7),
@@ -50,17 +56,18 @@ def make(
     values: dict[str, object],
     leave_out: str | None = None,
     required_only: bool = False,
+    tail: float = 0.0,
 ) -> Signal:
     """The thing `name` made from every input it declares (only the required ones if `required_only`), taken from the
     table `inputs` (a kind without a row is a KeyError: the tables are complete), except `leave_out`, and parameter
-    `values`."""
+    `values`; a shaper's signal is `input_signal(tail)`."""
     thing = registry.get(name)
     given = {
         kind: inputs[kind]
         for kind, required in thing.inputs.items()
         if kind != leave_out and (required or not required_only)
     }
-    return thing(input_signal(), **given, **values) if thing.kind == "shaper" else thing(**given, **values)
+    return thing(input_signal(tail), **given, **values) if thing.kind == "shaper" else thing(**given, **values)
 
 
 def build(name: str, **values) -> Signal:
@@ -141,13 +148,12 @@ BEFORE_THE_CHANGE = np.concatenate([np.linspace(0, 2.9, 30), [2.99, 2.9995, 2.99
 
 @pytest.mark.parametrize("name", SHAPERS)
 def test_every_shaper_is_causal_what_comes_later_in_its_input_never_changes_an_earlier_output(name):
-    thing = registry.get(name)
-    unchanged = thing(input_signal(0.0)).sample(BEFORE_THE_CHANGE)
-    changed = thing(input_signal(7.0)).sample(BEFORE_THE_CHANGE)
-    assert changed.tolist() == unchanged.tolist()
+    unchanged = make(name, SAMPLE_INPUTS, {}, tail=0.0)
+    changed = make(name, SAMPLE_INPUTS, {}, tail=7.0)
+    assert changed.sample(BEFORE_THE_CHANGE).tolist() == unchanged.sample(BEFORE_THE_CHANGE).tolist()
     # the test can fail: after the change the two outputs do differ
     later = np.array([CHANGE_AT + 1.0, 8.0])
-    assert thing(input_signal(7.0)).sample(later).tolist() != thing(input_signal(0.0)).sample(later).tolist()
+    assert changed.sample(later).tolist() != unchanged.sample(later).tolist()
 
 
 @pytest.mark.parametrize("name", ALL)
