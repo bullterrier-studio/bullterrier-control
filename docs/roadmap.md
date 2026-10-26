@@ -13,7 +13,7 @@ working session, **M** two or three. Decisions behind the batches: [design-decis
 | C2a | Inputs for sources; easing; `keyframes` (example 2) | M | done |
 | C2b | `envelope`, `latch` (examples 1 and 5) | M | done |
 | C2c | `lfo`, `steps` (example 4) | S | done |
-| C2d | `noise` (seeded, read at any time) | S | |
+| C2d | `noise` (seeded, read at any time) | S | done |
 | C3 | Shapers and event operations | M | |
 | C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | |
 | C5 | First release | S | |

@@ -193,3 +193,18 @@ separate ramp. Changed:
   reading it as 0.0 would send a `square` with `duty` 1 low and flip a saw from the top of its ramp to the bottom.
 - **Before the first beat the position is negative and `steps` counts back from the end of its list.** *Reason:* the Grid
   continues the first beat length backwards, so a cycle or list runs on without a seam at the first beat.
+
+## Decided in C2d
+
+- **The random number is SplitMix64's output number `index`, not a hash of `seed * step + index`.** *Reason:* integers
+  only, so the same bits on every platform, and it matches the published generator, so a test can check it against the
+  reference outputs rather than against itself. Distinct seeds are distinct starting states of one stream; the finaliser
+  scrambles neighbouring states, so seeds below 2^32 give unrelated values in practice.
+- **A position beyond what an integer holds is reduced mod 2^64 in floats before it becomes an index.** *Reason:* at a rate
+  of 1000 a time of 1e300 is a position of 1e303, which no integer type holds; `np.mod` on floats is exact, so the read
+  is defined, deterministic and never casts out of range.
+- **`noise` has no `per="beat"`.** *Reason:* a random value per beat is a `steps` of random `values`; tempo-synced noise
+  waits for a consumer that needs it.
+- **`lfo` and `noise` put 0..1 on `low`..`high` through one function, `scaling.between`.** *Reason:* the exact-range
+  promise (see C2c) is one decision, extracted when `noise` became the second consumer.
+
