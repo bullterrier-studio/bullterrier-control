@@ -2,6 +2,7 @@
 gives a command. A helper one file uses stays in that file."""
 
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -35,3 +36,15 @@ def uv_run_env() -> dict[str, str]:
 # property tests are deterministic (the same cases on every run, so a failure reproduces) and never time out
 settings.register_profile("bullterrier", derandomize=True, deadline=None)
 settings.load_profile("bullterrier")
+
+
+@pytest.fixture
+def reports():
+    """`reports(error, "series.bass.rate")` fails unless the error lists that field path (`path: rule`, `path = value`
+    or an index into it), so a name that merely appears in the echoed input does not count."""
+
+    def check(error: Exception, field: str) -> None:
+        pattern = rf"(?<![\w'\"]){re.escape(field)}(?:: | = |\[|\.)"
+        assert re.search(pattern, str(error)), f"{field!r} is not reported as a path in: {error}"
+
+    return check

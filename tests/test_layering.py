@@ -2,6 +2,7 @@
 import only the layers below it:
 
     app        __main__ > cli
+    params     how a source or shaper declares its parameters
     formats    bundle > series | event | grid > model | units (each format builds on the base and the units only)
     errors     the exceptions; import nothing from bullterrier_control, so every layer may raise them
 
@@ -24,7 +25,7 @@ PACKAGE = Path(bullterrier_control.__file__).parent
 ROOT = PACKAGE.parent.parent  # the repository: pyproject.toml holds the contracts
 LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-imports` from the repository root
 
-LAYERS = "Layers: app > formats > errors"
+LAYERS = "Layers: app > params > formats > errors"
 FORMATS = "Formats: bundle > series | event | grid > model | units"
 CONTRACTS = [LAYERS, FORMATS]
 
@@ -56,6 +57,12 @@ def test_the_package_keeps_every_import_contract():
 # One forbidden import per rule, each in a copy of the package: the linter must fail, naming the module and the rule.
 FORBIDDEN = {
     "errors to cli": ("errors.py", "import bullterrier_control.cli", "bullterrier_control.errors", LAYERS),
+    "formats to params": (
+        "formats/series.py",
+        "import bullterrier_control.params",
+        "bullterrier_control.formats.series",
+        LAYERS,
+    ),
     "errors to formats": ("errors.py", "import bullterrier_control.formats", "bullterrier_control.errors", LAYERS),
     "formats to cli": (
         "formats/series.py",
@@ -114,6 +121,8 @@ def test_a_forbidden_import_breaks_its_contract(module, line, importer, contract
 ALLOWED = {
     "cli to errors": ("cli.py", "import bullterrier_control.errors"),
     "cli to formats": ("cli.py", "import bullterrier_control.formats"),
+    "params to formats": ("params.py", "import bullterrier_control.formats.model"),
+    "cli to params": ("cli.py", "import bullterrier_control.params"),
     "series to model": ("formats/series.py", "import bullterrier_control.formats.model"),
     "event to units": ("formats/event.py", "import bullterrier_control.formats.units"),
     "bundle to grid": ("formats/bundle.py", "import bullterrier_control.formats.grid"),

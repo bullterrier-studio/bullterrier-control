@@ -4,9 +4,9 @@
 
 Promises:
 - A model's fields cannot be rebound and unknown fields are refused. Mappings a model holds are read-only views.
-- Numbers are checked strictly (`Finite`, `Whole`): a whole number is fine where a decimal is expected, a `bool`, a
-  numeric string and, for `Whole`, a float are not, and `NaN` and the infinities never are. Text (`Text`) must be
-  writable as UTF-8. Sequences may be lists or tuples.
+- Numbers and switches are checked strictly (`Finite`, `Whole`, `Switch`): a whole number is fine where a decimal is
+  expected; a `bool`, a numeric string and, for `Whole`, a float are not; `NaN` and the infinities never are; a
+  `Switch` is `true` or `false`, not 1. Text (`Text`) must be writable as UTF-8. Sequences may be lists or tuples.
 - Building a model, directly or with `parse`, is the one boundary: it returns the model or raises one `FormatError`.
   Field rules are all listed as `path: rule (got value)`; a rule across fields reports the first it finds.
 """
@@ -18,7 +18,7 @@ from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Fie
 
 from ..errors import FormatError
 
-__all__ = ["Finite", "FormatModel", "Text", "Whole", "whole_number"]
+__all__ = ["Finite", "FormatModel", "Switch", "Text", "Whole", "whole_number"]
 
 # a JSON number: not a bool, not a string, not NaN or an infinity
 Finite = Annotated[float, Strict(), Field(allow_inf_nan=False)]
@@ -39,6 +39,8 @@ def _utf8_text(text: str) -> str:
     return text
 
 
+# a JSON true or false: not 1, not "true"
+Switch = Annotated[bool, Strict()]
 # a JSON integer: not a bool, not a float
 Whole = Annotated[int, BeforeValidator(whole_number)]
 # free text that can be saved as UTF-8
