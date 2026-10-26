@@ -23,6 +23,7 @@ from .cadence import Positions, counter
 from .easing import EASES, curve
 from .errors import InvalidError, ParameterError
 from .formats import Event, Grid
+from .hashing import uniform
 from .inputs import Keyframe
 from .params import Params, param
 from .registry import shaper, source
@@ -55,4 +56,5 @@ __all__ = [
     "param",
     "shaper",
     "source",
+    "uniform",
 ]
