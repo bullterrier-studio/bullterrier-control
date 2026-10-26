@@ -25,16 +25,17 @@ def test_the_defaults_switch_from_0_to_1():
     assert lib.latch(events=DROP).sample([0.0, 11.999, 12.0, 30.0]).tolist() == [0.0, 0.0, 1.0, 1.0]
 
 
-# unlabelled at 3 s, "kick" at 5 s, "drop" at 12 s
-LABELLED = [Event(t=12.0, label="drop"), Event(t=3.0), Event(t=5.0, label="kick")]
+# "kick" at 2.5 s, unlabelled at 5 s, "drop" at 12 s: a labelled event is the earliest, so "every event" and "only the
+# unlabelled ones" switch at different times
+LABELLED = [Event(t=12.0, label="drop"), Event(t=5.0), Event(t=2.5, label="kick")]
 
 
 @pytest.mark.parametrize(
     ("label", "expected"),
     [
         pytest.param("drop", [0.2, 0.2, 0.2, 0.7], id="only the matching events: the drop at 12"),
-        pytest.param("kick", [0.2, 0.2, 0.7, 0.7], id="another label, another moment: 5"),
-        pytest.param("", [0.2, 0.7, 0.7, 0.7], id="no label: every event, the unlabelled one too: 3"),
+        pytest.param("kick", [0.2, 0.7, 0.7, 0.7], id="another label, another moment: 2.5"),
+        pytest.param("", [0.2, 0.7, 0.7, 0.7], id="no label: every event, so the kick at 2.5, not the unlabelled at 5"),
         pytest.param("hat", [0.2, 0.2, 0.2, 0.2], id="a label nothing has: never switches"),
     ],
 )

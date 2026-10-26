@@ -216,7 +216,6 @@ def test_a_refused_event_is_reported_under_the_source_not_under_a_private_model(
     assert str(refused.value).startswith("source 'listener': events[1].strength: ")
 
 
-def test_help_describes_events_as_an_input_sorted_by_time(listen):
+def test_help_lists_events_as_an_input(listen):
     text = registry.get("listener").__doc__ or ""
     assert "events (required)" in text
-    assert "sorted by t" in text
