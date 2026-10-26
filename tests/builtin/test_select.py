@@ -8,6 +8,7 @@ EVENTS = [
     Event(t=0.7, strength=0.45, label="kick"),
     Event(t=1.0, strength=0.8),
     Event(t=1.2, strength=0.5, label="snare"),
+    Event(t=1.5, strength=0.0, label="hat"),
 ]
 
 
@@ -18,14 +19,17 @@ def times(events):
 @pytest.mark.parametrize(
     ("values", "expected"),
     [
-        pytest.param({}, [0.5, 0.7, 1.0, 1.2], id="the defaults keep every event, the unlabelled one too"),
-        pytest.param({"threshold": 0.5}, [0.5, 1.0, 1.2], id="a strength equal to the threshold is kept; 0.45 is not"),
+        pytest.param({}, [0.5, 0.7, 1.0, 1.2, 1.5], id="the defaults keep every event: unlabelled, and of strength 0"),
+        pytest.param(
+            {"threshold": 0.5}, [0.5, 1.0, 1.2], id="a strength equal to the threshold is kept; 0.45 and 0 are not"
+        ),
         pytest.param({"threshold": 0.9}, [0.5], id="a strength equal to a high threshold is kept"),
         pytest.param({"threshold": 0.95}, [], id="above every strength: none"),
         pytest.param({"label": "kick"}, [0.5, 0.7], id="a label keeps the events carrying it"),
         pytest.param({"label": "snare"}, [1.2], id="another label"),
         pytest.param({"label": "kick", "threshold": 0.5}, [0.5], id="both: a kick of at least 0.5"),
-        pytest.param({"label": "hat"}, [], id="a label nothing has: none"),
+        pytest.param({"label": "hat"}, [1.5], id="a label whose only event has strength 0"),
+        pytest.param({"label": "bell"}, [], id="a label nothing has: none"),
         pytest.param({"label": "", "threshold": 0.8}, [0.5, 1.0], id="an empty label keeps the unlabelled one"),
     ],
 )
