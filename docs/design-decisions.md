@@ -207,4 +207,7 @@ separate ramp. Changed:
   waits for a consumer that needs it.
 - **`lfo` and `noise` put 0..1 on `low`..`high` through one function, `scaling.between`.** *Reason:* the exact-range
   promise (see C2c) is one decision, extracted when `noise` became the second consumer.
-
+- **A step edge sits where `rate * t` reaches a whole number, to within float rounding.** *Reason:* `rate * (k / rate)`
+  can round just below `k` (rate 7, t = 61/7 reads step 60), so a read at a "frame time" may land on the step before. No
+  float formula avoids it for every rate, and a read inside a step is exact, so the docs say so rather than hide it behind
+  a tolerance. It applies to `steps` and `noise` `hold`; `lfo`, `linear` and `smooth` are continuous there.

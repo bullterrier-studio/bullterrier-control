@@ -7,7 +7,8 @@ Promises:
 - `counter` returns a function from times (finite, from 0 up) to positions: `rate * t` for `per="second"`,
   `rate * grid.beat_at(t)` for `per="beat"`, so a source follows a tempo change. The result is always finite; its
   whole part says which cycle or step, its fraction where in it. It is negative for a time before a first beat that
-  is not at 0.
+  is not at 0. A step or cycle edge sits where `rate * t` reaches a whole number, to within float rounding: a time
+  that is a multiple of 1 / rate in decimal (frame times at rate 30) may read the step before.
 - `per="beat"` without a grid is a `ParameterError` naming `per`, raised by `counter`; a grid is ignored per second.
 - A time too far for the position to be a number (`rate * t` overflows, or the grid cannot reach it) is a `SignalError`.
 """
