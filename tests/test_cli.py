@@ -433,13 +433,16 @@ def test_plot_of_a_node_that_needs_no_bundle_works_without_one(tmp_path):
 EVENTS_ONLY = 'format = "bullterrier-control/patch"\nversion = 1\n[strong]\nuse = "select"\nevents = [{ t = 1 }]\n'
 
 
-@pytest.mark.parametrize("command", [["sample", "--rate", "2"], ["plot", "--out", "x.png"]])
+@pytest.mark.parametrize("command", ["sample", "plot"])
 def test_a_patch_with_no_signal_to_read_is_an_error_not_an_empty_result(command, tmp_path, capsys):
     patch = a_patch(tmp_path, EVENTS_ONLY)
-    assert main([command[0], str(patch), "--to", "1", *command[1:]]) == 1
+    out = tmp_path / "empty.png"
+    flags = ["--rate", "2"] if command == "sample" else ["--out", str(out)]
+    assert main([command, str(patch), "--to", "1", *flags]) == 1
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "no signal" in captured.err
+    assert not out.exists()
 
 
 def test_a_range_that_is_not_a_number_is_a_usage_error_that_does_not_show_a_private_name(tmp_path, capsys):
