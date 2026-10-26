@@ -72,9 +72,17 @@ def test_values_are_in_zero_to_one_with_the_mean_and_variance_of_a_uniform_distr
     values = uniform(3, MILLION)
     assert values.min() >= 0.0
     assert values.max() < 1.0
-    assert values.mean() == pytest.approx(0.5, abs=0.01)
-    assert values.var() == pytest.approx(1 / 12, abs=0.005)
+    # a million samples: the mean is within 0.0003 of 0.5 and the variance within 0.0001 of 1/12 (one standard error)
+    assert values.mean() == pytest.approx(0.5, abs=0.002)
+    assert values.var() == pytest.approx(1 / 12, abs=0.001)
 
 
 def test_no_value_repeats_among_a_hundred_thousand_indices():
     assert len(np.unique(uniform(11, MILLION[:100_000]))) == 100_000
+
+
+@pytest.mark.parametrize(("seed", "other"), [(0, 1), (0, 2), (1, 4294967295)], ids=str)
+def test_neighbouring_seeds_give_uncorrelated_values(seed, other):
+    first, second = uniform(seed, MILLION[:200_000]), uniform(other, MILLION[:200_000])
+    # a standard error of 0.0022 for this many samples: six of them
+    assert abs(np.corrcoef(first, second)[0, 1]) < 0.013

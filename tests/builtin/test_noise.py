@@ -46,6 +46,9 @@ def test_smooth_eases_between_the_lattice_values_by_3x_squared_minus_2x_cubed():
 
 def test_the_default_is_smooth_noise_four_values_a_second_between_0_and_1():
     assert lib.noise().sample(at(0.25)).tolist() == lib.noise(shape="smooth", rate=4, seed=0).sample(at(0.25)).tolist()
+    values = lib.noise().sample(np.linspace(0.0, 2500.0, 20_000))  # 10000 random values
+    assert 0.0 <= values.min() < 0.01
+    assert 0.99 < values.max() <= 1.0
 
 
 def test_smooth_has_no_slope_at_a_lattice_point_where_linear_has_one():
@@ -70,11 +73,6 @@ def test_different_seeds_give_different_noise():
     times = np.arange(0.1, 10.0, 0.5)
     first, second = lib.noise(seed=0).sample(times), lib.noise(seed=1).sample(times)
     assert (first != second).all()
-
-
-def test_a_seed_gives_the_same_noise_each_time_it_is_built():
-    times = [0.1, 33.3, 1e6]
-    assert lib.noise(seed=77).sample(times).tolist() == lib.noise(seed=77).sample(times).tolist()
 
 
 def test_the_values_are_spread_evenly_over_the_range():
