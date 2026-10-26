@@ -11,7 +11,7 @@ Every number in the tables is worked out by hand from the definition of the sour
 
 ## 1. Kicks to a glow radius
 
-Audio found three kicks; on each, a glow should flare and fade. **Needs:** `envelope` (batch C2b).
+Audio found three kicks; on each, a glow should flare and fade.
 
 ```python
 from pathlib import Path
