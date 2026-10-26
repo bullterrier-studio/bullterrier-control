@@ -75,6 +75,8 @@ def test_the_named_curves_take_their_published_values(name, progress, expected):
         pytest.param("cubic-bezier(0.58, 0, 0.42, 1)", 0.319375, 0.15625, 1e-9, id="inverts x with x1, x2 swapped"),
         # CSS `ease`, whose value in the middle is quoted as about 0.8024 (CSS Easing Level 1 implementations)
         pytest.param("cubic-bezier(0.25, 0.1, 0.25, 1)", 0.5, 0.8024, 1e-3, id="the CSS ease"),
+        # a handle at x = 1 is valid: at parameter 0.5, x = 0.375 + 0.1875 + 0.125 = 0.6875 and y = 0.75 + 0.125 = 0.875
+        pytest.param("cubic-bezier(1, 2, 0.5, 0)", 0.6875, 0.875, 1e-9, id="x1 = 1 is allowed"),
         pytest.param(" cubic-bezier( 0.42 ,0 ,0.58, 1 ) ", 0.274375, 0.15625, 1e-9, id="whitespace is free"),
         pytest.param("cubic-bezier(0.42,0,0.58,1)", 0.274375, 0.15625, 1e-9, id="no whitespace"),
         pytest.param("cubic-bezier(4.2e-1, 0, .58, 1.)", 0.274375, 0.15625, 1e-9, id="exponent and bare-dot numbers"),
