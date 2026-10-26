@@ -1,0 +1,21 @@
+"""$name: <what it makes, in a few words>."""
+
+from ..plugin import Constant, Finite, Params, Signal, param, source
+
+
+class ${title}Params(Params):
+    """<What the parameters of $name set.>"""
+
+    level: Finite = param(
+        0.5,
+        doc="<What it does, its unit and range in words, and what raising it does.>",
+        unit="fraction",
+        min=0,
+        max=1,
+    )
+
+
+@source(params=${title}Params)
+def $name(params: ${title}Params) -> Signal:
+    """<What the signal is, in one sentence: the summary `help(lib.$name)` shows.>"""
+    return Constant(params.level)

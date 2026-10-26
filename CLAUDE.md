@@ -1,16 +1,36 @@
 # CLAUDE.md: bullterrier-control
 
 Python library and CLI that produces **control signals**: numbers that change over time and drive the parameters of anything. It is
-what DAWs call automation, animation tools keyframes and synthesizers modulation. See `README.md` (usage),
-`docs/design-decisions.md` (why), and the ecosystem design in `../bullterrier-design/` (`control.md`, `naming.md`, `README.md`).
+what DAWs call automation, animation tools keyframes and synthesizers modulation. `README.md` (usage), `docs/ecosystem.md` (the
+five packages and their rules), `docs/design-decisions.md` (why), `docs/roadmap.md` (what is next), `docs/formats.md` (the files).
 
 **Write docs tersely.** This file, the README, `docs/`, docstrings, reports and briefs: state the rule or fact, drop preamble,
-repetition and justification a reader does not need to act. Reasons go in `docs/design-decisions.md`, once.
+repetition and justification a reader does not need to act. Reasons go in `docs/design-decisions.md`, once. Committed files are
+public: no absolute paths, no references to folders outside the repository.
 
-**State: formats and core.** The formats (batch C0) and the core (C1: signals, `Rendered`, `Params`, the registry, `constant`,
-`clip`, `slew`) exist. Next: the sources (C2) and the shapers (C3). Work goes in batches, each planned before it starts:
-`docs/roadmap.md`. Earlier experiments with code worth reusing are listed in `.local/prior-work.md` (git-ignored, this machine
-only; read it before writing a source, shaper or format).
+## Start here
+
+```bash
+uv sync && uv run poe setup          # once per clone: environment, git hooks, commit template
+uv run pytest tests/builtin -n 0     # the tests near your change, while you work
+uv run poe check                     # the whole gate, before you report or merge (then `uv run lint-imports`)
+```
+
+| To ... | Look at |
+|---|---|
+| use a source or shaper | `lib` (`lib.slew(signal, rise=0.2)`; `dir(lib)`, `help(lib.slew)`) |
+| add a source or shaper | "Adding a source or shaper" below; one module in `src/bullterrier_control/builtin/`, one test file in `tests/builtin/` |
+| see what every source and shaper promises | "The signal contract" below; `tests/builtin/test_contract.py` checks it over all of them |
+| declare parameters | `params.py` (`Params`, `param`); the rules in "Parameters" below |
+| write a signal that needs history | `rendered.py` (`Rendered`) |
+| read or write a file | `formats/` (`load`, `save`, `Bundle`); `docs/formats.md` |
+| see a worked example with numbers | `docs/examples.md` and `examples/` |
+| find what is planned | `docs/roadmap.md`: work goes in small batches, each planned before it starts |
+
+**State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`) and the sources `constant`, `clip` and `slew`
+exist. Next: batch C2a (`docs/roadmap.md`). Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for
+example `.local/prior-work.md`, earlier experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read
+them when present; never commit or cite them.
 
 ## Responsibility
 
@@ -36,32 +56,34 @@ a parameter unit, not a second clock: a value in `beats` is turned into seconds 
 
 **Formats this package owns** (plain data, documented and versioned here; changing one is a breaking release): **Series** (values at
 a fixed rate from a start time, with a unit and a documented scaling), **Event** (a moment in seconds, a strength, an optional
-duration, label and pitch: one type for onsets, beats, notes and sections), **Grid** (tempo map, beat and downbeat times, meter;
-converts beats and seconds), carried in one file, the **Bundle**; the rules are in `docs/formats.md`, the machine-readable form is
+duration, label and pitch: one type for onsets, beats, notes and sections), **Grid** (beat times, meter and first downbeat;
+converts beat positions and seconds), carried in one file, the **Bundle**; the rules are in `docs/formats.md`, the machine-readable form is
 `schemas/bundle-1.schema.json`. `bullterrier-audio` writes them **without importing this package**:
 the schema is a file here, audio checks its output against a copy. A format is never shared as code.
 
 ## Names
 
 `bullterrier-control` (PyPI, repository), `bullterrier_control` (import; docs alias `btc`), `bt-control` (command, `bt-control.toml`,
-cache folder), `BT_CONTROL_*` (env vars), `BullterrierControlError` (base exception), `bullterrier_control.sources` (plugin group:
-the entry point for sources and shapers). Full name for identity, `bt-` for what a person types. Names inside the package (`Series`,
-`Event`, `Grid`, sources, shapers) carry no prefix.
+cache folder), `BT_CONTROL_*` (env vars), `BullterrierControlError` (base exception), `bullterrier_control.sources` (entry-point
+group for packages of sources and shapers). Full name for identity, `bt-` for what a person types. Names inside the package
+(`Series`, `lib`, sources, shapers) carry no prefix.
 
 ## Architecture
 
 Layers, imports flow **downward only** (import-linter: contracts in `pyproject.toml`, run by `tests/test_layering.py` and
-`uv run lint-imports`). A forbidden import means the code is in the wrong layer: move it. Today:
+`uv run lint-imports`). A forbidden import means the code is in the wrong layer: move it.
 
 ```
 app        __main__, cli
-sources    bullterrier-control's own sources and shapers: one module each, never importing each other
-plugin     the author API: the names a package of sources and shapers uses (built-ins use it too)
-registry   the table of sources and shapers; entry-point loading
-rendered   Rendered: a signal that needs history, rendered once
-signal     Signal, from_series, arithmetic            |  params   Params, param, UNITS
-formats    Bundle > Series | Event | Grid > the shared model base and Unit
-errors     BullterrierControlError and its subclasses     (imports nothing from bullterrier_control)
+builtin    the built-in sources and shapers: one module each, never importing each other, using only `plugin`
+lib        every registered source and shaper by name (`lib.slew`), with `help()` built from its parameters
+plugin     the author API: everything a source needs (built-ins use it too); the one door, enforced by a contract
+registry   the table of sources and shapers; `@source`, `@shaper`; entry-point loading
+rendered   Rendered: a signal that needs history, rendered once and read by holding the latest sample
+signal     Signal, Constant, from_series, arithmetic  |  params   Params, param, UNITS
+formats    Bundle > Series | Event | Grid > the format base and Unit
+validated  ValidatedModel and the strict value types (Finite, Whole, Switch, Text)
+errors     BullterrierControlError > InvalidError > FormatError | ParameterError; SignalError; UnknownNameError
 ```
 
 A source is `def name(params) -> Signal`, a shaper `def name(signal, params) -> Signal`, each registered with `@source` or
@@ -70,7 +92,7 @@ shaper maps a signal to a signal. Each thing arrives with its first consumer (`v
 
 ## The signal contract
 
-Every signal, and so every source and shaper, promises this (`tests/sources/test_contract.py` checks every registered one):
+Every signal, and so every source and shaper, promises this (`tests/builtin/test_contract.py` checks every registered one):
 - **Total:** a value at every time. A time before 0 reads as time 0; a Series-backed signal holds its first and last value.
 - **`sample(times)`** (final: never overridden) takes a number or an array of any shape, refuses what is not a finite number
   (text, a bool, NaN, an infinity) with `SignalError`, and returns float64 in the same shape. A signal implements

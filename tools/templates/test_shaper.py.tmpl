@@ -1,0 +1,8 @@
+from bullterrier_control import lib
+from bullterrier_control.signal import Constant
+
+
+def test_${name}_scales_its_input():
+    # Replace with what $name promises, each expected number worked out by hand (CLAUDE.md, "Testing").
+    # The contract tests (tests/builtin/test_contract.py) already cover shapes, ranges, causality and determinism.
+    assert lib.$name(Constant(2.0), depth=0.5).sample([0.0, 1.0]).tolist() == [1.0, 1.0]

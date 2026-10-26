@@ -1,0 +1,7 @@
+from bullterrier_control import lib
+
+
+def test_${name}_holds_its_level():
+    # Replace with what $name promises, each expected number worked out by hand (CLAUDE.md, "Testing").
+    # The contract tests (tests/builtin/test_contract.py) already cover shapes, ranges and determinism.
+    assert lib.$name(level=0.25).sample([0.0, 1.0]).tolist() == [0.25, 0.25]

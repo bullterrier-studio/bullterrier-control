@@ -66,7 +66,7 @@ Also: CLAUDE.md gains "The signal contract" (what every source and shaper promis
   input Bundle per scenario in `examples/`, the signal built from it, and the output as plain numbers at the times a
   consumer would ask. Output is numbers: no picture, no sound, and the examples never import another package; what the
   consumer does with the numbers is a line of arithmetic in a comment, labelled as the consumer's. Scenarios, from the
-  ecosystem design (`bullterrier-design/README.md`, "Where does it go?"):
+  ecosystem's "Where does it go?" ([ecosystem.md](ecosystem.md)):
   1. **Kicks to a glow radius** (audio, image): kick Events with a decay envelope, read at 30 per second.
   2. **A ramp for a progress parameter** (image): "evaporate from 0 to 90 % over 5 s": keyframes with easing.
   3. **Bass energy to a size** (audio, vector): a Series, slewed, clipped.
