@@ -117,7 +117,7 @@ class Registered[P: Params, R]:
         return self._named(self.params_model.parse, values)
 
     def _named[V, T](self, check: Callable[[V], T], value: V) -> T:
-        """`check(value)`, with a `ParameterError` it raises saying which source or shaper refused."""
+        """`check(value)`, with a `ParameterError` it raises saying which source, shaper or operation refused."""
         try:
             return check(value)
         except ParameterError as error:

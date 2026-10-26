@@ -18,7 +18,7 @@ uv run poe check                     # the whole gate, before you report or merg
 
 | To ... | Look at |
 |---|---|
-| use a source or shaper | `lib` (`lib.slew(signal, rise=0.2)`; `dir(lib)`, `help(lib.slew)`) |
+| use a source, shaper or operation | `lib` (`lib.slew(signal, rise=0.2)`; `dir(lib)`, `help(lib.slew)`) |
 | add a source, shaper or operation | "Adding a source or shaper" below; one module in `src/bullterrier_control/builtin/`, one test file in `tests/builtin/` |
 | see what every source and shaper promises | "The signal contract" below; `tests/builtin/test_contract.py` checks it over all of them |
 | declare parameters | `params.py` (`Params`, `param`); the rules in "Parameters" below |
@@ -68,8 +68,8 @@ the schema is a file here, audio checks its output against a copy. A format is n
 
 `bullterrier-control` (PyPI, repository), `bullterrier_control` (import; docs alias `btc`), `bt-control` (command, `bt-control.toml`,
 cache folder), `BT_CONTROL_*` (env vars), `BullterrierControlError` (base exception), `bullterrier_control.sources` (entry-point
-group for packages of sources and shapers). Full name for identity, `bt-` for what a person types. Names inside the package
-(`Series`, `lib`, sources, shapers) carry no prefix.
+group for packages of sources, shapers and operations). Full name for identity, `bt-` for what a person types. Names inside the package
+(`Series`, `lib`, sources, shapers, operations) carry no prefix.
 
 ## Architecture
 
@@ -119,17 +119,17 @@ when called again, with events reversed or as dicts; valid, time-ordered events 
 
 1. **Never import audio, image, vector or video.** Nor optionally, nor lazily. A format shared with a sibling is a plain data file
    owned by one package, not code.
-2. **Sources and shapers never import each other.** Shared numeric code goes to a module named for its concept (`interpolation`,
+2. **Sources, shapers and operations never import each other.** Shared numeric code goes to a module named for its concept (`interpolation`,
    `smoothing`, `noise`), never `utils`/`common`/`helpers`. Extract when a second consumer needs it.
 3. **Parameters are declared once** as a pydantic model (as in bullterrier-image), with unit, range and description, and drive
    validation, defaults and generated docs. Units include `seconds`, `beats` (through a Grid), `hertz`, `cycles`, `fraction`.
-4. **Open/closed:** adding a source or shaper creates files named for it and modifies none.
+4. **Open/closed:** adding a source, shaper or operation creates files named for it and modifies none.
 5. **No hidden tunables.** Every value that shapes a result is a named, documented parameter in the field's own terms (attack,
    release, rate, depth, phase, slew). Exempt: mathematical and standard constants, each cited in a comment.
 6. **Determinism:** same inputs and `seed` give the same signal on the same machine and library versions; across platforms equal
    within float tolerance. `numpy.random.default_rng(seed)`; no global random state. Reading a signal at a time never depends
    on what was read before.
-7. **Layering and the contract are tests**, run over every source and shaper automatically.
+7. **Layering and the contract are tests**, run over every source, shaper and operation automatically.
 8. **Errors:** callers catch `BullterrierControlError` (`bullterrier_control.errors`). Library code raises a subclass, never a bare
    `ValueError`, for anything a caller or an input file can get wrong; each also inherits the matching builtin. A bug in the
    calling code (a wrong registration, a wrong argument to `Rendered`, a wrong call shape) is a plain `ValueError`/`TypeError`.
@@ -161,7 +161,7 @@ when called again, with events reversed or as dicts; valid, time-ordered events 
 
 ## Parameters
 
-A pydantic model per source or shaper, a subclass of `Params` (as `EffectParams` is in bullterrier-image: frozen, `extra="forbid"`,
+A pydantic model per source, shaper or operation, a subclass of `Params` (as `EffectParams` is in bullterrier-image: frozen, `extra="forbid"`,
 strict whatever the annotation), each field `param(default, doc=...)`. Every field has a default and a description (what it does,
 unit and range in words, what raising it does). A field is a number, a `bool`, a `str` or a `Literal` choice of strings, nothing
 else; the declaration is checked when the class is made.

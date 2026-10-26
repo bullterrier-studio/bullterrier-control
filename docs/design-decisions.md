@@ -276,6 +276,8 @@ separate ramp. Changed:
   on one time keep their order.
 - **A time too far from the beats to snap is a `ParameterError` naming `events`.** *Reason:* the Grid reports it as a
   `FormatError` about no input in particular; for an operation it is a value of its `events` input.
+- **`normalise` with equal percentiles maps a spike to 0.** A stretch of equal values holding both percentiles gives zeros,
+  an outlier included (documented in its docstring). *Reason:* with no span there is no scale to put the outlier on.
 - **`thin` and `every` count in the order of the sorted input.** `thin` keeps the first of events at one time (a gap above
   0), `every` counts them one by one. *Reason:* the `events` input sorts stably, so the result never depends on the order
   given.

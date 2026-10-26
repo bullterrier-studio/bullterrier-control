@@ -37,7 +37,7 @@ synthesizers modulation.
   <tr>
     <td width="33%" valign="top"><b>Parameters declared once</b><br>Every parameter has a unit, a range and a description. <code>help(btc.lib.slew)</code> lists them, and a bad value fails with the field and the value.</td>
     <td width="33%" valign="top"><b>Plain data in and out</b><br>Measurements and curves travel as one JSON file, a bundle, with a JSON Schema for tools in other languages. <code>bt-control validate</code> checks one.</td>
-    <td width="33%" valign="top"><b>Small and extensible</b><br>Two dependencies, numpy and pydantic. Offline. A package of your own sources and shapers plugs in as an entry point.</td>
+    <td width="33%" valign="top"><b>Small and extensible</b><br>Two dependencies, numpy and pydantic. Offline. A package of your own sources, shapers and operations plugs in as an entry point.</td>
   </tr>
 </table>
 

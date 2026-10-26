@@ -1,4 +1,5 @@
-"""How a source or shaper declares its parameters: a frozen model whose every field is described, ranged and defaulted.
+"""How a source, shaper or operation declares its parameters: a frozen model whose every field is described, ranged
+and defaulted.
 
     class WaveParams(Params):
         \"\"\"A repeating wave.\"\"\"
@@ -78,7 +79,7 @@ class FieldDoc(NamedTuple):
 
 
 class Params(ValidatedModel):
-    """The parameters of one source or shaper. Subclass it, with a docstring, and declare each field with `param`."""
+    """The parameters of a source, shaper or operation: subclass it with a docstring, declare fields with `param`."""
 
     # strict: a plain float or int is as strict as Finite and Whole; validate_default: defaults obey the same rules
     model_config = ConfigDict(strict=True, validate_default=True)

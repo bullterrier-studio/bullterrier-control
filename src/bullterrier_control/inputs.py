@@ -128,7 +128,7 @@ def _checked(holder: type[ValidatedModel], field: str, value: object) -> Any:
     try:
         return getattr(holder.parse({field: value}), field)
     except ParameterError as error:
-        # the model's own message starts with its private name; the registry names the source or shaper instead
+        # the model's own message starts with its private name; the registry names the thing that refused instead
         raise ParameterError("; ".join(f"{path}: {rule}" for path, rule in error.problems), error.problems) from None
 
 

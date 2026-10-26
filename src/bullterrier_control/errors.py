@@ -46,7 +46,7 @@ class FormatError(InvalidError):
 
 
 class ParameterError(InvalidError):
-    """The parameter values given to a source or shaper break the rules its `Params` model declares."""
+    """The parameter values given to a source, shaper or operation break the rules its `Params` model declares."""
 
 
 class SignalError(BullterrierControlError, ValueError):
@@ -54,7 +54,7 @@ class SignalError(BullterrierControlError, ValueError):
 
 
 class UnknownNameError(BullterrierControlError, KeyError):
-    """No source or shaper is registered under that name; the message lists the names that are."""
+    """No source, shaper or operation is registered under that name; the message lists the names that are."""
 
     def __str__(self) -> str:
         """The message as written (a `KeyError` would show it in quotes)."""
