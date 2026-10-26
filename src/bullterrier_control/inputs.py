@@ -112,7 +112,10 @@ INPUTS: Mapping[str, Input] = MappingProxyType(
             check=partial(_checked, _Points, "points"),
         ),
         "events": Input(
-            doc="Events: a list of {t, strength, duration, label, pitch}, as in a bundle, sorted by t.",
+            doc=(
+                "Events: a list of {t, strength, duration, label, pitch}, as in a bundle, in any order (checked into"
+                " time order)."
+            ),
             check=partial(_checked, _Events, "events"),
         ),
     }

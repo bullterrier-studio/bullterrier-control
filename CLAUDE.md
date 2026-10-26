@@ -229,8 +229,9 @@ architecture tests, with a reason.
 Follow the `testing-best-practices` skill. A test coupled to implementation or otherwise poor (weak sole assertion, tautology,
 golden file, sleep, mock of our own code) is worse than none: delete it. Reviewers treat such tests as blocking.
 
-- Behaviour through the public contract; **property tests, not golden files**. E.g. an envelope never leaves 0..1; a gate's output
-  is two-valued; a slew-limited signal never moves faster than its limit; reading at time t twice gives the same value.
+- Behaviour through the public contract; **property tests, not golden files**. E.g. an envelope under `max` never exceeds its
+  largest strength; a gate's output is two-valued; a slew-limited signal never moves faster than its limit; reading at time t
+  twice gives the same value.
 - Expected values come from an independent oracle (standard, hand computation, brute-force reference), never the code's formula.
 - Every checker/validator gets a known-good and a known-bad input. Seeds pin determinism. No sleeps, live network or wall-clock
   assertions.

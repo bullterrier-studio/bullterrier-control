@@ -75,7 +75,7 @@ test; `docs/ecosystem.md` so the repository stands on its own.
 
 ## C2b Envelopes and the latch
 
-- The `events` input (a list of `Event` or dicts, sorted by `t`); `Event` joins the `plugin` names.
+- The `events` input (a list of `Event` or dicts in any order, checked into time order); `Event` joins the `plugin` names.
 - `envelope`: on each event, attack, decay toward a sustain level and, for an event with a duration, release;
   exponential or linear; overlapping events take the larger (`max`) or add up (`sum`); a `label` picks events. Memory
   O(times + events).

@@ -162,7 +162,8 @@ separate ramp. Changed:
   event is within that of the uncut formula; under `sum` the errors of many events add up. A linear fall ends exactly,
   so it is not cut.
 - **The input check returns `events` sorted by `t`, stably** (equal times keep the order given). *Reason:* the result
-  does not depend on the order the caller gave (a float `sum` is not associative), and callers need not sort.
+  does not depend on the order the caller gave, apart from events at the same time, which keep the given order (a
+  float `sum` is not associative), and callers need not sort.
 - **The `path: rule` message join lives once in `inputs.py`**, in the helper both kinds use. *Reason:* one place
   decides how an input error reads (`events[1].strength: ...`), and the registry still names no kind.
 - **`latch` ignores strength and duration.** *Reason:* it answers "has the first matching event happened?"; a level
@@ -170,3 +171,5 @@ separate ramp. Changed:
 - **A moment with `attack` 0 and `decay` 0 is invisible: the value is 0 everywhere.** *Reason:* it rises and falls in
   zero time, and a read at one time cannot see a spike of no width. It is the formula's own limit, so there is no
   special case; the parameter docs say that 0 falls at once.
+- **The `label` field and its rule `params.label in ("", event.label)` are written in both `envelope` and `latch`.**
+  *Reason:* two short copies; they are extracted when a third consumer (the C3 event operations) needs them.
