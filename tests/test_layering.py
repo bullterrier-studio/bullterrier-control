@@ -2,6 +2,8 @@
 import only the layers below it:
 
     app        __main__ > cli
+    plugin     the author API: the names a package of sources and shapers uses
+    registry   the table of sources and shapers, and the queries over it
     rendered   a signal that needs history, rendered once
     signal | params   what a signal is and how it is read | how a source or shaper declares its parameters
     formats    bundle > series | event | grid > model | units (each format builds on the base and the units only)
@@ -26,7 +28,7 @@ PACKAGE = Path(bullterrier_control.__file__).parent
 ROOT = PACKAGE.parent.parent  # the repository: pyproject.toml holds the contracts
 LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-imports` from the repository root
 
-LAYERS = "Layers: app > rendered > signal | params > formats > errors"
+LAYERS = "Layers: app > plugin > registry > rendered > signal | params > formats > errors"
 FORMATS = "Formats: bundle > series | event | grid > model | units"
 CONTRACTS = [LAYERS, FORMATS]
 
@@ -74,6 +76,14 @@ FORBIDDEN = {
     "params to signal": ("params.py", "import bullterrier_control.signal", "bullterrier_control.params", LAYERS),
     "signal to rendered": ("signal.py", "import bullterrier_control.rendered", "bullterrier_control.signal", LAYERS),
     "params to rendered": ("params.py", "import bullterrier_control.rendered", "bullterrier_control.params", LAYERS),
+    "rendered to registry": (
+        "rendered.py",
+        "import bullterrier_control.registry",
+        "bullterrier_control.rendered",
+        LAYERS,
+    ),
+    "registry to plugin": ("registry.py", "import bullterrier_control.plugin", "bullterrier_control.registry", LAYERS),
+    "signal to registry": ("signal.py", "import bullterrier_control.registry", "bullterrier_control.signal", LAYERS),
     "errors to formats": ("errors.py", "import bullterrier_control.formats", "bullterrier_control.errors", LAYERS),
     "formats to cli": (
         "formats/series.py",
@@ -137,6 +147,10 @@ ALLOWED = {
     "cli to signal": ("cli.py", "import bullterrier_control.signal"),
     "cli to rendered": ("cli.py", "import bullterrier_control.rendered"),
     "rendered to signal": ("rendered.py", "import bullterrier_control.signal"),
+    "registry to rendered": ("registry.py", "import bullterrier_control.rendered"),
+    "registry to params": ("registry.py", "import bullterrier_control.params"),
+    "plugin to registry": ("plugin.py", "import bullterrier_control.registry"),
+    "cli to plugin": ("cli.py", "import bullterrier_control.plugin"),
     "rendered to errors": ("rendered.py", "import bullterrier_control.errors"),
     "signal to formats": ("signal.py", "import bullterrier_control.formats.series"),
     "series to model": ("formats/series.py", "import bullterrier_control.formats.model"),

@@ -8,7 +8,7 @@ message says what was wrong and what is valid. A subclass also inherits the buil
 Dependency direction: the bottom layer. It imports nothing from bullterrier_control, so every layer may raise them.
 """
 
-__all__ = ["BullterrierControlError", "FormatError", "SignalError"]
+__all__ = ["BullterrierControlError", "FormatError", "SignalError", "UnknownNameError"]
 
 
 class BullterrierControlError(Exception):
@@ -36,3 +36,11 @@ class FormatError(BullterrierControlError, ValueError):
 
 class SignalError(BullterrierControlError, ValueError):
     """A signal cannot be read as asked: a time that is not a finite number, or a read too large to render."""
+
+
+class UnknownNameError(BullterrierControlError, KeyError):
+    """No source or shaper is registered under that name; the message lists the names that are."""
+
+    def __str__(self) -> str:
+        """The message as written (a `KeyError` would show it in quotes)."""
+        return str(self.args[0])

@@ -48,3 +48,24 @@ def reports():
         assert re.search(pattern, str(error)), f"{field!r} is not reported as a path in: {error}"
 
     return check
+
+
+@pytest.fixture
+def throwaway_registry():
+    """Whatever a test registers is removed again afterwards, so tests cannot see each other's sources and shapers."""
+    from bullterrier_control import registry
+
+    before = set(registry.all_registered())
+    yield
+    for name in set(registry.all_registered()) - before:
+        registry.unregister(name)
+
+
+@pytest.fixture
+def empty_registry():
+    """The registry as if nothing had been registered or loaded; afterwards it loads the installed packages again."""
+    from bullterrier_control import registry
+
+    registry.reset()
+    yield
+    registry.reset()
