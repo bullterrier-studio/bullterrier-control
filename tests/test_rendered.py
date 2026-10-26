@@ -1,3 +1,4 @@
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -111,3 +112,37 @@ def test_a_recurrence_that_changes_the_length_is_a_programming_error_naming_both
 def test_a_rate_that_is_not_a_positive_finite_number_is_refused(rate):
     with pytest.raises(ValueError, match="rate"):
         Rendered(Constant(1.0), rate=rate, run=integrate)
+
+
+def test_a_read_far_beyond_the_first_render_is_still_exact():
+    signal = Rendered(Constant(1.0), rate=RATE, run=integrate)
+    assert signal.sample([2000.0, 2000.05]).tolist() == pytest.approx([2000.1, 2000.15])
+
+
+def test_reading_later_and_later_renders_a_few_times_not_once_per_read():
+    run = Counting()
+    signal = Rendered(Constant(1.0), rate=RATE, run=run)
+    for second in range(1, 301):
+        signal.sample(float(second))
+    assert len(run.calls) <= 12  # growth by doubling: about log2 of the final length, not 300
+
+
+def test_the_limit_is_exact_a_read_needing_the_limit_works_and_one_more_is_refused():
+    signal = Rendered(Constant(1.0), rate=1.0, run=lambda inputs: np.cumsum(inputs), limit=100)
+    assert signal.sample([99.0]).tolist() == [100.0]  # samples 0..99: 100 of them
+    with pytest.raises(SignalError, match="limit"):
+        signal.sample([100.0])
+
+
+def test_threads_reading_together_render_once_not_once_each():
+    run = Counting()
+    signal = Rendered(Constant(1.0), rate=RATE, run=run)
+    start = threading.Barrier(8)
+
+    def read(_):
+        start.wait()
+        return signal.sample([40_000.0]).tolist()
+
+    with ThreadPoolExecutor(8) as pool:
+        assert all(values == pytest.approx([40_000.1]) for values in pool.map(read, range(8)))
+    assert len(run.calls) == 1

@@ -127,3 +127,8 @@ def test_a_broken_declaration_fails_when_the_class_is_made_naming_the_field_or_r
 @pytest.mark.parametrize("unit", UNITS)
 def test_every_declared_unit_can_be_used(unit):
     declared(Finite, param(1.0, doc="Some number.", unit=unit, min=0, max=2))
+
+
+@pytest.mark.parametrize("default", [0.0, 2.0], ids=["the lowest value", "the highest value"])
+def test_a_default_may_sit_at_either_end_of_its_range(default):
+    declared(Finite, param(default, doc="Some number.", unit="ratio", min=0, max=2))

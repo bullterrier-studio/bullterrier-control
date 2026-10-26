@@ -68,6 +68,8 @@ def test_a_call_with_the_wrong_number_of_signals_is_a_type_error():
         same()
     with pytest.raises(TypeError, match="same"):
         same(Constant(1.0), Constant(2.0))
+    with pytest.raises(TypeError, match="same"):
+        same(1.0)  # type: ignore[arg-type]  # a number is not a signal here: only the arithmetic accepts numbers
 
 
 def test_a_value_that_breaks_a_rule_is_refused_naming_the_registered_thing_and_the_field(reports):
@@ -275,3 +277,18 @@ def test_a_package_that_fails_to_load_raises_naming_its_entry_point_and_the_next
     assert "not today" in str(refused.value)
     assert "recovered" in registry.sources()
     assert len(attempts) == 2
+
+
+def test_the_packages_are_loaded_in_the_order_of_their_names_whatever_order_they_are_installed_in(entry_points):
+    order = []
+    entry_points(FakeEntryPoint("b", lambda: order.append("b")), FakeEntryPoint("a", lambda: order.append("a")))
+    registry.sources()
+    assert order == ["a", "b"]
+
+
+def test_a_restored_registry_counts_the_packages_as_loaded(entry_points):
+    package = FakeEntryPoint("package", lambda: None)
+    entry_points(package)
+    registry.restore({})
+    registry.sources()
+    assert package.loads == 0

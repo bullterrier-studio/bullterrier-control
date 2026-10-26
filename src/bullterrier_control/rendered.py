@@ -53,7 +53,7 @@ class Rendered(Signal):
         if times.size == 0:
             return np.zeros(times.shape)
         position = times * self._rate
-        needed = math.ceil(float(position.max())) + 2  # the sample after the last one read, for interpolation
+        needed = math.ceil(float(position.max())) + 1  # samples 0 up to the one at or after the last time read
         if needed > self._limit:
             raise SignalError(
                 f"reading time {float(times.max())} s needs {needed} samples at {self._rate} Hz,"
