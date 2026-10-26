@@ -48,6 +48,8 @@ from .params import Params
 from .signal import Signal
 
 __all__ = [
+    "NAME_PATTERN",
+    "NODE_KEYS",
     "Registered",
     "all_registered",
     "get",
@@ -62,7 +64,9 @@ __all__ = [
 ]
 
 _GROUP = "bullterrier_control.sources"
-_NAME = re.compile(r"[a-z][a-z0-9_]*")
+# the name of a source, shaper or operation (and, in a patch, of a node): without anchors, for use inside others
+NAME_PATTERN = r"[a-z][a-z0-9_]*"
+_NAME = re.compile(NAME_PATTERN)
 _SIGNALS = {"source": 0, "shaper": 1, "operation": 0}  # how many signals each kind takes
 # the keys of a patch node besides the inputs' and the parameters' names (`bullterrier_control.patch`): a parameter
 # cannot be named like one, or the node `{use = "x", signal = "y", ...}` would be ambiguous

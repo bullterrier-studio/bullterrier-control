@@ -204,6 +204,8 @@ WRAPPED = {
     "several cycles past": ({"phase": 3.5}, {"phase": 0.5}),
     "a whole number of cycles below": ({"phase": -1}, {"phase": 0.0}),
     "a whole number given for a decimal": ({"phase": 2}, {"phase": 0.0}),
+    "a huge whole number of cycles": ({"phase": 10**400}, {"phase": 0.0}),
+    "a huge negative whole number, range centred on 0": ({"centred": -(10**400)}, {"centred": 0.0}),
     "a range centred on 0, past its end": ({"centred": 0.75}, {"centred": -0.25}),
     "a range centred on 0, before its start": ({"centred": -0.75}, {"centred": 0.25}),
 }

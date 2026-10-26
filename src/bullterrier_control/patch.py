@@ -28,26 +28,29 @@ Promises:
   `events.<name>` and `series.<name>` are entries of the bundle, `grid` is its grid, and any other name is a node
   written above. A reference must fit what the key takes: events for `events`, a series for `series`, the grid for
   `grid`, and for `signal` a signal or a series (a series is read linearly). `points` and `values` are written inline.
-- `Patch.parse` and `load_patch` check everything that needs no bundle at once, and report every problem together as
-  one `FormatError` that lists each as `<node>.<key>: rule`. Only the names a bundle must hold wait for `build`.
+- `Patch.parse` and `load_patch` check, all at once, everything the patch and the registry decide: names, keys, types,
+  ranges and references. Every problem is reported together as one `FormatError` that lists each as `<node>.<key>:
+  rule`. Two things wait for `build`: the names a bundle must hold, and a rule a thing applies when it is called (the
+  `lfo` with `per = "beat"` needs a `grid`), which is its own.
 - `Patch.build(bundle)` gives every node by name, in file order: a `Signal` for a source or shaper, the events or the
-  series for an operation. The same patch and bundle give the same values. A node's `returns` says which, without
-  building.
+  series for an operation (`only=` asks for some, building just those and what they use). The same patch and bundle
+  give the same values. A node's `returns` says which, without building.
 - Nothing here depends on a consumer: a patch held inside another file (a video project) is read with `Patch.parse`.
 """
 
 import re
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
 from .errors import FormatError, InvalidError, ParameterError, UnknownNameError
-from .formats import NAME_PATTERN, Bundle, Series, read_text
+from .formats import NAME_PATTERN as BUNDLE_NAME_PATTERN
+from .formats import Bundle, Series, read_text
 from .inputs import INPUTS
-from .registry import get
+from .registry import NAME_PATTERN, NODE_KEYS, get
 from .signal import from_series
 
 __all__ = ["Node", "Patch", "load_patch", "patch_schema"]
@@ -56,8 +59,7 @@ FORMAT = "bullterrier-control/patch"
 VERSION = 1
 # a node's name; `format` and `version` are the header, and `events`, `series` and `grid` start the paths into a bundle
 _RESERVED = ("format", "version", "events", "series", "grid")
-_NODE_NAME = r"^(?!(" + "|".join(_RESERVED) + r")$)[a-z][a-z0-9_]*$"
-_NODE_KEYS = ("use", "signal")
+_NODE_NAME = r"^(?!(" + "|".join(_RESERVED) + r")$)" + NAME_PATTERN + "$"
 # what a key may hold as a reference, and what each kind of result can serve
 _REFERENCED = ("events", "series", "grid")
 _ACCEPTS = {"signal": ("signal", "series"), "events": ("events",), "series": ("series",), "grid": ("grid",)}
@@ -96,7 +98,7 @@ def _reference(
     root, _, name = text.partition(".")
     given: str | None
     if root in ("events", "series"):
-        if not re.fullmatch(NAME_PATTERN, name):
+        if not re.fullmatch(BUNDLE_NAME_PATTERN, name):
             problems.append((path, f"{text!r} is not a path into a bundle: {root}.<name>, the name in lower case"))
             return None
         given, reference = root, _Reference(text, root, name)
@@ -152,7 +154,7 @@ def _node(
     parameters: dict[str, object] = {}
     for key, value in table.items():
         path = f"{name}.{key}"
-        if key in _NODE_KEYS:
+        if key in NODE_KEYS:
             continue
         if key in thing.inputs:
             if isinstance(value, str) and key in _REFERENCED:
@@ -207,7 +209,9 @@ class Patch:
         nodes: dict[str, Node] = {}
         earlier: dict[str, str | None] = {}
         for name, table in tables.items():
-            before = len(problems)
+            if not isinstance(name, str):
+                problems.append((str(name), "is not a node name: a key must be text"))
+                continue
             if not re.fullmatch(_NODE_NAME, name):
                 rule = "lower case letters, digits and _, starting with a letter, and not one of " + ", ".join(
                     _RESERVED
@@ -219,21 +223,26 @@ class Patch:
                 continue
             node = _node(name, table, earlier, set(tables) - set(earlier), problems)
             earlier[name] = node.returns if node is not None else None
-            if node is not None and len(problems) == before:
+            if node is not None:
                 nodes[name] = node
         if problems:
             listed = "; ".join(f"{path}: {rule}" for path, rule in problems)
             raise FormatError(f"Patch: {listed}", tuple(problems))
         return cls(MappingProxyType(nodes))
 
-    def build(self, bundle: Bundle | None = None) -> dict[str, Any]:
+    def build(self, bundle: Bundle | None = None, only: Iterable[str] | None = None) -> dict[str, Any]:
         """Every node by name, in file order, built against `bundle` (None when the patch names nothing in one).
 
-        A `Signal` for a source or shaper; for an operation its events or its series. A path into the bundle that it
-        does not hold, or any path without a bundle, is a `FormatError` at `<node>.<key>`; an error a source, shaper
-        or operation raises keeps its kind and starts with the node."""
+        A `Signal` for a source or shaper; for an operation its events or its series. With `only`, just those nodes
+        come back, and only they and what they use are built, so the rest of the patch needs nothing of the bundle; a
+        name the patch lacks is an `UnknownNameError`. A path into the bundle that it does not hold, or any path without
+        a bundle, is a `FormatError` at `<node>.<key>`; an error a source, shaper or operation raises keeps its kind
+        and starts with the node."""
+        wanted = self._needed(only) if only is not None else set(self.nodes)
         made: dict[str, Any] = {}
         for name, node in self.nodes.items():
+            if name not in wanted:
+                continue
             signals = () if node.signal is None else (_resolve(name, "signal", node.signal, "signal", made, bundle),)
             inputs = {
                 key: _resolve(name, key, value, key, made, bundle) if isinstance(value, _Reference) else value
@@ -244,7 +253,19 @@ class Patch:
             except InvalidError as error:
                 problems = tuple((f"{name}.{where}", rule) for where, rule in error.problems)
                 raise type(error)(f"{name}: {error}", problems) from None
-        return made
+        return made if only is None else {name: made[name] for name in made if name in set(only)}
+
+    def _needed(self, names: Iterable[str]) -> set[str]:
+        """The nodes `names` and everything they use. A node uses only nodes above it, so one pass upward finds all."""
+        needed = set(names)
+        for name in needed - self.nodes.keys():
+            raise UnknownNameError(f"unknown node {name!r}; the patch has: {', '.join(self.nodes) or 'none'}")
+        for name in reversed(list(self.nodes)):
+            if name in needed:
+                node = self.nodes[name]
+                uses = [node.signal, *node.inputs.values()]
+                needed |= {use.name for use in uses if isinstance(use, _Reference) and use.root == "node"}
+        return needed
 
 
 def _resolve(
@@ -277,6 +298,9 @@ def load_patch(path: Path) -> Patch:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as error:
         raise FormatError(f"{path}: not TOML ({error})") from None
+    # what the parser itself refuses: nesting deeper than Python can follow, an integer of thousands of digits
+    except (RecursionError, ValueError) as error:
+        raise FormatError(f"{path}: cannot be read as TOML ({error})") from None
     try:
         return Patch.parse(data)
     except FormatError as error:
@@ -301,7 +325,7 @@ def patch_schema() -> dict[str, object]:
                 "type": "object",
                 "required": ["use"],
                 "properties": {
-                    "use": {"type": "string", "pattern": r"^[a-z][a-z0-9_]*$"},
+                    "use": {"type": "string", "pattern": f"^{NAME_PATTERN}$"},
                     "signal": {"type": "string"},
                 },
                 "additionalProperties": value,

@@ -3,8 +3,6 @@
 The picture is read back as pixels. matplotlib's first line colour (#1f77b4) is the oracle for where a curve was drawn.
 """
 
-import sys
-
 import matplotlib.image
 import numpy as np
 import pytest
@@ -109,9 +107,7 @@ def test_a_different_signal_gives_a_different_picture(tmp_path):
     assert rising.read_bytes() != falling.read_bytes()
 
 
-def test_without_matplotlib_it_says_what_to_install(tmp_path, monkeypatch):
-    for name in [name for name in sys.modules if name == "matplotlib" or name.startswith("matplotlib.")]:
-        monkeypatch.setitem(sys.modules, name, None)  # an import of it fails, as if it were not installed
+def test_without_matplotlib_it_says_what_to_install(tmp_path, without_matplotlib):
     with pytest.raises(BackendUnavailableError, match=r"bullterrier-control\[plot\]"):
         plot({"ramp": ramp()}, start=0, stop=1, path=tmp_path / "ramp.png")
     assert not (tmp_path / "ramp.png").exists()

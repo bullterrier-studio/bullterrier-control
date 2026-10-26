@@ -1,7 +1,9 @@
 import csv
 import io
 import json
+import os
 import re
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -151,7 +153,8 @@ def test_list_json_describes_every_registered_thing_for_another_tool(capsys):
     assert listing["envelope"]["inputs"]["events"]["required"] is True
     assert listing["select"]["returns"] == "events"
     assert listing["lfo"]["parameters"]["properties"]["phase"]["cyclic"] is True
-    assert listing["slew"] == registry.get("slew").description()
+    assert listing["slew"]["kind"] == "shaper"
+    assert listing["slew"]["parameters"]["properties"]["rise"]["unit"] == "seconds"
 
 
 def test_list_json_with_names_describes_only_those(capsys):
@@ -369,7 +372,7 @@ def test_plot_writes_a_png_of_the_signal_nodes(tmp_path, capsys):
     out = tmp_path / "glow.png"
     assert main(["plot", str(GLOW), "--bundle", str(KICKS), "--to", "2", "--out", str(out)]) == 0
     assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
-    assert str(out) in capsys.readouterr().out
+    assert capsys.readouterr().out == ""  # the picture is the result; nothing is said about it
 
 
 def test_plot_of_a_node_that_cannot_be_drawn_is_an_error_and_writes_nothing(tmp_path, capsys):
@@ -398,12 +401,64 @@ def test_plot_with_a_range_or_output_that_makes_no_sense_is_a_usage_error(flags,
     assert not (tmp_path / "x.png").exists()
 
 
-def test_plot_without_matplotlib_is_an_error_saying_what_to_install(tmp_path, capsys, monkeypatch):
-    for name in [name for name in sys.modules if name == "matplotlib" or name.startswith("matplotlib.")]:
-        monkeypatch.setitem(sys.modules, name, None)
+def test_plot_without_matplotlib_is_an_error_saying_what_to_install(tmp_path, capsys, without_matplotlib):
     out = tmp_path / "glow.png"
     assert main(["plot", str(GLOW), "--bundle", str(KICKS), "--to", "2", "--out", str(out)]) == 1
     err = capsys.readouterr().err
     assert err.startswith("error: ")
     assert "bullterrier-control[plot]" in err
     assert "Traceback" not in err
+
+
+# ------------------------------------------------------------ only what is asked for, and what is said when nothing is
+
+
+MIXED = GLOW.read_text(encoding="utf-8") + '\n[wave]\nuse = "lfo"\n'
+
+
+def test_sample_of_a_node_that_needs_no_bundle_works_without_one_whatever_else_the_patch_holds(tmp_path, capsys):
+    patch = a_patch(tmp_path, MIXED)
+    assert main(["sample", str(patch), "wave", "--to", "0.25", "--rate", "4", "--csv"]) == 0
+    rows = rows_of(capsys.readouterr().out)
+    assert rows[0] == ["t", "wave"]
+    assert float(rows[-1][1]) == pytest.approx(1.0, abs=1e-9)  # a quarter of a cycle in: the top of the sine
+
+
+def test_plot_of_a_node_that_needs_no_bundle_works_without_one(tmp_path):
+    out = tmp_path / "wave.png"
+    assert main(["plot", str(a_patch(tmp_path, MIXED)), "wave", "--to", "2", "--out", str(out)]) == 0
+    assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+EVENTS_ONLY = 'format = "bullterrier-control/patch"\nversion = 1\n[strong]\nuse = "select"\nevents = [{ t = 1 }]\n'
+
+
+@pytest.mark.parametrize("command", [["sample", "--rate", "2"], ["plot", "--out", "x.png"]])
+def test_a_patch_with_no_signal_to_read_is_an_error_not_an_empty_result(command, tmp_path, capsys):
+    patch = a_patch(tmp_path, EVENTS_ONLY)
+    assert main([command[0], str(patch), "--to", "1", *command[1:]]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "no signal" in captured.err
+
+
+def test_a_range_that_is_not_a_number_is_a_usage_error_that_does_not_show_a_private_name(tmp_path, capsys):
+    with pytest.raises(SystemExit) as stop:
+        main(["sample", str(a_patch(tmp_path, LEVELS)), "--to", "1", "--rate", "abc"])
+    assert stop.value.code == 2
+    err = capsys.readouterr().err
+    assert "abc" in err
+    assert "_hertz" not in err
+
+
+def test_sample_writes_utf8_whatever_the_console_encoding_is(tmp_path):
+    patch = a_patch(tmp_path, LEVELS, "é ü.toml")
+    run = subprocess.run(
+        [sys.executable, "-m", "bullterrier_control", "sample", str(patch), "--to", "1", "--rate", "2"],
+        env={**os.environ, "PYTHONIOENCODING": "ascii"},
+        capture_output=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr.decode("utf-8", errors="replace")
+    bundle = Bundle.parse(json.loads(run.stdout.decode("utf-8")))
+    assert "é ü.toml" in (bundle.source or "")

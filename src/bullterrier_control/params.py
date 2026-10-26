@@ -13,9 +13,10 @@ Promises:
   unit or range; no field has a discouraged name (`DISCOURAGED`) or is named after a unit. A broken declaration
   raises `ValueError` naming the model and the field, so it never reaches a patch.
 - A number is *cyclic* (`cyclic=True`) when the value one cycle further is the same position (a phase): it is a decimal
-  in `cycles` whose range is exactly one cycle (`max == min + 1`), and any finite real is accepted and wrapped into the
-  range (1.25 on 0..1 is 0.25); a value inside the range, either end included, is kept as given. This is the meaning
-  `cyclic` has in bullterrier-image, so a consumer mapping a signal onto a parameter reads one description everywhere.
+  in `cycles` whose range is exactly one cycle (`max == min + 1`), and any finite number (a whole number or a decimal)
+  is wrapped into the range (1.25 on 0..1 is 0.25); a value inside the range, either end included, is kept as given.
+  The same idea as `cyclic` in bullterrier-image (there an angle in degrees, here a position in cycles), described the
+  same way, so a consumer reads one flag in every package.
 - Values are checked when a model is built (`parse`, or the constructor), strictly whatever the annotation: unknown
   fields, `true` or a string for a number, a float for a whole number, 1 for a switch and values out of range are
   refused with a `ParameterError` naming each field, the rule and the value. A validator a subclass adds that changes
@@ -139,8 +140,11 @@ class Params(ValidatedModel):
                 continue
             value, low, high = data[name], extra["min"], extra["max"]
             is_real = isinstance(value, int | float) and not isinstance(value, bool)
-            if is_real and math.isfinite(value) and not low <= value <= high:
-                wrapped[name] = low + (value - low) % 1
+            if is_real and (isinstance(value, int) or math.isfinite(value)) and not low <= value <= high:
+                # a whole number is a whole number of cycles from `low` however large, so its position needs no float
+                # conversion (which a number of 400 digits would overflow)
+                offset = (-low) % 1 if isinstance(value, int) else (value - low) % 1
+                wrapped[name] = low + offset
         return wrapped
 
 

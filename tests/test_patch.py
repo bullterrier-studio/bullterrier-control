@@ -16,7 +16,9 @@ from bullterrier_control import (
     ParameterError,
     Patch,
     Signal,
+    UnknownNameError,
     load_patch,
+    registry,
 )
 from bullterrier_control.params import Params
 from bullterrier_control.patch import patch_schema
@@ -152,6 +154,41 @@ def test_building_twice_gives_the_same_values():
     patch = Patch.parse(patch_of(glow={"use": "envelope", "events": KICKS, "decay": 0.25}))
     times = [0.4, 0.5, 0.9, 3.0]
     assert patch.build()["glow"].sample(times).tolist() == patch.build()["glow"].sample(times).tolist()
+
+
+# ---------------------------------------------------------------- building only some nodes
+
+
+NEEDS_A_BUNDLE_AND_NOT = patch_of(
+    strong={"use": "select", "events": "events.kick"},
+    glow={"use": "envelope", "events": "strong"},
+    wave={"use": "lfo"},
+)
+
+
+def test_building_some_nodes_builds_only_those_so_the_rest_need_no_bundle():
+    built = Patch.parse(NEEDS_A_BUNDLE_AND_NOT).build(only=["wave"])
+    assert list(built) == ["wave"]
+    assert built["wave"].sample(0.25) == pytest.approx(1.0, abs=1e-9)
+
+
+def test_building_a_node_builds_what_it_uses_but_gives_back_only_what_was_asked_for():
+    patch = Patch.parse(NEEDS_A_BUNDLE_AND_NOT)
+    built = patch.build(Bundle.parse(SECTION_BUNDLE), only=["glow"])
+    assert list(built) == ["glow"]
+    with pytest.raises(FormatError, match="bundle"):  # what it uses does need the bundle
+        patch.build(only=["glow"])
+
+
+def test_the_nodes_asked_for_come_back_in_file_order():
+    built = Patch.parse(NEEDS_A_BUNDLE_AND_NOT).build(Bundle.parse(SECTION_BUNDLE), only=["wave", "strong"])
+    assert list(built) == ["strong", "wave"]
+
+
+def test_asking_for_a_node_the_patch_lacks_names_it_and_what_the_patch_has():
+    with pytest.raises(UnknownNameError, match="nosuch") as refused:
+        Patch.parse(NEEDS_A_BUNDLE_AND_NOT).build(only=["nosuch"])
+    assert "wave" in str(refused.value)
 
 
 # ---------------------------------------------------------------- building: what the bundle must hold
@@ -306,14 +343,39 @@ def test_an_unknown_source_lists_what_is_available():
     assert "envelope" in str(refused.value)
 
 
-def test_a_node_that_follows_a_node_with_a_broken_use_adds_no_second_complaint():
+FOLLOWERS = {
+    "a shaper taking a signal": {"use": "slew", "signal": "a"},
+    "an envelope taking events": {"use": "envelope", "events": "a"},
+    "a normalise taking a series": {"use": "normalise", "series": "a"},
+}
+
+
+@pytest.mark.parametrize("follower", FOLLOWERS.values(), ids=FOLLOWERS.keys())
+def test_a_node_that_follows_a_node_with_a_broken_use_adds_no_second_complaint(follower):
+    # what the broken node would have given is unknown, so no reference to it can be judged
     with pytest.raises(FormatError) as refused:
-        Patch.parse(patch_of(a={"use": "nosuch"}, b={"use": "slew", "signal": "a"}))
+        Patch.parse(patch_of(a={"use": "nosuch"}, b=follower))
     assert [path for path, _ in refused.value.problems] == ["a.use"]
+
+
+@pytest.mark.parametrize("key", [1, None, (1, 2)], ids=["an int", "none", "a tuple"])
+def test_a_key_that_is_not_text_is_a_format_error_naming_it_not_a_type_error(key):
+    # a patch held in another file (a YAML project, say) can have keys of any type
+    with pytest.raises(FormatError) as refused:
+        Patch.parse({**HEADER, key: LEVEL})
+    assert str(key) in [path for path, _ in refused.value.problems]
 
 
 def test_a_patch_with_no_node_is_valid_and_builds_nothing():
     assert Patch.parse(HEADER).build() == {}
+
+
+def test_a_rule_that_ties_parameters_to_inputs_is_the_things_own_and_is_reported_when_it_is_built():
+    # `per = "beat"` needs a grid: the lfo says so when called, so a patch alone cannot be refused for it at read time
+    patch = Patch.parse(patch_of(a={"use": "lfo", "per": "beat"}))
+    with pytest.raises(ParameterError, match="grid") as refused:
+        patch.build()
+    assert str(refused.value).startswith("a: ")
 
 
 def test_the_keys_of_a_patch_are_signals_only_never_a_target():
@@ -379,6 +441,21 @@ def test_a_file_that_is_not_utf8_is_refused_naming_the_file(tmp_path):
     assert str(refused.value).startswith(str(path))
 
 
+PARSER_LIMITS = {
+    "arrays nested deeper than the parser can follow": "x = " + "[" * 5000 + "]" * 5000 + "\n",
+    "a whole number of thousands of digits": '[a]\nuse = "constant"\nvalue = 1' + "0" * 5000 + "\n",
+}
+
+
+@pytest.mark.parametrize("text", PARSER_LIMITS.values(), ids=PARSER_LIMITS.keys())
+def test_a_file_the_toml_parser_cannot_follow_is_a_format_error_naming_the_file(text, tmp_path):
+    path = tmp_path / "deep.toml"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(FormatError) as refused:
+        load_patch(path)
+    assert str(refused.value).startswith(str(path))
+
+
 def test_a_file_that_is_missing_is_the_error_the_system_gave(tmp_path):
     with pytest.raises(FileNotFoundError):
         load_patch(tmp_path / "absent.toml")
@@ -422,3 +499,9 @@ def test_the_schema_agrees_with_the_reader_on_every_structural_row_of_the_bad_ta
     validator = jsonschema.Draft202012Validator(schema)
     for name in structural:
         assert not validator.is_valid(json.loads(json.dumps(BAD[name][0]))), name
+
+
+@pytest.mark.parametrize("name", sorted(registry.all_registered()))
+def test_every_registered_name_is_a_valid_use_in_the_schema(name):
+    # the schema and the registry spell the rule for a name; a registered name the schema refused could not be used
+    jsonschema.validate(patch_of(a={"use": name}), patch_schema())

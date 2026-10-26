@@ -106,9 +106,10 @@ def load(path: Path) -> Bundle:
         raise FormatError(f"{path}: cannot be read as JSON ({error})") from None
 
 
-def dumps(bundle: Bundle) -> str:
-    """The JSON text of `bundle`, ending in a newline; absent optional fields are left out."""
-    return json.dumps(bundle.model_dump(mode="json", exclude_none=True), ensure_ascii=False) + "\n"
+def dumps(bundle: Bundle, *, ascii_only: bool = False) -> str:
+    """The JSON text of `bundle`, ending in a newline; absent optional fields are left out. Text is written as it is,
+    or with `ascii_only` as escapes, for an output whose encoding is not known to be UTF-8."""
+    return json.dumps(bundle.model_dump(mode="json", exclude_none=True), ensure_ascii=ascii_only) + "\n"
 
 
 def save(bundle: Bundle, path: Path) -> None:

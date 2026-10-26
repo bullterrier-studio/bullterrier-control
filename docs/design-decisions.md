@@ -317,9 +317,13 @@ separate ramp. Changed:
   one flat table reads best in TOML, and the registry refuses the clash once, as it does for input names.
 - **The header is `format = "bullterrier-control/patch"` and `version = 1`, like the bundle.** *Reason:* a reader tells the
   two files apart by `format`, and the versioning rules are the bundle's.
-- **Every problem of a patch is reported together, as `<node>.<key>: rule`; everything that needs no bundle is checked
-  when the patch is read.** *Reason:* a patch is written by hand and checked before a song exists; one error at a time
-  makes a long patch a long conversation. Only the names a bundle must hold wait for `build`.
+- **Every problem of a patch is reported together, as `<node>.<key>: rule`; what the patch and the registry decide is
+  checked when it is read.** *Reason:* a patch is written by hand and checked before a song exists; one error at a time
+  makes a long patch a long conversation. Two things wait for `build`: the names a bundle must hold, and a rule a thing
+  applies when it is called (`lfo` with `per = "beat"` needs a `grid`), which is the thing's own and cannot be asked of
+  it without data. So `validate` can say ok to a patch whose one node fails when built; its message names the node.
+  `build(only=...)` builds just the nodes asked for and what they use, so a patch with a node that needs a bundle
+  still samples the others without one.
 - **The patch schema is written by hand from the reader's own constants, not generated from a model.** *Reason:* the keys
   of a patch are the node names, which no model declares; the node-name rule and the header live once in `patch.py`. The
   schema is structural; what depends on the registry is `bt-control list --json`'s.
@@ -329,11 +333,12 @@ separate ramp. Changed:
   reader. The range is stated once (the duplicate `min` and `max` extras went), and `returns` is lower case everywhere
   (`signal`, `events`, `series`). No wrapper or version key, as in image. The unit names are stable: a consumer maps a
   signal onto its own units (pixels, degrees) from them.
-- **`cyclic` means what it does in image:** a number whose value one cycle further is the same position wraps. Here it is a
-  decimal in `cycles` whose range is exactly one cycle (`max == min + 1`); any finite real is accepted and wrapped into
-  the range, and a value inside it, either end included, is kept as given. `lfo.phase` is the first. The schema keeps the
+- **`cyclic` is image's idea, in cycles:** a number whose value one cycle further is the same position wraps (image's is an
+  angle in degrees; the flag is described the same way in both). Here it is a
+  decimal in `cycles` whose range is exactly one cycle (`max == min + 1`); any finite number (a whole number or a
+  decimal) is wrapped into the range, and a value inside it, either end included, is kept as given. `lfo.phase` is the first. The schema keeps the
   one-cycle `minimum` and `maximum`, so a generic validator refuses a value the model wraps: a consumer wraps first.
-  *Reason:* a rotating phase needs no wrap of its own, and the same flag has one meaning in every package.
+  *Reason:* a rotating phase needs no wrap of its own, and one flag, described the same way, serves every package.
 - **`sample` includes the last time when it falls on a sample time to within a nanosecond** (`rounding.TOLERANCE`), and
   refuses more than ten million samples. *Reason:* `0.29 * 100` is `28.999999999999996`, and a range written in decimals
   must not lose its last sample to it; a typo (`--rate 1e9`) must not fill the memory first. Its JSON output is a bundle

@@ -51,13 +51,14 @@ video knows the others.
 | Modulation sources: keyframes with easing, automation, LFOs, envelopes, step sequencers, seeded noise | Knowing what a signal drives (an effect parameter, a light) → the consumer |
 | Shaping: slew, attack and release smoothing, gates, sample and hold, quantizing to a beat grid, range mapping, combining signals | Routing a signal to a parameter → video |
 | Reading any signal at any moment, in seconds | Frames: the consumer decides when to read → video |
-| The same result for the same inputs and seed | Drawing or rendering anything → image, vector, video |
+| The same result for the same inputs and seed | Drawing or rendering pictures, shapes or video → image, vector, video (a chart of a signal, `bt-control plot`, is the one picture it makes) |
 
 **Measures vs shapes:** audio *measures* ("a kick at 1.20 s"); control *shapes* ("on each kick, jump to 1 and release over 0.3 s").
 Test for where a number belongs: would it change if the look changed? If yes, it is control's (smoothing times, ranges, gates).
 
 **No sound, no pixels, no frames:** time is in seconds everywhere. No fps, frame number, sample rate of audio, or file format of a
-picture or sound in code, parameters or docs. A reader asks for a value at a time; the consumer chooses the times. Musical time is
+picture or sound in a signal, a parameter or a format (the chart `bt-control plot` draws is for reading values and is the one
+exception). A reader asks for a value at a time; the consumer chooses the times. Musical time is
 a parameter unit, not a second clock: a value in `beats` is turned into seconds through a Grid.
 
 **Formats this package owns** (plain data, documented and versioned here; changing one is a breaking release): **Series** (values at

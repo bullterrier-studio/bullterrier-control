@@ -1,9 +1,9 @@
 """Command line: `bt-control validate`, `schema`, `list`, `sample` and `plot`.
 
-A thin layer over the library; no logic of its own. `validate` loads each file as a Bundle (or, if it ends in `.toml`,
-a Patch) and reports it; `schema` prints the JSON Schema of a Bundle or a Patch; `list` shows the registered sources,
-shapers and operations, as text or as JSON; `sample` reads the signals of a patch at evenly spaced times and `plot`
-draws them.
+A thin layer over the library; the one rule of its own is which times `sample` reads. `validate` loads each file as a
+Bundle (or, if it ends in `.toml`, a Patch) and reports it; `schema` prints the JSON Schema of a Bundle or a Patch;
+`list` shows the registered sources, shapers and operations, as text or as JSON; `sample` reads the signals of a patch
+at evenly spaced times and `plot` draws them.
 """
 
 import argparse
@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from . import __version__
-from .errors import BullterrierControlError, InvalidError, UnknownNameError
+from .errors import BullterrierControlError, InvalidError
 from .formats import Bundle, Series, Unit, bundle_schema, dumps, load
 from .patch import load_patch, patch_schema
 from .plotting import plot
@@ -38,7 +38,7 @@ Errors go to stderr, results to stdout.
 """
 
 
-def _seconds(text: str) -> float:
+def seconds(text: str) -> float:
     """An argparse type: a finite number of seconds from 0 up."""
     value = float(text)
     if not math.isfinite(value) or value < 0:
@@ -46,7 +46,7 @@ def _seconds(text: str) -> float:
     return value
 
 
-def _hertz(text: str) -> float:
+def hertz(text: str) -> float:
     """An argparse type: a finite number of samples a second, above 0."""
     value = float(text)
     if not math.isfinite(value) or value <= 0:
@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     listing.add_argument("names", nargs="*", metavar="NAME", help="show only these, with every parameter")
     listing.add_argument("--json", action="store_true", help="describe them as JSON, for another tool")
     sampling = _patch_command(command("sample", _sample, "read the signals of a patch at evenly spaced times"))
-    sampling.add_argument("--rate", type=_hertz, required=True, metavar="HZ", help="samples a second")
+    sampling.add_argument("--rate", type=hertz, required=True, metavar="HZ", help="samples a second")
     sampling.add_argument("--csv", action="store_true", help="write CSV (t, then a column per node), not a bundle")
     drawing = _patch_command(command("plot", _plot, "draw the signals of a patch as a PNG"))
     drawing.add_argument("--out", type=Path, required=True, metavar="FILE", help="the picture to write (PNG)")
@@ -107,8 +107,8 @@ def _patch_command(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser.add_argument("patch", type=Path, metavar="PATCH", help="a patch file (TOML)")
     parser.add_argument("nodes", nargs="*", metavar="NODE", help="the nodes to read (default: every signal)")
     parser.add_argument("--bundle", type=Path, metavar="FILE", help="the bundle its events, series and grid are in")
-    parser.add_argument("--from", dest="start", type=_seconds, default=0.0, metavar="S", help="first time (default 0)")
-    parser.add_argument("--to", dest="stop", type=_seconds, required=True, metavar="S", help="last time, in seconds")
+    parser.add_argument("--from", dest="start", type=seconds, default=0.0, metavar="S", help="first time (default 0)")
+    parser.add_argument("--to", dest="stop", type=seconds, required=True, metavar="S", help="last time, in seconds")
     return parser
 
 
@@ -148,15 +148,16 @@ def _list(args: argparse.Namespace) -> int:
 
 
 def _signals(args: argparse.Namespace) -> dict[str, Signal]:
-    """The signal nodes of the patch named by `args` (the ones asked for, else all), built against its bundle."""
+    """The signal nodes of the patch named by `args` (the ones asked for, else all), built against its bundle; only
+    they and what they use are built, so the rest of the patch needs nothing of the bundle."""
     patch = load_patch(args.patch)
-    built = patch.build(load(args.bundle) if args.bundle else None)
     names = args.nodes or [name for name, node in patch.nodes.items() if node.returns == "signal"]
+    if not names:
+        raise InvalidError("the patch has no signal node to read: its nodes give events or series")
     for name in names:
-        if name not in patch.nodes:
-            raise UnknownNameError(f"unknown node {name!r}; the patch has: {', '.join(patch.nodes) or 'none'}")
-        if patch.nodes[name].returns != "signal":
+        if name in patch.nodes and patch.nodes[name].returns != "signal":
             raise InvalidError(f"{name}: gives {patch.nodes[name].returns}, not a signal")
+    built = patch.build(load(args.bundle) if args.bundle else None, only=names)  # a name it lacks: UnknownNameError
     return {name: built[name] for name in names}
 
 
@@ -187,7 +188,8 @@ def _sample(args: argparse.Namespace) -> int:
         for name, column in values.items()
     }
     source = f"bt-control {__version__} sample {args.patch.name}"
-    sys.stdout.write(dumps(Bundle(format="bullterrier-control/bundle", version=1, source=source, series=series)))
+    bundle = Bundle(format="bullterrier-control/bundle", version=1, source=source, series=series)
+    sys.stdout.write(dumps(bundle, ascii_only=True))  # escapes, so any console encoding can carry it
     return 0
 
 
@@ -195,5 +197,4 @@ def _plot(args: argparse.Namespace) -> int:
     if not args.stop > args.start:
         args.usage_error(f"--to ({args.stop}) must be after --from ({args.start})")
     plot(_signals(args), start=args.start, stop=args.stop, path=args.out, title=args.patch.name)
-    print(args.out)
     return 0

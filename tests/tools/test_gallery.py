@@ -45,7 +45,7 @@ def test_each_patch_builds_on_its_own_and_its_node_uses_the_thing_it_is_named_fo
     assert patch.nodes[name].use == name
     assert patch.nodes[name].returns == "signal"
     built = patch.build()  # no bundle: a gallery patch holds its own data
-    times = np.linspace(0, gallery.SECONDS, 401)
+    times = np.linspace(0, 4, 401)  # the seconds each picture draws
     for node, signal in built.items():
         assert np.isfinite(signal.sample(times)).all(), node
 
@@ -53,7 +53,7 @@ def test_each_patch_builds_on_its_own_and_its_node_uses_the_thing_it_is_named_fo
 @pytest.mark.parametrize("name", [name for name in NAMES if name != "constant"])
 def test_each_picture_shows_something_moving_not_a_flat_line(name):
     signal = load_patch(PATCHES / f"{name}.toml").build()[name]
-    values = signal.sample(np.linspace(0, gallery.SECONDS, 401))
+    values = signal.sample(np.linspace(0, 4, 401))
     assert values.max() - values.min() > 0.1
 
 

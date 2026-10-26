@@ -212,3 +212,12 @@ def test_the_phase_wraps_so_a_rotating_phase_needs_none_of_its_own():
 def test_the_phase_is_described_as_cyclic_for_a_consumer_mapping_onto_it():
     phase = lib.lfo.params_model.model_json_schema()["properties"]["phase"]
     assert (phase["unit"], phase["minimum"], phase["maximum"], phase["cyclic"]) == ("cycles", 0, 1, True)
+
+
+@pytest.mark.parametrize("shape", ["sine", "triangle", "square", "saw", "saw-down"])
+def test_a_phase_at_the_top_of_its_range_is_the_phase_at_the_bottom_exactly(shape):
+    # a decimal time such as 3.1 sits a hair either side of a cycle edge, and adding a whole cycle first would move it
+    times = np.linspace(0, 10, 1001)
+    bottom = lib.lfo(shape=shape, rate=1, duty=0.1, phase=0.0)
+    top = lib.lfo(shape=shape, rate=1, duty=0.1, phase=1.0)
+    assert top.sample(times).tolist() == bottom.sample(times).tolist()

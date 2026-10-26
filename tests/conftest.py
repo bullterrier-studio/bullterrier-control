@@ -68,3 +68,11 @@ def empty_registry():
 
     with registry.isolated():
         yield
+
+
+@pytest.fixture
+def without_matplotlib(monkeypatch):
+    """Importing matplotlib fails, as if it were not installed, whether or not an earlier test imported it."""
+    loaded = [name for name in sys.modules if name.startswith("matplotlib.")]
+    for name in {"matplotlib", "matplotlib.figure", *loaded}:
+        monkeypatch.setitem(sys.modules, name, None)
