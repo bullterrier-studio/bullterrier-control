@@ -39,3 +39,8 @@ def test_a_negative_lag_is_refused_because_a_signal_can_only_lag(reports):
     with pytest.raises(ParameterError, match="lag") as error:
         lib.delay(RAMP, lag=-0.1)
     reports(error.value, "lag")
+
+
+def test_by_default_it_lags_by_a_tenth_of_a_second():
+    # the ramp is 0.5 at 0.5 s, and 0.6 - 0.1 = 0.5
+    assert lib.delay(RAMP).sample([0.05, 0.1, 0.6, 1.1]).tolist() == pytest.approx([0.0, 0.0, 0.5, 1.0], abs=1e-12)

@@ -90,3 +90,18 @@ def test_the_output_never_leaves_the_range_of_the_input_read_so_far(values, atta
     # to within float rounding, which can put a mix of two numbers one step beyond them
     assert (out <= np.maximum.accumulate(target) + 1e-12).all()
     assert (out >= np.minimum.accumulate(target) - 1e-12).all()
+
+
+@pytest.mark.parametrize("n", [0, 9, 49])
+def test_by_default_a_rise_closes_the_gap_with_a_time_constant_of_10_ms_at_1000_samples_a_second(n):
+    # attack 0.01 s at 1000 Hz: the gap shrinks by e^(-1 / 10) per sample, so by e^(-(n + 1) / 10) after n + 1 of them
+    assert lib.follow(PULSE).sample([1.0 + n / 1000.0]).tolist() == pytest.approx(
+        [1 - np.exp(-(n + 1) / 10)], abs=1e-12
+    )
+
+
+@pytest.mark.parametrize("n", [0, 249, 999])
+def test_by_default_a_fall_closes_the_gap_with_a_time_constant_of_250_ms_at_1000_samples_a_second(n):
+    # release 0.25 s at 1000 Hz: the gap shrinks by e^(-1 / 250) per sample
+    falling = held((1.0,) * 10 + (0.0,) * 100)
+    assert lib.follow(falling).sample([1.0 + n / 1000.0]).tolist() == pytest.approx([np.exp(-(n + 1) / 250)], abs=1e-12)

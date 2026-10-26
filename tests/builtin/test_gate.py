@@ -93,3 +93,8 @@ def test_close_above_open_is_refused_naming_close(open_, close, reports):
     with pytest.raises(ParameterError, match="close") as error:
         lib.gate(held((0.0,)), open=open_, close=close)
     reports(error.value, "close")
+
+
+def test_by_default_it_changes_on_the_samples_of_1000_hz():
+    level = held((0.0,) + (1.0,) * 100, rate=1000.0)  # up at 0.001 s: a sample at 1000 Hz, between those of 500 Hz
+    assert lib.gate(level).sample([0.0, 0.0009, 0.001]).tolist() == [0.0, 0.0, 1.0]
