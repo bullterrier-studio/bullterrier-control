@@ -1,8 +1,11 @@
-"""What every registered source and shaper promises, checked over all of them, the installed ones included.
+"""What every registered source, shaper and operation promises, checked over all of them, the installed ones included.
 
-An architecture test of the extension point: its subject is every thing the registry lists, so a new source or shaper is
-covered the moment it is registered and no test names it.
+An architecture test of the extension point: its subject is every thing the registry lists, so a new one is covered the
+moment it is registered and no test names it. The signal tests run over sources and shapers (an operation makes data,
+not a signal); the parameter and input tests run over every kind.
 """
+
+from typing import Any
 
 import numpy as np
 import pytest
@@ -11,7 +14,9 @@ from bullterrier_control import Event, Grid, Keyframe, ParameterError, Series, S
 from bullterrier_control.signal import from_series
 
 ALL = sorted(registry.all_registered())
+SIGNALS = sorted([*registry.sources(), *registry.shapers()])
 SHAPERS = sorted(registry.shapers())
+OPERATIONS = sorted(registry.operations())
 # a signal with every kind of movement: a rise, a plateau, a fall, a jump, a drop below zero
 HISTORY = (0.0, 0.2, 1.0, 1.0, 0.4, 2.0, -1.0, 0.5, 0.5, 3.0)
 CHANGE_AT = 3.0  # seconds: from here on the input differs between the two inputs the causality test compares
@@ -41,12 +46,14 @@ SAMPLE_INPUTS: dict[str, object] = {
     # a steady 120 BPM: a beat every half second, 40 of them (20 s)
     "grid": Grid(beats=tuple(index * 0.5 for index in range(40)), meter=4, first_downbeat=0),
     "values": (0.2, -0.5, 1.0, 0.7),
+    "series": Series(rate=10, values=(0.2, 1.0, 0.0, 0.6, 0.6), unit=Unit.RATIO),
 }
 SMALLEST_INPUTS: dict[str, object] = {
     "points": (Keyframe(t=0, value=0.5),),
     "events": (),
     "grid": Grid(beats=(0.0, 0.5), meter=1, first_downbeat=0),
     "values": (0.5,),
+    "series": Series(rate=1, values=(0.5,), unit=Unit.RATIO),
 }
 
 
@@ -57,10 +64,10 @@ def make(
     leave_out: str | None = None,
     required_only: bool = False,
     tail: float = 0.0,
-) -> Signal:
+) -> Any:
     """The thing `name` made from every input it declares (only the required ones if `required_only`), taken from the
     table `inputs` (a kind without a row is a KeyError: the tables are complete), except `leave_out`, and parameter
-    `values`; a shaper's signal is `input_signal(tail)`."""
+    `values`; a shaper's signal is `input_signal(tail)`. A signal for a source or shaper, the data for an operation."""
     thing = registry.get(name)
     given = {
         kind: inputs[kind]
@@ -70,16 +77,17 @@ def make(
     return thing(input_signal(tail), **given, **values) if thing.kind == "shaper" else thing(**given, **values)
 
 
-def build(name: str, **values) -> Signal:
+def build(name: str, **values) -> Any:
     return make(name, SAMPLE_INPUTS, values)
 
 
 TIMES = np.linspace(0, 10, 101)
 
 
-def test_the_installed_package_provides_its_sources_and_shapers():
+def test_the_installed_package_provides_its_sources_shapers_and_operations():
     assert {"constant"} <= set(registry.sources())
     assert {"clip", "slew"} <= set(registry.shapers())
+    assert {"select"} <= set(registry.operations())
 
 
 @pytest.mark.parametrize("name", ALL)
@@ -89,7 +97,7 @@ def test_every_one_documents_itself(name):
     assert thing.params_model.__doc__
 
 
-@pytest.mark.parametrize("name", ALL)
+@pytest.mark.parametrize("name", SIGNALS)
 @pytest.mark.parametrize(
     "given", [3.0, [], [0.0, 1.0, 2.5], [[0.0, 1.0], [2.0, 3.0]]], ids=["scalar", "empty", "list", "matrix"]
 )
@@ -99,7 +107,7 @@ def test_every_one_makes_a_signal_that_keeps_the_shape_of_the_times_and_is_finit
     assert np.isfinite(values).all()
 
 
-@pytest.mark.parametrize("name", ALL)
+@pytest.mark.parametrize("name", SIGNALS)
 def test_every_one_gives_finite_values_from_the_smallest_inputs_it_accepts(name):
     # the least a call can give: optional inputs left out
     assert np.isfinite(make(name, SMALLEST_INPUTS, {}, required_only=True).sample(TIMES)).all()
@@ -124,13 +132,13 @@ def test_every_required_input_left_out_is_a_type_error_naming_it(name, kind):
         make(name, SAMPLE_INPUTS, {}, leave_out=kind)
 
 
-@pytest.mark.parametrize("name", ALL)
+@pytest.mark.parametrize("name", SIGNALS)
 def test_every_one_gives_the_same_values_when_read_again_and_when_built_again(name):
     first, second = build(name), build(name)
     assert first.sample(TIMES).tolist() == first.sample(TIMES).tolist() == second.sample(TIMES).tolist()
 
 
-@pytest.mark.parametrize("name", ALL)
+@pytest.mark.parametrize("name", SIGNALS)
 def test_every_one_gives_the_same_values_whatever_the_order_and_size_of_the_reads(name):
     expected = build(name).sample(TIMES)
     one_by_one = build(name)
@@ -156,7 +164,7 @@ def test_every_shaper_is_causal_what_comes_later_in_its_input_never_changes_an_e
     assert changed.sample(later).tolist() != unchanged.sample(later).tolist()
 
 
-@pytest.mark.parametrize("name", ALL)
+@pytest.mark.parametrize("name", SIGNALS)
 @pytest.mark.parametrize("time", [1e12, 1e19, 1.7e306, 1.797e308, -1e300], ids=str)
 def test_every_one_gives_a_finite_value_or_a_signal_error_at_any_time_never_a_warning_or_a_crash(name, time):
     try:
@@ -177,12 +185,36 @@ def value_at(field, bound):
 LIMITS = [(name, field.name, side) for name in ALL for field in numeric_fields(name) for side in ("minimum", "maximum")]
 
 
-@pytest.mark.parametrize("name", ALL)
-@pytest.mark.parametrize("side", ["minimum", "maximum"])
-def test_every_one_works_with_all_its_numbers_at_the_same_end_of_their_ranges(name, side):
+def limits_at(name, side):
     # all at one end, not one at a time: a rule across fields (a clip's low may not pass its high) refuses some mixes
-    limits = {field.name: value_at(field, getattr(field, side)) for field in numeric_fields(name)}
-    assert np.isfinite(build(name, **limits).sample(TIMES)).all()
+    return {field.name: value_at(field, getattr(field, side)) for field in numeric_fields(name)}
+
+
+@pytest.mark.parametrize("name", SIGNALS)
+@pytest.mark.parametrize("side", ["minimum", "maximum"])
+def test_every_signal_works_with_all_its_numbers_at_the_same_end_of_their_ranges(name, side):
+    assert np.isfinite(build(name, **limits_at(name, side)).sample(TIMES)).all()
+
+
+def events_are_valid(result):
+    assert type(result) is tuple
+    assert tuple(Event.parse(event.model_dump(mode="json")) for event in result) == result
+    assert [event.t for event in result] == sorted(event.t for event in result)
+
+
+def series_is_valid(result):
+    assert isinstance(result, Series)
+    assert Series.parse(result.model_dump(mode="json")) == result
+
+
+VALID = {"events": events_are_valid, "series": series_is_valid}
+
+
+@pytest.mark.parametrize("name", OPERATIONS)
+@pytest.mark.parametrize("case", ["defaults", "minimum", "maximum"])
+def test_every_operation_gives_the_valid_data_it_declares_with_its_defaults_and_with_all_numbers_at_one_end(name, case):
+    numbers = {} if case == "defaults" else limits_at(name, case)
+    VALID[registry.get(name).returns](build(name, **numbers))
 
 
 @pytest.mark.parametrize(("name", "field", "side"), LIMITS)

@@ -1,4 +1,4 @@
-"""`poe new-source` writes a source or shaper that passes the gate as written, in a copy of the project.
+"""`poe new-source` writes a source, shaper or operation that passes the gate as written, in a copy of the project.
 
 An architecture test of the tooling: it runs the developer command and then the tests and the linter, as a contributor
 would, on a copy of the project, so the real one is untouched.
@@ -32,8 +32,8 @@ def run(checkout: Path, *argv: str) -> subprocess.CompletedProcess:
     )
 
 
-@pytest.mark.parametrize("kind", ["source", "shaper"])
-def test_a_new_source_or_shaper_passes_its_tests_the_contract_and_the_linter_as_written(checkout, kind):
+@pytest.mark.parametrize("kind", ["source", "shaper", "operation"])
+def test_a_new_source_shaper_or_operation_passes_its_tests_the_contract_and_the_linter_as_written(checkout, kind):
     made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", kind)
     assert made.returncode == 0, made.stderr
     assert "src/bullterrier_control/builtin/fresh_one.py" in made.stdout

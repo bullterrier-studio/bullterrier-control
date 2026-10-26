@@ -1,8 +1,8 @@
 import pytest
 
-from bullterrier_control import Series, Unit, from_series, lib, registry
+from bullterrier_control import Event, Series, Unit, from_series, lib, registry
 from bullterrier_control.params import Params, param
-from bullterrier_control.plugin import Constant, Keyframe, Signal, shaper, source
+from bullterrier_control.plugin import Constant, Keyframe, Signal, operation, shaper, source
 from bullterrier_control.validated import Finite
 
 
@@ -85,3 +85,25 @@ def test_help_of_a_thing_without_parameters_has_no_parameters_heading(throwaway_
     assert "A signal that is always 0." in text
     assert "Parameters:" not in text
     assert "Parameters:" in lib.slew.__doc__  # type: ignore[operator]  # a thing with parameters still lists them
+
+
+def test_help_of_an_operation_shows_its_inputs_and_what_it_returns(throwaway_registry):
+    @operation(params=Level)
+    def keep_loud(params: Level, *, events: tuple[Event, ...]) -> tuple[Event, ...]:
+        """The events at least as strong as `value`."""
+        return events
+
+    @operation(params=Level)
+    def flatten(params: Level, *, series: Series) -> Series:
+        """The same series."""
+        return series
+
+    text, other = keep_loud.__doc__, flatten.__doc__
+    assert text is not None
+    assert other is not None
+    assert "operation keep_loud(*, events, **values) -> events" in text
+    assert "events (required)" in text
+    assert "The events at least as strong as `value`." in text
+    assert "operation flatten(*, series, **values) -> series" in other
+    assert "series (required)" in other
+    assert "Signal" not in text + other

@@ -110,7 +110,7 @@ build-check = { sequence = ["uv build --quiet --clear --no-create-gitignore --ou
 lint-workflows = { sequence = ["uv run actionlint", "zizmor --offline .github"], default_item_type = "cmd", help = "Lint the GitHub workflows (actionlint, zizmor)" }
 check = { sequence = ["ruff format --check .", "ruff check .", { ref = "lint-workflows" }, "vulture", "deptry .", { ref = "build-check" }, "mypy", { ref = "test" }], default_item_type = "cmd", help = "The full gate (format, lint, workflows, dead code, dependencies, distributions, types, tests); stops at the first failure" }
 # Developer commands that need a source checkout (tools/dev.py); extra arguments go to the script
-new-source = { cmd = "uv run python tools/dev.py new-source", help = "Write a new source or shaper and its test from the templates (NAME --kind source|shaper)" }
+new-source = { cmd = "uv run python tools/dev.py new-source", help = "Write a new source, shaper or operation and its test from the templates (NAME --kind source|shaper|operation)" }
 # Release from main in one command: checks, plan, [y/N], version bump, changelog section, commit, annotated tag and an
 # atomic push of main and the tag (CONTRIBUTING.md, "Releasing")
 release = { cmd = "uv run python tools/release.py", help = "Release VERSION from main (e.g. 0.1.0rc1 to TestPyPI, 0.1.0 to PyPI): check, plan, ask, bump, tag, push [--dry-run] [--yes]" }
@@ -237,6 +237,7 @@ ignore_decorators = [
     "@field_serializer",
     "@source",  # the registry finds a source or shaper through its decorator; patches call it by name
     "@shaper",
+    "@operation",
 ]
 ignore_names = [
     "model_config",  # pydantic reads each model's settings from this class attribute

@@ -19,6 +19,9 @@ Promises:
 - `grid`: a `Grid` or a mapping parsed into one; a bad grid is a `ParameterError` (not a `FormatError`) naming
   `grid.<field>`.
 - `values`: a non-empty list or tuple of finite numbers (no bool, no text). Checked, it is a `tuple[float, ...]`.
+- `series`: a `Series` or a mapping parsed into one; a bad one is a `ParameterError` (not a `FormatError`) naming
+  `series.<field>`.
+- `matching(events, label)`: the events a `label` parameter picks, shared by everything that has one.
 """
 
 from collections.abc import Callable, Mapping
@@ -31,10 +34,10 @@ from pydantic import AfterValidator, BeforeValidator, Field, field_validator, mo
 
 from .easing import EASES, curve
 from .errors import InvalidError, ParameterError
-from .formats import Event, Grid
+from .formats import Event, Grid, Series
 from .validated import Finite, Text, ValidatedModel
 
-__all__ = ["INPUTS", "Input", "Keyframe"]
+__all__ = ["INPUTS", "Input", "Keyframe", "matching"]
 
 
 def _known_ease(name: str) -> str:
@@ -108,6 +111,18 @@ class _Values(ValidatedModel):
         return self
 
 
+class _Series(ValidatedModel):
+    """The `series` input as a model, for the same reason as `_Grid`."""
+
+    error: ClassVar[type[InvalidError]] = ParameterError
+    series: Series
+
+
+def matching(events: tuple[Event, ...], label: str) -> tuple[Event, ...]:
+    """The events whose label is `label`, in their order; every event, unlabelled ones too, when `label` is empty."""
+    return tuple(event for event in events if label in ("", event.label))
+
+
 def _checked(holder: type[ValidatedModel], field: str, value: object) -> Any:
     """`value` as the holder model's `field`, or a `ParameterError` listing each broken rule as `path: rule`."""
     try:
@@ -151,6 +166,13 @@ INPUTS: Mapping[str, Input] = MappingProxyType(
         "values": Input(
             doc="Values: a non-empty list of numbers, in the order a source cycles through them.",
             check=partial(_checked, _Values, "values"),
+        ),
+        "series": Input(
+            doc=(
+                "A series: {start, rate, values, unit, scaling} as in a bundle (values at a fixed rate in samples per"
+                " second from a start time in seconds)."
+            ),
+            check=partial(_checked, _Series, "series"),
         ),
     }
 )

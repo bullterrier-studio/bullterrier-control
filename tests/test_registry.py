@@ -4,9 +4,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from bullterrier_control import BullterrierControlError, ParameterError, UnknownNameError, registry
+from bullterrier_control import BullterrierControlError, Event, ParameterError, Series, UnknownNameError, lib, registry
 from bullterrier_control.params import Params, param
-from bullterrier_control.plugin import Constant, Keyframe, Signal, shaper, source
+from bullterrier_control.plugin import Constant, Keyframe, Signal, operation, shaper, source
 from bullterrier_control.validated import Finite
 
 
@@ -235,6 +235,71 @@ def test_listings_are_sorted_and_split_by_kind():
     assert registry.get("keep") is keep
 
 
+def test_a_registered_operation_takes_its_inputs_and_values_and_returns_its_data(throwaway_registry):
+    @operation(params=Level)
+    def keep_loud(params: Level, *, events: tuple[Event, ...]) -> tuple[Event, ...]:
+        return tuple(event for event in events if event.strength >= params.value)
+
+    # the events arrive checked into time order (0.5, 1.0, 2.0); a value of 0.7 keeps only the last, the default 0.5 two
+    given = [{"t": 2.0, "strength": 0.9}, {"t": 1.0, "strength": 0.2}, {"t": 0.5, "strength": 0.6}]
+    assert [event.t for event in keep_loud(events=given, value=0.7)] == [2.0]
+    assert [event.t for event in keep_loud(events=given)] == [0.5, 2.0]
+    assert (keep_loud.name, keep_loud.kind, keep_loud.params_model) == ("keep_loud", "operation", Level)
+    assert keep_loud.inputs == {"events": True}
+
+
+def test_an_operation_may_return_a_series(throwaway_registry):
+    @operation(params=Nothing)
+    def halve(params: Nothing, *, series: Series) -> Series:
+        return Series(rate=series.rate, values=tuple(value / 2 for value in series.values), unit=series.unit)
+
+    halved = halve(series={"rate": 4, "values": [1.0, 0.5], "unit": "ratio"})
+    assert (halved.rate, halved.values) == (4.0, (0.5, 0.25))
+
+
+def test_an_operation_is_listed_apart_from_sources_and_shapers_and_found_through_get_and_lib():
+    @operation(params=Nothing)
+    def nothing_at_all(params: Nothing, *, events: tuple[Event, ...]) -> tuple[Event, ...]:
+        return events
+
+    @source(params=Nothing)
+    def zero(params: Nothing) -> Signal:
+        return Constant(0.0)
+
+    assert "nothing_at_all" in registry.operations()
+    assert "zero" not in registry.operations()
+    assert "nothing_at_all" not in registry.sources()
+    assert "nothing_at_all" not in registry.shapers()
+    assert "nothing_at_all" in registry.all_registered()
+    assert list(registry.operations()) == sorted(registry.operations())
+    assert registry.get("nothing_at_all") is nothing_at_all
+    assert lib.nothing_at_all is nothing_at_all
+    assert "nothing_at_all" in dir(lib)
+
+
+def test_calling_an_operation_with_a_signal_is_a_type_error():
+    @operation(params=Nothing)
+    def pass_on(params: Nothing, *, events: tuple[Event, ...]) -> tuple[Event, ...]:
+        return events
+
+    with pytest.raises(TypeError, match="pass_on"):
+        pass_on(Constant(1.0), events=[])
+
+
+def test_an_operation_cannot_share_a_name_with_a_source():
+    @source(params=Nothing)
+    def twin(params: Nothing) -> Signal:
+        return Constant(0.0)
+
+    def operation_called_twin(params: Nothing, *, events: tuple[Event, ...]) -> tuple[Event, ...]:
+        return events
+
+    operation_called_twin.__name__ = "twin"
+    with pytest.raises(ValueError, match="twin"):
+        operation(params=Nothing)(operation_called_twin)
+    assert registry.get("twin") is twin
+
+
 def test_an_unknown_name_lists_what_exists():
     @source(params=Nothing)
     def known(params: Nothing) -> Signal:
@@ -309,6 +374,43 @@ def positional_input(params: Nothing, points: object) -> Signal:
 
 def kwargs_named_like_an_input(params: Nothing, **points: object) -> Signal:
     return Constant(0.0)
+
+
+def returns_a_signal(params: Nothing, *, events: tuple[Event, ...]) -> Signal:
+    return Constant(0.0)
+
+
+def returns_nothing_declared(params: Nothing, *, events: tuple[Event, ...]):
+    return events
+
+
+def returns_a_list(params: Nothing, *, events: tuple[Event, ...]) -> list[Event]:
+    return list(events)
+
+
+def returns_other_things(params: Nothing, *, events: tuple[Event, ...]) -> tuple[float, ...]:
+    return ()
+
+
+def returns_a_series_or_none(params: Nothing, *, events: tuple[Event, ...]) -> Series | None:
+    return None
+
+
+BROKEN_OPERATIONS = {
+    "a signal": returns_a_signal,
+    "no declared result": returns_nothing_declared,
+    "a list of events": returns_a_list,
+    "a tuple of something else": returns_other_things,
+    "a series or nothing": returns_a_series_or_none,
+}
+
+
+@pytest.mark.parametrize("function", BROKEN_OPERATIONS.values(), ids=BROKEN_OPERATIONS.keys())
+def test_an_operation_that_does_not_declare_events_or_a_series_as_its_result_is_refused_naming_it(function):
+    before = dict(registry.all_registered())
+    with pytest.raises(ValueError, match=function.__name__):
+        operation(params=Nothing)(function)
+    assert dict(registry.all_registered()) == before
 
 
 BROKEN_INPUTS = {

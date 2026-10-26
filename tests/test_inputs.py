@@ -1,7 +1,7 @@
 import pytest
 
-from bullterrier_control import Event, Grid, ParameterError, registry
-from bullterrier_control.inputs import INPUTS
+from bullterrier_control import Event, Grid, ParameterError, Series, Unit, registry
+from bullterrier_control.inputs import INPUTS, matching
 from bullterrier_control.plugin import EASES, Constant, Keyframe, Params, Signal, source
 
 
@@ -306,3 +306,70 @@ def test_bad_values_are_refused_naming_each_path(given, named, reports):
     for path in named:
         reports(refused.value, path)
     assert [path for path, _ in refused.value.problems] == named
+
+
+def check_series(value):
+    return INPUTS["series"].check(value)
+
+
+def test_a_series_given_as_a_mapping_becomes_a_series():
+    checked = check_series({"start": 0.5, "rate": 4, "values": [0.0, 1.0], "unit": "ratio"})
+    assert checked == Series(start=0.5, rate=4.0, values=(0.0, 1.0), unit=Unit.RATIO)
+
+
+def test_a_series_may_be_given_as_a_series():
+    series = Series(rate=2.0, values=(0.25, 0.75), unit=Unit.FRACTION, scaling="by hand")
+    assert check_series(series) == series
+
+
+BAD_SERIES = {
+    "a number": (5, ["series"]),
+    "a string": ("0.1, 0.2", ["series"]),
+    "nothing": (None, ["series"]),
+    "a list of values, not a series": ([0.1, 0.2], ["series"]),
+    "rate missing": ({"values": [0.1], "unit": "ratio"}, ["series.rate"]),
+    "rate zero": ({"rate": 0, "values": [0.1], "unit": "ratio"}, ["series.rate"]),
+    "no values": ({"rate": 1, "values": [], "unit": "ratio"}, ["series.values"]),
+    "a bool value": ({"rate": 1, "values": [0.1, True], "unit": "ratio"}, ["series.values[1]"]),
+    "an unknown unit": ({"rate": 1, "values": [0.1], "unit": "pixels"}, ["series.unit"]),
+    "a fraction without scaling": ({"rate": 1, "values": [0.1], "unit": "fraction"}, ["series.scaling"]),
+    "a fraction above 1": ({"rate": 1, "values": [0.1, 1.5], "unit": "fraction", "scaling": "x"}, ["series.values[1]"]),
+    "a negative start": ({"start": -1, "rate": 1, "values": [0.1], "unit": "ratio"}, ["series.start"]),
+    "an unknown field": ({"rate": 1, "values": [0.1], "unit": "ratio", "gain": 2}, ["series.gain"]),
+}
+
+
+@pytest.mark.parametrize(("given", "named"), BAD_SERIES.values(), ids=BAD_SERIES.keys())
+def test_a_bad_series_is_refused_as_a_parameter_error_naming_each_path(given, named, reports):
+    with pytest.raises(ParameterError) as refused:
+        check_series(given)
+    for path in named:
+        reports(refused.value, path)
+    assert [path for path, _ in refused.value.problems] == named
+
+
+LABELLED = (
+    Event(t=0.5, label="kick"),
+    Event(t=0.7, label="snare"),
+    Event(t=0.9),
+    Event(t=1.1, label="kick", strength=0.4),
+)
+
+
+@pytest.mark.parametrize(
+    ("label", "times"),
+    [
+        pytest.param("", [0.5, 0.7, 0.9, 1.1], id="no label: every event, the unlabelled one too"),
+        pytest.param("kick", [0.5, 1.1], id="a label: only the events carrying it"),
+        pytest.param("snare", [0.7], id="another label"),
+        pytest.param("hat", [], id="a label nothing has: none"),
+    ],
+)
+def test_matching_keeps_the_events_with_the_label_in_their_order(label, times):
+    kept = matching(LABELLED, label)
+    assert type(kept) is tuple
+    assert [event.t for event in kept] == times
+
+
+def test_matching_keeps_every_other_field_of_the_events():
+    assert matching(LABELLED, "kick")[1] == Event(t=1.1, label="kick", strength=0.4)

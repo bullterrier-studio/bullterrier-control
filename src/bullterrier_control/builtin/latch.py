@@ -3,7 +3,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from ..plugin import Event, Finite, Params, Signal, Text, param, source
+from ..plugin import Event, Finite, Params, Signal, Text, matching, param, source
 
 
 class LatchParams(Params):
@@ -47,5 +47,5 @@ def latch(params: LatchParams, *, events: tuple[Event, ...]) -> Signal:
     no matching event (an empty `label` matches every event) the value is `before` always.
     """
     # no match switches at infinity, which no read reaches: the same comparison serves
-    switch = min((event.t for event in events if params.label in ("", event.label)), default=float("inf"))
+    switch = min((event.t for event in matching(events, params.label)), default=float("inf"))
     return _Latched(switch, params.before, params.after)

@@ -1,4 +1,4 @@
-"""The table of sources and shapers, the rules for getting into it, and the queries over it.
+"""The table of sources, shapers and operations, the rules for getting into it, and the queries over it.
 
     @source(params=LevelParams)
     def level(params: LevelParams) -> Signal: ...
@@ -6,20 +6,24 @@
     @shaper(params=ClipParams)
     def clip(signal: Signal, params: ClipParams) -> Signal: ...
 
+    @operation(params=SelectParams)
+    def select(params: SelectParams, *, events: tuple[Event, ...]) -> tuple[Event, ...]: ...
+
     registry.get("clip")(signal, low=0.2)          # a Signal; the values are checked by the parameter model
 
-A source makes a signal from its parameters; a shaper makes a signal from a signal and its parameters. Either may also
-declare inputs (`bullterrier_control.inputs`: keyframes, ...) as keyword-only arguments after `params`: required without
-a default, optional with `= None`. A call names them beside the parameters and each arrives checked. Both share one
-namespace of lower case names, and every rule is checked when one registers, so a broken one fails when its module is
-imported, naming itself, instead of in some patch much later.
+A source makes a signal from its parameters; a shaper makes a signal from a signal and its parameters; an operation
+makes data from data (events or a series, as its return annotation says) and its parameters. Each may also declare
+inputs (`bullterrier_control.inputs`: keyframes, ...) as keyword-only arguments after `params`: required without a
+default, optional with `= None`; an operation takes its data that way. A call names them beside the parameters and each
+arrives checked. All three share one namespace of lower case names, and every rule is checked when one registers, so a
+broken one fails when its module is imported, naming itself, instead of in some patch much later.
 
-Where they come from: the first query (`get`, `sources`, `shapers`, `all_registered`) loads every installed package of
-the entry-point group `bullterrier_control.sources`, once. A package is a module whose import registers sources and
-shapers: bullterrier-control's own is one (declared in its `pyproject.toml`); a third party declares its own (see
-`bullterrier_control.plugin`). A package that fails to import raises `BullterrierControlError` naming its entry point,
-whatever it registered before failing is taken back, and the next query tries again. The registry names no package
-itself, so importing bullterrier-control loads none.
+Where they come from: the first query (`get`, `sources`, `shapers`, `operations`, `all_registered`) loads every
+installed package of the entry-point group `bullterrier_control.sources`, once. A package is a module whose import
+registers sources, shapers and operations: bullterrier-control's own is one (declared in its `pyproject.toml`); a third
+party declares its own (see `bullterrier_control.plugin`). A package that fails to import raises
+`BullterrierControlError` naming its entry point, whatever it registered before failing is taken back, and the next
+query tries again. The registry names no package itself, so importing bullterrier-control loads none.
 
 Threads: loading happens once, under a lock; threads that make the first query together wait for it and all see the
 whole table. After that queries only read. Registering is for import time, and so is nothing else: a package must not
@@ -38,38 +42,59 @@ from types import MappingProxyType
 from typing import Any, Concatenate, Literal
 
 from .errors import BullterrierControlError, ParameterError, UnknownNameError
+from .formats import Event, Series
 from .inputs import INPUTS
 from .params import Params
 from .signal import Signal
 
-__all__ = ["Registered", "all_registered", "get", "isolated", "shaper", "shapers", "source", "sources", "unregister"]
+__all__ = [
+    "Registered",
+    "all_registered",
+    "get",
+    "isolated",
+    "operation",
+    "operations",
+    "shaper",
+    "shapers",
+    "source",
+    "sources",
+    "unregister",
+]
 
 _GROUP = "bullterrier_control.sources"
 _NAME = re.compile(r"[a-z][a-z0-9_]*")
-_SIGNALS = {"source": 0, "shaper": 1}  # how many signals each kind takes
+_SIGNALS = {"source": 0, "shaper": 1, "operation": 0}  # how many signals each kind takes
+type _Kind = Literal["source", "shaper", "operation"]
+# what an operation may return, by its return annotation, and what `help()` calls it
+_OPERATION_RESULTS: Mapping[Any, str] = MappingProxyType({tuple[Event, ...]: "events", Series: "series"})
 
 
-class Registered[P: Params]:
-    """A registered source or shaper: call it with its input signals (a shaper takes one) and keyword values.
+class Registered[P: Params, R]:
+    """A registered source, shaper or operation: call it with its input signals (a shaper takes one) and keyword
+    values; a source and a shaper give a `Signal`, an operation gives its data.
 
-    `inputs` maps each input the function declares to whether it is required, in declaration order."""
+    `inputs` maps each input the function declares to whether it is required, in declaration order. `returns` is what a
+    call gives, as `help()` names it: `Signal`, `events` or `series`."""
 
     def __init__(
         self,
-        function: Callable[..., Signal],
-        kind: Literal["source", "shaper"],
+        function: Callable[..., R],
+        kind: _Kind,
         params_model: type[P],
         inputs: Mapping[str, bool],
     ) -> None:
         """Wrap `function`; the registry does this, after checking every rule."""
         self.function, self.kind, self.params_model, self.inputs = function, kind, params_model, inputs
         self.name = function.__name__
+        self.returns = (
+            _OPERATION_RESULTS[inspect.signature(function).return_annotation] if kind == "operation" else "Signal"
+        )
         first_paragraph = (inspect.getdoc(function) or "").split("\n\n")[0]
         self.summary = " ".join(first_paragraph.split())
         self.__doc__ = _documentation(self, inspect.getdoc(function) or "")
 
-    def __call__(self, *signals: Signal, **values: object) -> Signal:
-        """The signal for these input signals, inputs and parameter values; unset parameters take their defaults.
+    def __call__(self, *signals: Signal, **values: object) -> R:
+        """The result for these input signals, inputs and parameter values; unset parameters take their defaults.
 
         A name in `INPUTS` is an input, any other a parameter. An input the function does not declare, or a required
         one that is missing, is a `TypeError`; one that breaks the rules of its kind is a `ParameterError`. `None` for
@@ -93,7 +118,7 @@ class Registered[P: Params]:
         """The parameters for `values` (name to value), or a `ParameterError` naming this thing and each problem."""
         return self._named(self.params_model.parse, values)
 
-    def _named[V, R](self, check: Callable[[V], R], value: V) -> R:
+    def _named[V, T](self, check: Callable[[V], T], value: V) -> T:
         """`check(value)`, with a `ParameterError` it raises saying which source or shaper refused."""
         try:
             return check(value)
@@ -101,13 +126,18 @@ class Registered[P: Params]:
             raise ParameterError(f"{self.kind} {self.name!r}: {error}", error.problems) from None
 
 
-def _documentation(registered: "Registered[Any]", described: str) -> str:
+def _documentation(registered: "Registered[Any, Any]", described: str) -> str:
     """What `help()` shows: how to call it, the function's own description, its inputs, then every parameter in its own
     terms."""
     takes = ["signal"] if registered.kind == "shaper" else []
     if registered.inputs:
         takes += ["*", *(name if required else f"{name}=None" for name, required in registered.inputs.items())]
-    lines = [f"{registered.kind} {registered.name}({', '.join([*takes, '**values'])}) -> Signal", "", described, ""]
+    lines = [
+        f"{registered.kind} {registered.name}({', '.join([*takes, '**values'])}) -> {registered.returns}",
+        "",
+        described,
+        "",
+    ]
     if registered.inputs:
         lines.append("Inputs:")
         for name, required in registered.inputs.items():
@@ -123,7 +153,7 @@ def _documentation(registered: "Registered[Any]", described: str) -> str:
     return "\n".join(lines).rstrip()
 
 
-_TABLE: dict[str, Registered[Any]] = {}
+_TABLE: dict[str, Registered[Any, Any]] = {}
 
 
 @dataclass
@@ -139,19 +169,29 @@ class _Loading:
 _LOADING = _Loading()
 
 
-def source[P: Params](*, params: type[P]) -> Callable[[Callable[Concatenate[P, ...], Signal]], Registered[P]]:
+def source[P: Params](*, params: type[P]) -> Callable[[Callable[Concatenate[P, ...], Signal]], Registered[P, Signal]]:
     """Decorator: register `def name(params) -> Signal` as the source `name`, taking `params`."""
     return lambda function: _register(function, "source", params)
 
 
-def shaper[P: Params](*, params: type[P]) -> Callable[[Callable[Concatenate[Signal, P, ...], Signal]], Registered[P]]:
+def shaper[P: Params](
+    *, params: type[P]
+) -> Callable[[Callable[Concatenate[Signal, P, ...], Signal]], Registered[P, Signal]]:
     """Decorator: register `def name(signal, params) -> Signal` as the shaper `name`, taking `params`."""
     return lambda function: _register(function, "shaper", params)
 
 
-def _register[P: Params](
-    function: Callable[..., Signal], kind: Literal["source", "shaper"], params: type[P]
-) -> Registered[P]:
+def operation[P: Params, R: (tuple[Event, ...], Series)](
+    *, params: type[P]
+) -> Callable[[Callable[Concatenate[P, ...], R]], Registered[P, R]]:
+    """Decorator: register `def name(params, *, <inputs>) -> tuple[Event, ...]` (or `-> Series`) as an operation.
+
+    An operation makes data from data: its inputs are the data it takes (`events`, `series`, `grid`), and the return
+    annotation, checked here, says whether it gives events or a series. It takes no signal."""
+    return lambda function: _register(function, "operation", params)
+
+
+def _register[P: Params, R](function: Callable[..., R], kind: _Kind, params: type[P]) -> Registered[P, R]:
     name = function.__name__
     if not (isinstance(params, type) and issubclass(params, Params)):
         raise ValueError(f"{kind} {name!r}: params must be a Params subclass (got {params!r})")
@@ -163,6 +203,8 @@ def _register[P: Params](
     if clashing:
         raise ValueError(f"{kind} {name!r}: the parameter {clashing[0]!r} has the name of an input")
     inputs = _declared_inputs(function, kind)
+    if kind == "operation" and inspect.signature(function).return_annotation not in _OPERATION_RESULTS:
+        raise ValueError(f"{kind} {name!r}: the return annotation must be tuple[Event, ...] or Series")
     existing = _TABLE.get(name)
     if existing is not None and not _same_function(existing, function, kind):
         raise ValueError(
@@ -174,15 +216,15 @@ def _register[P: Params](
     return registered
 
 
-def _declared_inputs(function: Callable[..., Signal], kind: Literal["source", "shaper"]) -> Mapping[str, bool]:
+def _declared_inputs(function: Callable[..., Any], kind: _Kind) -> Mapping[str, bool]:
     """The inputs `function` declares, as name to whether it is required; `ValueError` if it is not written
-    `name(params)` or `name(signal, params)`, optionally followed by `*, <input>, ...` with each input named in `INPUTS`
-    and a default of `None` or none."""
+    `name(params)` or `name(signal, params)` (a shaper), optionally followed by `*, <input>, ...` with each input named
+    in `INPUTS` and a default of `None` or none."""
     name = function.__name__
     arguments = list(inspect.signature(function).parameters.values())
     positional = [a for a in arguments if a.kind in (a.POSITIONAL_ONLY, a.POSITIONAL_OR_KEYWORD)]
     if len(positional) != _SIGNALS[kind] + 1:
-        shape = "(params)" if kind == "source" else "(signal, params)"
+        shape = "(signal, params)" if kind == "shaper" else "(params)"
         extra = positional[_SIGNALS[kind] + 1 :]
         hint = f"; {extra[0].name!r} is positional, and an input is keyword-only (after `*`)" if extra else ""
         raise ValueError(f"{kind} {name!r}: the function must be written {name}{shape}{hint}")
@@ -196,7 +238,7 @@ def _declared_inputs(function: Callable[..., Signal], kind: Literal["source", "s
     return MappingProxyType(inputs)
 
 
-def _same_function(existing: Registered[Any], function: Callable[..., Signal], kind: str) -> bool:
+def _same_function(existing: Registered[Any, Any], function: Callable[..., Any], kind: str) -> bool:
     """Whether `function` is what is registered under its name, defined again as reloading its module does. Only a
     function defined at the top of a module can be: two made by one factory share a name and are different things."""
     old = existing.function
@@ -211,7 +253,7 @@ def _same_function(existing: Registered[Any], function: Callable[..., Signal], k
 
 
 def unregister(name: str) -> None:
-    """Remove the source or shaper `name` (`UnknownNameError` if there is none). For tests that register throwaways."""
+    """Remove the source, shaper or operation `name` (`UnknownNameError` if none). For test throwaways."""
     get(name)
     del _TABLE[name]
 
@@ -234,29 +276,36 @@ def isolated() -> Iterator[None]:
             _LOADING.done = was_done
 
 
-def get(name: str) -> Registered[Any]:
-    """The source or shaper called `name`; `UnknownNameError` listing the available names if there is none."""
+def get(name: str) -> Registered[Any, Any]:
+    """The source, shaper or operation called `name`; `UnknownNameError` listing the available names."""
     _load_packages()
     try:
         return _TABLE[name]
     except KeyError:
-        raise UnknownNameError(f"unknown source or shaper {name!r}; available: {', '.join(sorted(_TABLE))}") from None
+        raise UnknownNameError(
+            f"unknown source, shaper or operation {name!r}; available: {', '.join(sorted(_TABLE))}"
+        ) from None
 
 
-def all_registered() -> dict[str, Registered[Any]]:
-    """Every source and shaper by name, sorted by name (a copy)."""
+def all_registered() -> dict[str, Registered[Any, Any]]:
+    """Every source, shaper and operation by name, sorted by name (a copy)."""
     _load_packages()
     return {name: _TABLE[name] for name in sorted(_TABLE)}
 
 
-def sources() -> dict[str, Registered[Any]]:
+def sources() -> dict[str, Registered[Any, Signal]]:
     """The sources by name, sorted by name."""
     return {name: item for name, item in all_registered().items() if item.kind == "source"}
 
 
-def shapers() -> dict[str, Registered[Any]]:
+def shapers() -> dict[str, Registered[Any, Signal]]:
     """The shapers by name, sorted by name."""
     return {name: item for name, item in all_registered().items() if item.kind == "shaper"}
+
+
+def operations() -> dict[str, Registered[Any, Any]]:
+    """The operations by name, sorted by name."""
+    return {name: item for name, item in all_registered().items() if item.kind == "operation"}
 
 
 def _load_packages() -> None:

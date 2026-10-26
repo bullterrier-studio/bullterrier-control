@@ -7,7 +7,7 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-from ..plugin import Event, Finite, Params, Signal, Text, param, source
+from ..plugin import Event, Finite, Params, Signal, Text, matching, param, source
 
 # The share of a fall still left a given number of seconds into it.
 _Left = Callable[[NDArray[np.float64]], NDArray[np.float64]]
@@ -91,7 +91,7 @@ class _Envelope(Signal):
         self._release_left, release_reach = _fade(params.curve, params.release)
         self._fold = np.maximum if params.mix == "max" else np.add
         # an event of strength 0 adds nothing under either mix
-        counted = [event for event in events if event.strength > 0 and params.label in ("", event.label)]
+        counted = [event for event in matching(events, params.label) if event.strength > 0]
         # a moment is an event that never ends and has no sustain: the same formula serves both
         self._starts = np.array([event.t for event in counted])
         self._strengths = np.array([event.strength for event in counted])
