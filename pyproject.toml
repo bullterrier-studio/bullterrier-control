@@ -220,12 +220,13 @@ paths = ["src"]
 min_confidence = 60
 ignore_decorators = [
     "@model_validator",  # pydantic runs validators when a model is built
+    "@field_validator",
 ]
 ignore_names = [
     "model_config",  # pydantic reads each model's settings from this class attribute
     "parse",  # `FormatModel.parse`: the public way in for data from outside, called by users, tools and tests
     # format fields and vocabulary: data that consumers read (a Series' start and rate, an Event's t, strength, duration,
-    # label and pitch, the Unit members), not all of it used inside the package
+    # label and pitch, a Bundle's format, source and grid, the Unit members), not all of it used inside the package
     "start",
     "rate",
     "t",
@@ -233,6 +234,9 @@ ignore_names = [
     "duration",
     "label",
     "pitch",
+    "format",
+    "source",
+    "grid",
     "DECIBELS",
     "HERTZ",
     "MIDI",
@@ -270,12 +274,12 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "Formats: series | event | grid > model | units"
+name = "Formats: bundle > series | event | grid > model | units"
 type = "layers"
 containers = ["bullterrier_control.formats"]
 exhaustive = true  # a new format module must be placed in a layer here
 # each format builds on the shared base and the units, never on another format: the formats are independent siblings
-layers = ["series | event | grid", "model | units"]
+layers = ["bundle", "series | event | grid", "model | units"]
 
 # Read by git-cliff when `uv run poe release` writes a release's section of CHANGELOG.md: the Conventional Commits since
 # the last tag, grouped as Keep a Changelog does. A commit only appears if a parser below names its group; the rest
