@@ -36,6 +36,8 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/bullterrier-studio/bullterrier-control"
+Documentation = "https://github.com/bullterrier-studio/bullterrier-control/tree/main/docs"
+Changelog = "https://github.com/bullterrier-studio/bullterrier-control/blob/main/CHANGELOG.md"
 Issues = "https://github.com/bullterrier-studio/bullterrier-control/issues"
 
 [project.scripts]
