@@ -40,6 +40,11 @@ Issues = "https://github.com/bullterrier-studio/bullterrier-control/issues"
 [project.scripts]
 bt-control = "bullterrier_control.cli:main"
 
+# Packages of sources and shapers: the registry imports every module of this group on its first query
+# (bullterrier_control.registry). Our own come in the way a third party's do.
+[project.entry-points."bullterrier_control.sources"]
+bullterrier_control = "bullterrier_control.sources"
+
 [build-system]
 requires = ["uv_build>=0.13.0,<0.14.0"]
 build-backend = "uv_build"
@@ -225,6 +230,8 @@ ignore_decorators = [
     "@model_validator",  # pydantic runs validators when a model is built
     "@field_validator",
     "@field_serializer",
+    "@source",  # the registry finds a source or shaper through its decorator; patches call it by name
+    "@shaper",
 ]
 ignore_names = [
     "model_config",  # pydantic reads each model's settings from this class attribute
@@ -272,13 +279,14 @@ DEP004 = ["packaging"]
 root_package = "bullterrier_control"
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > plugin > registry > rendered > signal | params > formats > errors"
+name = "Layers: app > sources > plugin > registry > rendered > signal | params > formats > errors"
 type = "layers"
 containers = ["bullterrier_control"]
 exhaustive = true  # a new top-level module must be placed in a layer here
 layers = [
     "__main__",  # `python -m bullterrier_control`: runs the command line
     "cli",  # app: the command line
+    "sources",  # bullterrier-control's own sources and shapers, found through the entry point
     "plugin",  # the author API: the names a package of sources and shapers uses
     "registry",  # the table of sources and shapers, and the queries over it
     "rendered",  # a signal that needs history, rendered once
@@ -286,6 +294,12 @@ layers = [
     "formats",  # the plain-data formats
     "errors",  # the exceptions: they import nothing, so every layer may raise them
 ]
+
+[[tool.importlinter.contracts]]
+name = "Sources never import each other"
+type = "independence"
+# shared numeric code goes to a module named for its concept, below `sources`, not from one source into another
+modules = ["bullterrier_control.sources.*"]
 
 [[tool.importlinter.contracts]]
 name = "Formats: bundle > series | event | grid > model | units"

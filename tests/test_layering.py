@@ -2,6 +2,7 @@
 import only the layers below it:
 
     app        __main__ > cli
+    sources    bullterrier-control's own sources and shapers; never import each other
     plugin     the author API: the names a package of sources and shapers uses
     registry   the table of sources and shapers, and the queries over it
     rendered   a signal that needs history, rendered once
@@ -28,9 +29,10 @@ PACKAGE = Path(bullterrier_control.__file__).parent
 ROOT = PACKAGE.parent.parent  # the repository: pyproject.toml holds the contracts
 LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-imports` from the repository root
 
-LAYERS = "Layers: app > plugin > registry > rendered > signal | params > formats > errors"
+LAYERS = "Layers: app > sources > plugin > registry > rendered > signal | params > formats > errors"
+SOURCES_APART = "Sources never import each other"
 FORMATS = "Formats: bundle > series | event | grid > model | units"
-CONTRACTS = [LAYERS, FORMATS]
+CONTRACTS = [LAYERS, SOURCES_APART, FORMATS]
 
 
 def lint(cwd: Path, pythonpath: Path | None = None) -> subprocess.CompletedProcess:
@@ -84,6 +86,25 @@ FORBIDDEN = {
     ),
     "registry to plugin": ("registry.py", "import bullterrier_control.plugin", "bullterrier_control.registry", LAYERS),
     "signal to registry": ("signal.py", "import bullterrier_control.registry", "bullterrier_control.signal", LAYERS),
+    "plugin to sources": ("plugin.py", "import bullterrier_control.sources", "bullterrier_control.plugin", LAYERS),
+    "registry to sources": (
+        "registry.py",
+        "import bullterrier_control.sources",
+        "bullterrier_control.registry",
+        LAYERS,
+    ),
+    "a source to the command line": (
+        "sources/clip.py",
+        "import bullterrier_control.cli",
+        "bullterrier_control.sources.clip",
+        LAYERS,
+    ),
+    "a source to another source": (
+        "sources/clip.py",
+        "import bullterrier_control.sources.slew",
+        "bullterrier_control.sources.clip",
+        SOURCES_APART,
+    ),
     "errors to formats": ("errors.py", "import bullterrier_control.formats", "bullterrier_control.errors", LAYERS),
     "formats to cli": (
         "formats/series.py",
@@ -151,6 +172,9 @@ ALLOWED = {
     "registry to params": ("registry.py", "import bullterrier_control.params"),
     "plugin to registry": ("plugin.py", "import bullterrier_control.registry"),
     "cli to plugin": ("cli.py", "import bullterrier_control.plugin"),
+    "cli to sources": ("cli.py", "import bullterrier_control.sources"),
+    "a source to the plugin api": ("sources/clip.py", "import bullterrier_control.plugin"),
+    "a source to the errors": ("sources/clip.py", "import bullterrier_control.errors"),
     "rendered to errors": ("rendered.py", "import bullterrier_control.errors"),
     "signal to formats": ("signal.py", "import bullterrier_control.formats.series"),
     "series to model": ("formats/series.py", "import bullterrier_control.formats.model"),

@@ -8,6 +8,7 @@ from importlib import metadata
 
 from .errors import BullterrierControlError, FormatError, SignalError, UnknownNameError
 from .formats import Bundle, Event, Grid, Series, Unit, load, save
+from .signal import Signal, from_series, maximum, minimum
 
 __version__ = metadata.version("bullterrier-control")
 
@@ -18,10 +19,14 @@ __all__ = [
     "FormatError",
     "Grid",
     "Series",
+    "Signal",
     "SignalError",
     "Unit",
     "UnknownNameError",
     "__version__",
+    "from_series",
     "load",
+    "maximum",
+    "minimum",
     "save",
 ]

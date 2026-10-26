@@ -34,7 +34,18 @@ from .errors import BullterrierControlError, FormatError, UnknownNameError
 from .params import Params
 from .signal import Signal
 
-__all__ = ["Registered", "all_registered", "get", "reset", "shaper", "shapers", "source", "sources", "unregister"]
+__all__ = [
+    "Registered",
+    "all_registered",
+    "get",
+    "reset",
+    "restore",
+    "shaper",
+    "shapers",
+    "source",
+    "sources",
+    "unregister",
+]
 
 _GROUP = "bullterrier_control.sources"
 _NAME = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -137,6 +148,15 @@ def reset() -> None:
     with _LOADING.lock:
         _TABLE.clear()
         _LOADING.done = False
+
+
+def restore(table: Mapping[str, Registered[Any]]) -> None:
+    """Make `table` (what `all_registered` returned earlier) the registry again and count the packages as loaded. For
+    tests that emptied it with `reset`: a package imported once does not register again when imported again."""
+    with _LOADING.lock:
+        _TABLE.clear()
+        _TABLE.update(table)
+        _LOADING.done = True
 
 
 def get(name: str) -> Registered[Any]:

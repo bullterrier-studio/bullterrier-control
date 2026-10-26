@@ -63,9 +63,10 @@ def throwaway_registry():
 
 @pytest.fixture
 def empty_registry():
-    """The registry as if nothing had been registered or loaded; afterwards it loads the installed packages again."""
+    """The registry as if nothing had been registered or loaded; afterwards it holds what it held before."""
     from bullterrier_control import registry
 
+    saved = dict(registry.all_registered())
     registry.reset()
     yield
-    registry.reset()
+    registry.restore(saved)
