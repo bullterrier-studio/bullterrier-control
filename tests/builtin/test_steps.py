@@ -98,9 +98,16 @@ def test_a_trillion_seconds_in_still_picks_the_right_step():
     assert signal.sample([1e12, 1e12 + 0.5]).tolist() == [2.0, 2.0]
 
 
-def test_a_time_too_far_for_the_position_to_be_a_number_is_a_signal_error():
+def test_a_position_far_beyond_a_whole_machine_integer_still_picks_the_step_a_float_modulo_says():
+    # 1e300 is a whole number of steps; Python's float % is exact, so it is the oracle for which step that is
+    signal = lib.steps(values=[1, 2, 3], rate=1, per="second")
+    assert signal.sample([1e300]).tolist() == [[1.0, 2.0, 3.0][int(1e300 % 3)]]
+
+
+@pytest.mark.parametrize("per", ["second", "beat"])
+def test_a_time_too_far_for_the_position_to_be_a_number_is_a_signal_error(per):
     with pytest.raises(SignalError):
-        lib.steps(values=[1, 2, 3], rate=1000, per="second").sample([1.797e308])
+        lib.steps(values=[1, 2, 3], rate=1000, per=per, grid=STEADY).sample([1.797e308])
 
 
 @given(
