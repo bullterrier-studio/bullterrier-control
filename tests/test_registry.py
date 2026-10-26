@@ -112,11 +112,11 @@ def test_a_shaper_takes_its_input_after_its_signal_and_parameters():
     received = []
 
     @shaper(params=Level)
-    def follow(signal: Signal, params: Level, *, points: tuple[Keyframe, ...]) -> Signal:
+    def chase(signal: Signal, params: Level, *, points: tuple[Keyframe, ...]) -> Signal:
         received.append(points)
         return signal * params.value
 
-    assert follow(Constant(4.0), points=POINTS, value=0.25).sample(0.0).tolist() == 1.0
+    assert chase(Constant(4.0), points=POINTS, value=0.25).sample(0.0).tolist() == 1.0
     assert received == [POINTS_AS_KEYFRAMES]
 
 

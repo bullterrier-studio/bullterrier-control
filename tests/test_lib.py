@@ -48,7 +48,7 @@ def test_help_lists_the_inputs_between_the_description_and_the_parameters(throwa
         return Constant(params.value)
 
     @shaper(params=Level)
-    def follow(signal: Signal, params: Level, *, points: tuple[Keyframe, ...] | None = None) -> Signal:
+    def chase(signal: Signal, params: Level, *, points: tuple[Keyframe, ...] | None = None) -> Signal:
         """Follows keyframes if given."""
         return signal
 
@@ -58,9 +58,9 @@ def test_help_lists_the_inputs_between_the_description_and_the_parameters(throwa
     assert "points (required)" in text
     assert "strictly increasing" in text
     assert text.index("A track through keyframes.") < text.index("Inputs:") < text.index("Parameters:")
-    optional = follow.__doc__
+    optional = chase.__doc__
     assert optional is not None
-    assert "shaper follow(signal, *, points=None, **values) -> Signal" in optional
+    assert "shaper chase(signal, *, points=None, **values) -> Signal" in optional
     assert "points (optional)" in optional
 
 
