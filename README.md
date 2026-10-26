@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/logo.svg" alt="bullterrier-control logo: a bull terrier head drawn in sine lines with one orange sine wave across it" height="160">
+</p>
+
 # bullterrier-control
 
 Control signals for Python: numbers that change over time, read at any moment in seconds. Keyframes with easing, LFOs,
