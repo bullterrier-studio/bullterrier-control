@@ -7,7 +7,7 @@ covered the moment it is registered and no test names it.
 import numpy as np
 import pytest
 
-from bullterrier_control import ParameterError, Series, Signal, SignalError, Unit, registry
+from bullterrier_control import Keyframe, ParameterError, Series, Signal, SignalError, Unit, registry
 from bullterrier_control.signal import from_series
 
 ALL = sorted(registry.all_registered())
@@ -23,9 +23,27 @@ def input_signal(tail: float = 0.0) -> Signal:
     return from_series(Series(rate=10.0, values=values, unit=Unit.RATIO), interpolation="hold")
 
 
-def build(name: str, **values) -> Signal:
+# What every kind of input is built from. A new kind of input (events, a grid, ...) is one row in each table: the
+# first has a few of everything, the second the least the input allows.
+SAMPLE_INPUTS: dict[str, object] = {
+    "points": (
+        Keyframe(t=0, value=0, ease="in-out"),
+        Keyframe(t=4, value=1, ease="overshoot"),
+        Keyframe(t=8, value=-0.5),
+    )
+}
+SMALLEST_INPUTS: dict[str, object] = {"points": (Keyframe(t=0, value=0.5),)}
+
+
+def make(name: str, inputs: dict[str, object], values: dict[str, object]) -> Signal:
+    """The thing `name` made from the `inputs` it declares (those the table has) and parameter `values`."""
     thing = registry.get(name)
-    return thing(input_signal(), **values) if thing.kind == "shaper" else thing(**values)
+    given = {kind: inputs[kind] for kind in thing.inputs if kind in inputs}
+    return thing(input_signal(), **given, **values) if thing.kind == "shaper" else thing(**given, **values)
+
+
+def build(name: str, **values) -> Signal:
+    return make(name, SAMPLE_INPUTS, values)
 
 
 TIMES = np.linspace(0, 10, 101)
@@ -51,6 +69,21 @@ def test_every_one_makes_a_signal_that_keeps_the_shape_of_the_times_and_is_finit
     values = build(name).sample(given)
     assert values.shape == np.shape(given)
     assert np.isfinite(values).all()
+
+
+@pytest.mark.parametrize("name", ALL)
+def test_every_one_gives_finite_values_from_the_smallest_inputs_it_accepts(name):
+    assert np.isfinite(make(name, SMALLEST_INPUTS, {}).sample(TIMES)).all()
+
+
+REQUIRED_INPUTS = [(name, kind) for name in ALL for kind, required in registry.get(name).inputs.items() if required]
+
+
+@pytest.mark.parametrize(("name", "kind"), REQUIRED_INPUTS)
+def test_every_required_input_left_out_is_a_type_error_naming_it(name, kind):
+    others = {other: value for other, value in SAMPLE_INPUTS.items() if other != kind}
+    with pytest.raises(TypeError, match=kind):
+        make(name, others, {})
 
 
 @pytest.mark.parametrize("name", ALL)
