@@ -69,6 +69,14 @@ class _Points(ValidatedModel):
         return self
 
 
+def _check_points(value: object) -> tuple[Keyframe, ...]:
+    try:
+        return _Points.parse({"points": value}).points
+    except ParameterError as error:
+        # the model's own message starts with its private name; the registry names the source or shaper instead
+        raise ParameterError("; ".join(f"{path}: {rule}" for path, rule in error.problems), error.problems) from None
+
+
 class Input(NamedTuple):
     """One kind of input: what `help()` says about it, and how a value is checked."""
 
@@ -84,7 +92,7 @@ INPUTS: Mapping[str, Input] = MappingProxyType(
                 " of the segment that starts there (ignored on the last point; default linear): one of"
                 f" {', '.join(EASES)}, or cubic-bezier(x1, y1, x2, y2)."
             ),
-            check=lambda value: _Points.parse({"points": value}).points,
+            check=_check_points,
         )
     }
 )

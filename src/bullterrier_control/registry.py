@@ -34,6 +34,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from importlib import metadata
+from types import MappingProxyType
 from typing import Any, Concatenate, Literal
 
 from .errors import BullterrierControlError, ParameterError, UnknownNameError
@@ -71,7 +72,8 @@ class Registered[P: Params]:
         """The signal for these input signals, inputs and parameter values; unset parameters take their defaults.
 
         A name in `INPUTS` is an input, any other a parameter. An input the function does not declare, or a required
-        one that is missing, is a `TypeError`; one that breaks the rules of its kind is a `ParameterError`."""
+        one that is missing, is a `TypeError`; one that breaks the rules of its kind is a `ParameterError`. `None` for
+        an optional input is the same as leaving it out."""
         wanted = _SIGNALS[self.kind]
         if len(signals) != wanted or not all(isinstance(signal, Signal) for signal in signals):
             raise TypeError(f"{self.kind} {self.name!r} takes {wanted} signal(s), not {len(signals)}")
@@ -80,7 +82,7 @@ class Registered[P: Params]:
             raise TypeError(f"{self.kind} {self.name!r} takes no input {undeclared[0]!r}")
         given: dict[str, object] = {}
         for name, required in self.inputs.items():
-            if name in values:
+            if name in values and (required or values[name] is not None):
                 given[name] = self._named(INPUTS[name].check, values[name])
             elif required:
                 raise TypeError(f"{self.kind} {self.name!r} needs the input {name!r}")
@@ -172,7 +174,7 @@ def _register[P: Params](
     return registered
 
 
-def _declared_inputs(function: Callable[..., Signal], kind: Literal["source", "shaper"]) -> dict[str, bool]:
+def _declared_inputs(function: Callable[..., Signal], kind: Literal["source", "shaper"]) -> Mapping[str, bool]:
     """The inputs `function` declares, as name to whether it is required; `ValueError` if it is not written
     `name(params)` or `name(signal, params)`, optionally followed by `*, <input>, ...` with each input named in `INPUTS`
     and a default of `None` or none."""
@@ -181,15 +183,17 @@ def _declared_inputs(function: Callable[..., Signal], kind: Literal["source", "s
     positional = [a for a in arguments if a.kind in (a.POSITIONAL_ONLY, a.POSITIONAL_OR_KEYWORD)]
     if len(positional) != _SIGNALS[kind] + 1:
         shape = "(params)" if kind == "source" else "(signal, params)"
-        raise ValueError(f"{kind} {name!r}: the function must be written {name}{shape}")
+        extra = positional[_SIGNALS[kind] + 1 :]
+        hint = f"; {extra[0].name!r} is positional, and an input is keyword-only (after `*`)" if extra else ""
+        raise ValueError(f"{kind} {name!r}: the function must be written {name}{shape}{hint}")
     inputs = {}
     for argument in arguments[len(positional) :]:
         if argument.kind is not argument.KEYWORD_ONLY or argument.name not in INPUTS:
             raise ValueError(f"{kind} {name!r}: {argument.name!r} is not an input; inputs are {', '.join(INPUTS)}")
         if argument.default is not argument.empty and argument.default is not None:
-            raise ValueError(f"{kind} {name!r}: the input {argument.name!r} has no default, or None to be optional")
+            raise ValueError(f"{kind} {name!r}: the input {argument.name!r} takes no default, or None to be optional")
         inputs[argument.name] = argument.default is argument.empty
-    return inputs
+    return MappingProxyType(inputs)
 
 
 def _same_function(existing: Registered[Any], function: Callable[..., Signal], kind: str) -> bool:

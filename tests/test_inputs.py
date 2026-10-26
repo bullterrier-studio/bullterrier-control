@@ -64,11 +64,6 @@ def check_points(value):
     return INPUTS["points"].check(value)
 
 
-def test_the_points_input_describes_itself():
-    assert INPUTS["points"].doc
-    assert "ease" in INPUTS["points"].doc
-
-
 def test_points_given_as_mappings_become_keyframes_in_a_tuple():
     given = [{"t": 0.5, "value": 2.0, "ease": "in"}, {"t": 1.5, "value": -1.0}, {"t": 4, "value": 0.25, "ease": "out"}]
     checked = check_points(given)

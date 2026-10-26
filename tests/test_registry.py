@@ -168,9 +168,39 @@ def test_an_input_that_breaks_a_rule_is_a_parameter_error_naming_the_thing_and_t
     with pytest.raises(ParameterError, match="source 'track'") as bad_ease:
         track(points=[{"t": 0, "value": 1}, {"t": 1, "value": 1, "ease": "wobble"}])
     reports(bad_ease.value, "points[1].ease")
+    assert str(bad_ease.value).startswith("source 'track': points[1].ease: ")  # no private model name between
     with pytest.raises(ParameterError, match="source 'track'") as unsorted:
         track(points=[{"t": 2, "value": 1}, {"t": 1, "value": 1}])
     reports(unsorted.value, "points[1].t")
+
+
+def test_none_for_an_optional_input_counts_as_left_out_but_a_required_one_is_refused(reports):
+    received = []
+
+    @source(params=Nothing)
+    def maybe(params: Nothing, *, points: tuple[Keyframe, ...] | None = None) -> Signal:
+        received.append(points)
+        return Constant(0.0)
+
+    @source(params=Nothing)
+    def must(params: Nothing, *, points: tuple[Keyframe, ...]) -> Signal:
+        return Constant(0.0)
+
+    maybe(points=None)
+    assert received == [None]
+    with pytest.raises(ParameterError, match="source 'must'") as refused:
+        must(points=None)
+    reports(refused.value, "points")
+
+
+def test_the_declared_inputs_cannot_be_changed_by_a_caller():
+    @source(params=Nothing)
+    def track(params: Nothing, *, points: tuple[Keyframe, ...]) -> Signal:
+        return Constant(0.0)
+
+    with pytest.raises(TypeError):
+        track.inputs["points"] = False  # type: ignore[index]  # a read-only mapping
+    assert track.inputs == {"points": True}
 
 
 def test_an_unknown_name_beside_an_input_is_still_a_parameter_error(reports):
@@ -273,20 +303,25 @@ def takes_args(params: Nothing, *extra: object) -> Signal:
     return Constant(0.0)
 
 
+def positional_input(params: Nothing, points: object) -> Signal:
+    return Constant(0.0)
+
+
 def kwargs_named_like_an_input(params: Nothing, **points: object) -> Signal:
     return Constant(0.0)
 
 
 BROKEN_INPUTS = {
-    "a keyword-only argument that is no input": (lambda: source(params=Nothing)(unknown_input), "colour"),
-    "an input with a default other than None": (lambda: source(params=Nothing)(odd_default), "points"),
-    "arbitrary keyword arguments": (lambda: source(params=Nothing)(takes_kwargs), "extra"),
-    "arbitrary positional arguments": (lambda: source(params=Nothing)(takes_args), "extra"),
+    "a keyword-only argument that is no input": (lambda: source(params=Nothing)(unknown_input), "'colour'"),
+    "an input with a default other than None": (lambda: source(params=Nothing)(odd_default), "'points'"),
+    "arbitrary keyword arguments": (lambda: source(params=Nothing)(takes_kwargs), "'extra'"),
+    "arbitrary positional arguments": (lambda: source(params=Nothing)(takes_args), "'extra'"),
+    "an input that is positional": (lambda: source(params=Nothing)(positional_input), "'points'"),
     "arbitrary keyword arguments named like an input": (
         lambda: source(params=Nothing)(kwargs_named_like_an_input),
-        "points",
+        "'points'",
     ),
-    "a parameter named like an input": (lambda: source(params=Pointed)(_named("pointy")), "points"),
+    "a parameter named like an input": (lambda: source(params=Pointed)(_named("pointy")), "'points'"),
 }
 
 
