@@ -27,6 +27,9 @@ The contract `bullterrier-audio` writes and `bullterrier-video` reads. Spec firs
 - JSON Schema files in the package (data, not code), plus loaders and writers that validate at the boundary.
 - A file holds a set of named Series, Events lists and one Grid (the shape audio's `analyse()` writes).
 
+Plan: `.superpowers/plans/2026-10-26-c0-formats.md` (git-ignored).
+Also: `bt-control validate` and `bt-control schema`; CLAUDE.md gains a short Formats pointer to `docs/formats.md`.
+
 Done when: schemas validate known-good and reject known-bad files; round-trip write/read is exact; the schema is
 copyable by audio for its conformance test.
 
@@ -41,6 +44,8 @@ copyable by audio for its conformance test.
 - Registry of sources and shapers by name, entry-point group `bullterrier_control.sources`.
 
 Done when: contract tests run over every registered source and shaper (range, determinism, reading order independence).
+Also: CLAUDE.md gains "The signal contract" (what every source and shaper promises, what the contract tests check), as image's
+"The effect contract" does.
 
 ## C2 Sources
 
@@ -50,6 +55,8 @@ Done when: contract tests run over every registered source and shaper (range, de
 - Step sequencer: a repeating list of values, one per grid step.
 - Seeded noise (value noise, smooth noise), sample-and-hold random.
 - Latch: 0 before an event, 1 after (the "wake" at a drop).
+- Also: `poe new-source NAME` scaffolds a source's files from a template, and CLAUDE.md gains "Adding a source or shaper",
+  as image's "Adding an effect" does (the template and the command arrive together).
 
 ## C3 Shapers and event operations
 

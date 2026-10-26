@@ -105,6 +105,24 @@ at any time; stateful shapers (slew, followers) render on an internal grid at a 
 - The gates are the review: reviewers check behaviour and these rules only. A defect a review finds twice becomes a gate.
 - Design decisions and reasons go in `docs/design-decisions.md`, not here.
 
+## Parameters
+
+A pydantic model per source or shaper (a `Params` base arrives in C1, as `EffectParams` is in bullterrier-image: frozen,
+`extra="forbid"`, strict), each field `param(default, doc=...)`. Every field has a default and a description (what it does, unit and
+range in words, what raising it does).
+- **Numeric** (`int`, `float`): also a `unit` (`seconds`, `beats`, `hz`, `cycles`, `fraction`, `decibels`, `ratio`, `semitones`,
+  `count`) and inclusive `min`/`max` that hold the default. A parameter in `beats` is turned into seconds through a Grid; the model
+  declares the unit, the reader converts.
+- **Other** fields take no unit/min/max: `bool`, `Literal[...]` (the doc mentions every choice), `str`, lists of those.
+- **Basic and advanced:** `advanced=True` marks a field that tunes the technique rather than chooses the shape; listed apart, still
+  settable and validated. Aim at six or fewer basic fields.
+- **Seeded where random:** a source that uses randomness has a `seed` field; none reads global state.
+
+Use the field's own terms (attack, decay, sustain, release, rate, depth, phase, slew, threshold, hysteresis, hold, ease, overshoot,
+swing, seed, offset), never `strength`, `intensity`, `factor`, `val`, `k`, or the unit's name. A bad value fails at construction or
+load, naming source, field, constraint and value. Not parameters: the fields of a format (`Event.strength`, `Series.rate`), which
+`docs/formats.md` defines.
+
 ## Fixing defects: structurally, not defensively
 
 A fix removes the cause, not the symptom.
