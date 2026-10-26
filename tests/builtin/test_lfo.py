@@ -167,6 +167,12 @@ def test_a_time_too_far_for_the_position_to_be_a_number_is_a_signal_error(per):
         signal.sample([1.797e308])
 
 
+def test_the_top_of_the_wave_is_exactly_high_even_where_float_rounding_would_overshoot_it():
+    # 0.3 + (0.9 - 0.3) * 1 is 0.9000000000000001 in floats: a square with duty 1 sits at the top all the time
+    signal = lib.lfo(shape="square", duty=1.0, low=0.3, high=0.9)
+    assert signal.sample([0.0, 0.4, 0.99]).tolist() == [0.9, 0.9, 0.9]
+
+
 @given(
     shape=st.sampled_from(["sine", "triangle", "square", "saw", "saw-down"]),
     rate=st.floats(0, 1000),
