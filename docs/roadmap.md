@@ -1,20 +1,25 @@
 # Roadmap
 
-Batches of work, in order. Each batch gets its own plan before work starts. Sizes: **S** about one working session,
-**M** two or three, **L** four or more. Decisions behind the batches: [design-decisions.md](design-decisions.md).
-Prior experiments with reusable code: `.local/prior-work.md` (git-ignored; machine-specific paths).
+Small batches of work, in order. Each batch gets its own plan before work starts, ends merged into `main` with the whole
+gate green and an independent review done, and leaves the worked examples it names passing. Sizes: **S** about one
+working session, **M** two or three. Decisions behind the batches: [design-decisions.md](design-decisions.md).
 
 | # | Batch | Size | State |
 |---|---|---|---|
 | — | Scaffold: gate, hooks, CI, release tooling, CLAUDE.md | S | done |
-| C0 | Formats: Series, Event, Grid | M | done (merged) |
-| C1 | Core: Signal, evaluation, parameters, registry | M | done (merged) |
-| C2 | Sources | M–L | next |
+| C0 | Formats: Series, Event, Grid, the bundle file | M | done |
+| C1 | Core: Signal, `Rendered`, parameters, registry; `constant`, `clip`, `slew` | M | done |
+| C1.5 | Developer experience: `lib`, `builtin`, errors by kind, `poe new-source`, worked examples | S | done |
+| C2a | Inputs for sources; easing; `keyframes` (example 2) | M | next |
+| C2b | `envelope`, `latch` (examples 1 and 5) | M | |
+| C2c | `lfo`, `steps` (example 4) | S | |
+| C2d | `noise` (seeded, read at any time) | S | |
 | C3 | Shapers and event operations | M | |
-| C4 | Patch files, CLI, curve gallery | M | |
+| C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | |
 | C5 | First release | S | |
 
-After C0, `bullterrier-audio` (A1, A2) can run in parallel with C1–C3: the two share only the formats.
+C2a goes first: it adds the inputs (events, a grid, keyframes, values) every later source takes. C2b, C2c and C2d then
+depend only on C2a and can run in any order. `bullterrier-audio` can run in parallel: the two share only the formats.
 
 ## C0 Formats
 
@@ -27,7 +32,6 @@ The contract `bullterrier-audio` writes and `bullterrier-video` reads. Spec firs
 - One file type, the Bundle: named Series, named Event lists and an optional Grid (the shape audio's `analyse()` writes).
 - JSON Schema in `schemas/` (generated, committed), plus `load` and `save` that validate at the boundary.
 
-Plan: `.superpowers/plans/2026-10-26-c0-formats.md` (git-ignored).
 Also: `bt-control validate` and `bt-control schema`; CLAUDE.md gains a short Formats pointer to `docs/formats.md`.
 
 Done when: schemas validate known-good and reject known-bad files; round-trip write/read is exact; the schema is
@@ -52,28 +56,44 @@ Done when: contract tests run over every registered source and shaper (range, de
 Also: CLAUDE.md gains "The signal contract" (what every source and shaper promises, what the contract tests check), as image's
 "The effect contract" does.
 
-## C2 Sources
+## C1.5 Developer experience
 
-- Keyframes with easing: linear, smooth, ease in/out, cubic bezier, step/hold, overshoot (the title "slam").
-- LFO: sine, triangle, square, saw (rising, falling), phase, free-running (Hz) or tempo-synced (cycles per beat).
-- Envelopes started by events: AR / ADSR / exponential decay; retrigger rules; the inverted one is sidechain ducking.
-- Step sequencer: a repeating list of values, one per grid step.
-- Seeded noise (value noise, smooth noise), sample-and-hold random.
-- Latch: 0 before an event, 1 after (the "wake" at a drop).
-- Also: `poe new-source NAME` scaffolds a source's files from a template, and CLAUDE.md gains "Adding a source or shaper",
-  as image's "Adding an effect" does (the template and the command arrive together).
-- **Worked examples first** (they are C2's acceptance tests, written before the sources): `docs/examples.md` with a small
-  input Bundle per scenario in `examples/`, the signal built from it, and the output as plain numbers at the times a
-  consumer would ask. Output is numbers: no picture, no sound, and the examples never import another package; what the
-  consumer does with the numbers is a line of arithmetic in a comment, labelled as the consumer's. Scenarios, from the
-  ecosystem's "Where does it go?" ([ecosystem.md](ecosystem.md)):
-  1. **Kicks to a glow radius** (audio, image): kick Events with a decay envelope, read at 30 per second.
-  2. **A ramp for a progress parameter** (image): "evaporate from 0 to 90 % over 5 s": keyframes with easing.
-  3. **Bass energy to a size** (audio, vector): a Series, slewed, clipped.
-  4. **Tempo-synced LFO** (standalone, a MIDI controller or a light): a Grid and an LFO in cycles per beat.
-  5. **The wake at a drop** (audio, video): a latch on one Event.
-  Each expected number comes from a hand computation or an analytic formula, never from running the code. A test runs every
-  example and compares; an example whose source does not exist yet is the to-do list.
+`lib` (every source and shaper by name, with `help()` built from its parameters); the built-in package renamed `builtin`;
+errors by kind (`ParameterError` for a bad parameter value, `FormatError` for a bad file, both `InvalidError`s); the model
+base and strict types in `validated`; `poe new-source` scaffolding; `docs/examples.md` with hand-computed numbers, run by a
+test; `docs/ecosystem.md` so the repository stands on its own.
+
+## C2a Inputs, easing, keyframes
+
+- A source may take named inputs besides its parameters, by keyword: `events` (Events, sorted), `grid` (a Grid), `points`
+  (Keyframes) and `values` (numbers); a closed set, declared as keyword-only arguments of the source function.
+- `Keyframe` (time, value, the ease of the segment that starts there).
+- `easing`: linear, in, out, in-out (smoothstep), cubics, sine, CSS cubic-bezier (named curves and `bezier(x1,y1,x2,y2)`),
+  back (overshoot), step, hold. Formulas written here with their sources cited (CSS Easing Level 1, Robert Penner).
+- `keyframes`: values between points by each segment's ease; holds (or zero) before the first and after the last.
+- Example 2 passes.
+
+## C2b Envelopes and the latch
+
+- `envelope`, started by events: a moment (no duration) rises over `attack` and falls to 0 over `decay`; an event with a
+  duration rises, falls toward `sustain` while it lasts, then falls to 0 over `release`. Exponential or linear; overlapping
+  events take the larger (`max`) or add up (`sum`); a `label` picks events. Memory O(times + events).
+- Ducking is arithmetic: `1 - depth * envelope`.
+- `latch`: one value before the first (labelled) event, another from it on.
+- Examples 1 and 5 pass.
+
+## C2c LFOs and step sequences
+
+- `lfo`: sine, triangle, square (with duty), saw, saw-down; `rate` in cycles per second or per beat (through a Grid, so it
+  follows tempo changes); `phase`; output between `low` and `high`.
+- `steps`: a repeating list of values, one per step, steps per second or per beat.
+- Example 4 passes.
+
+## C2d Noise
+
+- A counter-based hash (SplitMix64), so a random value is a pure function of seed and index: readable at any time, in any
+  order, the same on every platform.
+- `noise`: held, linear or smooth between random values at `rate` per second, a `seed`, output between `low` and `high`.
 
 ## C3 Shapers and event operations
 

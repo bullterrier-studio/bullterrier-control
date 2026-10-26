@@ -111,3 +111,29 @@ Checked once, with a quick search (four queries; a first pass, not a survey):
   It overlaps Event and Grid. Keep the strict Bundle (its Series, one file for analysis and curves, and the rules in
   docs/formats.md are what audio and video need); a JAMS import and export adapter is possible later. JAMS's field layout was
   not read in this check: read it before claiming how close the two are.
+
+## Re-evaluated before C2 (batch C1.5)
+
+Every decision above was looked at again before more sources were built on it. Kept: one bundle file, Grid as beat times,
+no `NaN` in files; total signals; causal `Rendered` read by holding; closed, strict parameter declarations; entry-point
+registry with `plugin` as the one door; numpy and pydantic only; offline only; easing written here; keyframes instead of a
+separate ramp. Changed:
+
+- **`lib` is how sources and shapers are used** (`lib.slew(signal, rise=0.2)`), not `registry.get("slew")`. *Reason:* the
+  common call should be the short one; `dir(lib)` and `help(lib.slew)` (built from the parameter declarations) make what is
+  installed discoverable. The registry stays for queries.
+- **The built-in package is `builtin`**, not `sources`: it holds shapers too. The entry-point group keeps its published
+  name, `bullterrier_control.sources`.
+- **Errors by kind.** A bad parameter value is a `ParameterError`, a bad file or format value a `FormatError`; both are
+  `InvalidError`s with the same `path: rule (got value)` wording. *Reason:* `FormatError` for `rise=-1` told a caller to look
+  at a file that does not exist.
+- **The model base and the strict value types live in `validated`**, below both `formats` and `params`. *Reason:* parameters
+  depended on the formats package for something that is not a format.
+- **A source's inputs are a closed set (`events`, `grid`, `points`, `values`), passed by keyword.** *Reason:* parameters stay
+  named scalars (drivable, listable); data (events, keyframes, a step list) is not a parameter.
+- **An envelope on a moment is attack then decay to 0; sustain and release apply to an event with a duration.** *Reason:* the
+  first draft closed a moment's gate at once, so a kick with no release vanished instead of decaying.
+- **Small batches (C2a to C2d), each closing worked examples.** The examples and `poe new-source` came first, so every source
+  batch starts from a scaffold and ends with numbers checked by hand.
+- **Committed files stand on their own.** `docs/ecosystem.md` carries the ecosystem's rules; nothing committed points at a
+  folder outside the repository.
