@@ -27,10 +27,10 @@ uv run poe check                     # the whole gate, before you report or merg
 | see a worked example with numbers | `docs/examples.md` and `examples/` |
 | find what is planned | `docs/roadmap.md`: work goes in small batches, each planned before it starts |
 
-**State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`) and the sources `constant`, `clip` and `slew`
-exist. Next: batch C2a (`docs/roadmap.md`). Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for
-example `.local/prior-work.md`, earlier experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read
-them when present; never commit or cite them.
+**State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`), inputs and easing, and the sources `constant`,
+`keyframes`, `clip` and `slew` exist. Next: batch C2b (`docs/roadmap.md`). Maintainers may keep machine-specific notes in a
+git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier experiments worth reusing) and batch plans in the
+git-ignored `.superpowers/plans/`: read them when present; never commit or cite them.
 
 ## Responsibility
 
@@ -79,8 +79,8 @@ builtin    the built-in sources and shapers: one module each, never importing ea
 lib        every registered source and shaper by name (`lib.slew`), with `help()` built from its parameters
 plugin     the author API: everything a source needs (built-ins use it too); the one door, enforced by a contract
 registry   the table of sources and shapers; `@source`, `@shaper`; entry-point loading
-rendered   Rendered: a signal that needs history, rendered once and read by holding the latest sample
-signal     Signal, Constant, from_series, arithmetic  |  params   Params, param, UNITS
+rendered   Rendered: a signal that needs history, rendered once and read by holding the latest sample  |  inputs   `INPUTS`, Keyframe
+signal     Signal, Constant, from_series, arithmetic  |  params   Params, param, UNITS  |  easing   `curve`: named and Bezier eases
 formats    Bundle > Series | Event | Grid > the format base and Unit
 validated  ValidatedModel and the strict value types (Finite, Whole, Switch, Text)
 errors     BullterrierControlError > InvalidError > FormatError | ParameterError; SignalError; UnknownNameError
@@ -177,7 +177,10 @@ load, naming source, field, constraint and value. Not parameters: the fields of 
    `tests/builtin/test_<name>.py`, working as written (the package imports every module it holds: no list to edit).
 2. **Fill in:** the `Params` model (the field's own terms, unit, range, description: "Parameters"), the body (analytic where it
    can be; a causal recurrence through `Rendered` where it needs history), the docstring's first sentence (what
-   `help(lib.<name>)` shows). A source that takes events, a grid or other data declares them as keyword-only inputs.
+   `help(lib.<name>)` shows). Data that is not a parameter (keyframes, later events, a grid) is a keyword-only argument after
+   `params`, named in `inputs.INPUTS` (`def name(params, *, points)`; `= None` makes it optional); the registry checks it and
+   passes it on. A new kind of input is one `INPUTS` entry and one row in each of `SAMPLE_INPUTS` and `SMALLEST_INPUTS` in
+   `tests/builtin/test_contract.py`.
 3. **Test:** what it promises, each expected number worked out by hand; the contract tests already cover shapes, ranges,
    determinism, read order and causality for every registered one. If `docs/examples.md` names it under **Needs**, that
    example must now pass.

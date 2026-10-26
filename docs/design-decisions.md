@@ -137,3 +137,18 @@ separate ramp. Changed:
   batch starts from a scaffold and ends with numbers checked by hand.
 - **Committed files stand on their own.** `docs/ecosystem.md` carries the ecosystem's rules; nothing committed points at a
   folder outside the repository.
+
+## Decided in C2a
+
+- **Only the input mechanism and `points` now; `events` comes with C2b, `grid` and `values` with C2c.** *Reason:* each thing
+  arrives with its first consumer. A new kind is one `INPUTS` entry and a row in each contract table.
+- **`Keyframe` lives with the inputs and raises `ParameterError`; its ease is checked when it is built.** *Reason:* it is
+  not a bundle format, and a bad call argument is a parameter error. An error at `points[1].ease` shows at the call, not at
+  the first read. Dicts are accepted, which gives patch files (C4) their parsing.
+- **Nine eases with exact formulas, plus CSS `cubic-bezier(x1, y1, x2, y2)`; no Material names.** *Reason:* each name has a
+  citable formula (Penner; CSS Easing Level 1); the Material names are one `cubic-bezier` each and have no standard to cite.
+  `hold` is the animation-tool name for a step.
+- **`keyframes` has no before/after parameters:** it holds the first value before the first point and the last value from the
+  last. *Reason:* fewer knobs; zero outside the points is one more point.
+- **No wall-clock performance test; the read uses `searchsorted`.** *Reason:* timing assertions are flaky; the algorithm is
+  fixed instead.

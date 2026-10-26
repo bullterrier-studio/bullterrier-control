@@ -35,7 +35,7 @@ The consumer (video): `glow_radius = 2 + 18 * value` px. Ducking a sound on the 
 
 ## 2. A ramp for a progress parameter
 
-An effect should evaporate from 0 to 90 % over five seconds, easing in and out. **Needs:** `keyframes` (batch C2a).
+An effect should evaporate from 0 to 90 % over five seconds, easing in and out.
 
 ```python
 from bullterrier_control import Keyframe, lib

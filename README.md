@@ -16,12 +16,22 @@ clipped.sample([0.0, 0.1, 0.2, 0.3, 1.0])  # values at those times, in seconds
 # array([0.1  , 0.5  , 0.566, 0.366, 0.1  ])
 ```
 
+Keyframes: values at chosen times, eased between ([docs/examples.md](docs/examples.md) works this one out by hand):
+
+```python
+from bullterrier_control import lib
+
+ramp = lib.keyframes(points=[{"t": 0, "value": 0, "ease": "in-out"}, {"t": 5, "value": 0.9}])
+ramp.sample([1.0, 2.5, 7.0])  # the ease belongs to the segment that starts at its point; the last value holds
+# array([0.0936, 0.45  , 0.9   ])
+```
+
 ## Concepts
 
 - **Signal**: a value at every time. `signal.sample(times)` takes a number or an array of times in seconds and returns the
   values in the same shape. Signals combine with `+`, `-`, `*`, `minimum` and `maximum`.
-- **Sources** make a signal from their parameters (and, for some, from events or a beat grid); **shapers** make a signal
-  from a signal. Both are in `lib`: `dir(lib)` lists them, `help(lib.slew)` shows every parameter with its unit and range.
+- **Sources** make a signal from their parameters (and, for some, from data such as keyframes, events or a beat grid);
+  **shapers** make a signal from a signal. Both are in `lib`: `dir(lib)` lists them, `help(lib.slew)` shows every parameter with its unit and range.
 - **Formats**: measurements come in, and curves go out, as one JSON file, a *bundle* ([docs/formats.md](docs/formats.md)):
 
 | Format | Meaning |
@@ -40,8 +50,8 @@ bt-control schema                    # the JSON Schema of a bundle, for tools in
 
 ## Status
 
-Pre-alpha, not yet on PyPI. The formats and the core exist, with the `constant` source and the `clip` and `slew` shapers;
-envelopes on events, keyframes, LFOs, step sequences and noise come next ([docs/roadmap.md](docs/roadmap.md)).
+Pre-alpha, not yet on PyPI. The formats and the core exist, with the sources `constant` and `keyframes` and the shapers
+`clip` and `slew`; envelopes on events, LFOs, step sequences and noise come next ([docs/roadmap.md](docs/roadmap.md)).
 
 ## Development
 

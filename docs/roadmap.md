@@ -10,7 +10,7 @@ working session, **M** two or three. Decisions behind the batches: [design-decis
 | C0 | Formats: Series, Event, Grid, the bundle file | M | done |
 | C1 | Core: Signal, `Rendered`, parameters, registry; `constant`, `clip`, `slew` | M | done |
 | C1.5 | Developer experience: `lib`, `builtin`, errors by kind, `poe new-source`, worked examples | S | done |
-| C2a | Inputs for sources; easing; `keyframes` (example 2) | M | next |
+| C2a | Inputs for sources; easing; `keyframes` (example 2) | M | done |
 | C2b | `envelope`, `latch` (examples 1 and 5) | M | |
 | C2c | `lfo`, `steps` (example 4) | S | |
 | C2d | `noise` (seeded, read at any time) | S | |
@@ -18,8 +18,7 @@ working session, **M** two or three. Decisions behind the batches: [design-decis
 | C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | |
 | C5 | First release | S | |
 
-C2a goes first: it adds the inputs (events, a grid, keyframes, values) every later source takes. C2b, C2c and C2d then
-depend only on C2a and can run in any order. `bullterrier-audio` can run in parallel: the two share only the formats.
+C2a went first: it added the inputs mechanism every later source uses. C2b, C2c and C2d then depend only on C2a and can run in any order. `bullterrier-audio` can run in parallel: the two share only the formats.
 
 ## C0 Formats
 
@@ -65,12 +64,12 @@ test; `docs/ecosystem.md` so the repository stands on its own.
 
 ## C2a Inputs, easing, keyframes
 
-- A source may take named inputs besides its parameters, by keyword: `events` (Events, sorted), `grid` (a Grid), `points`
-  (Keyframes) and `values` (numbers); a closed set, declared as keyword-only arguments of the source function.
-- `Keyframe` (time, value, the ease of the segment that starts there).
-- `easing`: linear, in, out, in-out (smoothstep), cubics, sine, CSS cubic-bezier (named curves and `bezier(x1,y1,x2,y2)`),
-  back (overshoot), step, hold. Formulas written here with their sources cited (CSS Easing Level 1, Robert Penner).
-- `keyframes`: values between points by each segment's ease; holds (or zero) before the first and after the last.
+- The input mechanism: a source or shaper declares named data as keyword-only arguments, from a closed table
+  (`inputs.INPUTS`); the registry checks each value and `help()` lists them. First kind: `points`. Adding one is a table entry.
+- `Keyframe` (time, value, the ease of the segment that starts there); dicts are accepted too.
+- `easing`: linear, hold, in, out, in-out (smoothstep), cubic-in, cubic-out, cubic-in-out, overshoot (Penner back-out), and CSS
+  `cubic-bezier(x1, y1, x2, y2)`. Formulas with sources cited (CSS Easing Level 1, Robert Penner).
+- `keyframes`: values between points by each segment's ease; the first value holds before the first point, the last from the last.
 - Example 2 passes.
 
 ## C2b Envelopes and the latch
@@ -80,6 +79,7 @@ test; `docs/ecosystem.md` so the repository stands on its own.
   events take the larger (`max`) or add up (`sum`); a `label` picks events. Memory O(times + events).
 - Ducking is arithmetic: `1 - depth * envelope`.
 - `latch`: one value before the first (labelled) event, another from it on.
+- Adds the `events` input.
 - Examples 1 and 5 pass.
 
 ## C2c LFOs and step sequences
@@ -87,6 +87,7 @@ test; `docs/ecosystem.md` so the repository stands on its own.
 - `lfo`: sine, triangle, square (with duty), saw, saw-down; `rate` in cycles per second or per beat (through a Grid, so it
   follows tempo changes); `phase`; output between `low` and `high`.
 - `steps`: a repeating list of values, one per step, steps per second or per beat.
+- Adds the `grid` and `values` inputs.
 - Example 4 passes.
 
 ## C2d Noise
