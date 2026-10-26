@@ -35,10 +35,11 @@ SAMPLE_INPUTS: dict[str, object] = {
 SMALLEST_INPUTS: dict[str, object] = {"points": (Keyframe(t=0, value=0.5),)}
 
 
-def make(name: str, inputs: dict[str, object], values: dict[str, object]) -> Signal:
-    """The thing `name` made from the `inputs` it declares (those the table has) and parameter `values`."""
+def make(name: str, inputs: dict[str, object], values: dict[str, object], leave_out: str | None = None) -> Signal:
+    """The thing `name` made from every input it declares, taken from the table `inputs` (a kind without a row is a
+    KeyError: the tables are complete), except `leave_out`, and parameter `values`."""
     thing = registry.get(name)
-    given = {kind: inputs[kind] for kind in thing.inputs if kind in inputs}
+    given = {kind: inputs[kind] for kind in thing.inputs if kind != leave_out}
     return thing(input_signal(), **given, **values) if thing.kind == "shaper" else thing(**given, **values)
 
 
@@ -76,14 +77,23 @@ def test_every_one_gives_finite_values_from_the_smallest_inputs_it_accepts(name)
     assert np.isfinite(make(name, SMALLEST_INPUTS, {}).sample(TIMES)).all()
 
 
+DECLARED_KINDS = sorted({kind for name in ALL for kind in registry.get(name).inputs})
+
+
+@pytest.mark.parametrize("kind", DECLARED_KINDS)
+def test_every_kind_of_input_a_registered_thing_declares_has_a_row_in_both_tables(kind):
+    # without a row an optional input would be left out and no contract test would exercise it
+    assert kind in SAMPLE_INPUTS
+    assert kind in SMALLEST_INPUTS
+
+
 REQUIRED_INPUTS = [(name, kind) for name in ALL for kind, required in registry.get(name).inputs.items() if required]
 
 
 @pytest.mark.parametrize(("name", "kind"), REQUIRED_INPUTS)
 def test_every_required_input_left_out_is_a_type_error_naming_it(name, kind):
-    others = {other: value for other, value in SAMPLE_INPUTS.items() if other != kind}
     with pytest.raises(TypeError, match=kind):
-        make(name, others, {})
+        make(name, SAMPLE_INPUTS, {}, leave_out=kind)
 
 
 @pytest.mark.parametrize("name", ALL)

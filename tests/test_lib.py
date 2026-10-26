@@ -70,3 +70,19 @@ def test_help_of_a_thing_without_inputs_has_no_inputs_block():
     assert text is not None
     assert "Inputs:" not in text
     assert "shaper slew(signal, **values) -> Signal" in text
+
+
+def test_help_of_a_thing_without_parameters_has_no_parameters_heading(throwaway_registry):
+    class Nothing(Params):
+        """No parameters."""
+
+    @source(params=Nothing)
+    def silence(params: Nothing) -> Signal:
+        """A signal that is always 0."""
+        return Constant(0.0)
+
+    text = silence.__doc__
+    assert text is not None
+    assert "A signal that is always 0." in text
+    assert "Parameters:" not in text
+    assert "Parameters:" in lib.slew.__doc__  # type: ignore[operator]  # a thing with parameters still lists them

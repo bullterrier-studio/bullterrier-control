@@ -115,12 +115,14 @@ def _documentation(registered: "Registered[Any]", described: str) -> str:
         for name, required in registered.inputs.items():
             lines += [f"  {name} ({'required' if required else 'optional'})", f"      {INPUTS[name].doc}"]
         lines.append("")
-    lines.append("Parameters:")
-    for one in registered.params_model.fields_doc():
+    fields = registered.params_model.fields_doc()
+    if fields:
+        lines.append("Parameters:")
+    for one in fields:
         measure = f" ({one.unit}, {one.minimum:g} to {one.maximum:g})" if one.unit else ""
         lines.append(f"  {one.name}{measure}, default {one.default!r}{', advanced' if one.advanced else ''}")
         lines.append(f"      {one.doc}")
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip()
 
 
 _TABLE: dict[str, Registered[Any]] = {}

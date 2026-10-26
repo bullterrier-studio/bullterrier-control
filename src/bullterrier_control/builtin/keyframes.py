@@ -11,6 +11,8 @@ class KeyframesParams(Params):
 
 
 class _Keyframed(Signal):
+    """The signal through the points, with the ends held."""
+
     def __init__(self, points: tuple[Keyframe, ...]) -> None:
         # A read falls in one of n + 1 segments for n points: segment s lies between point s - 1 and point s. The first
         # and the last are flat, so the first value holds before the first point and the last value from the last
@@ -29,7 +31,8 @@ class _Keyframed(Signal):
         # "right": a read exactly at a point belongs to the segment that starts there, so it gives that point's value
         segment = np.searchsorted(self._starts[1:], times, side="right")
         progress = (times - self._starts[segment]) / self._span[segment]
-        # one call per distinct ease, not per point: a curve can be a Bezier solved by iteration
+        # one call per distinct ease, not per point: a curve can be a Bezier solved by iteration. That costs one mask
+        # over the reads per distinct ease: fine until there are thousands of distinct eases.
         eased = np.empty_like(progress)
         ease_of_read = self._ease_of_segment[segment]
         for code, ease in enumerate(self._curves):
