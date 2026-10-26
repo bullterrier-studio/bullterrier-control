@@ -1,0 +1,49 @@
+{
+  "$defs": {
+    "node": {
+      "additionalProperties": {
+        "type": [
+          "number",
+          "string",
+          "boolean",
+          "array",
+          "object"
+        ]
+      },
+      "properties": {
+        "signal": {
+          "type": "string"
+        },
+        "use": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "use"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "patternProperties": {
+    "^(?!(format|version|events|series|grid)$)[a-z][a-z0-9_]*$": {
+      "$ref": "#/$defs/node"
+    }
+  },
+  "properties": {
+    "format": {
+      "const": "bullterrier-control/patch"
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "format",
+    "version"
+  ],
+  "title": "Patch",
+  "type": "object"
+}

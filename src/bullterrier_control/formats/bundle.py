@@ -25,7 +25,7 @@ from .grid import Grid
 from .model import FormatModel, read_text
 from .series import Series
 
-__all__ = ["NAME_PATTERN", "Bundle", "bundle_schema", "load", "save"]
+__all__ = ["NAME_PATTERN", "Bundle", "bundle_schema", "dumps", "load", "save"]
 
 # the name of a series or an event list: `bass`, `stem.drums`, `kick`
 NAME_PATTERN = r"^[a-z0-9][a-z0-9_.-]*$"
@@ -106,10 +106,14 @@ def load(path: Path) -> Bundle:
         raise FormatError(f"{path}: cannot be read as JSON ({error})") from None
 
 
+def dumps(bundle: Bundle) -> str:
+    """The JSON text of `bundle`, ending in a newline; absent optional fields are left out."""
+    return json.dumps(bundle.model_dump(mode="json", exclude_none=True), ensure_ascii=False) + "\n"
+
+
 def save(bundle: Bundle, path: Path) -> None:
     """Write `bundle` to `path` as UTF-8 JSON, replacing the file; absent optional fields are left out."""
-    data = bundle.model_dump(mode="json", exclude_none=True)
-    path.write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8")
+    path.write_text(dumps(bundle), encoding="utf-8")
 
 
 def bundle_schema() -> dict[str, object]:

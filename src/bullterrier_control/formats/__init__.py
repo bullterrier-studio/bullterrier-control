@@ -1,6 +1,6 @@
 """The plain-data formats this package owns (docs/formats.md)."""
 
-from .bundle import NAME_PATTERN, Bundle, bundle_schema, load, save
+from .bundle import NAME_PATTERN, Bundle, bundle_schema, dumps, load, save
 from .event import Event
 from .grid import Grid
 from .model import FormatModel, read_text
@@ -16,6 +16,7 @@ __all__ = [
     "Series",
     "Unit",
     "bundle_schema",
+    "dumps",
     "load",
     "read_text",
     "save",

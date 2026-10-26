@@ -1,36 +1,63 @@
-"""Command line: `bt-control validate`, `schema` and `list`.
+"""Command line: `bt-control validate`, `schema`, `list` and `sample`.
 
-A thin layer over the library; no logic of its own. `validate` loads each file as a Bundle and reports it; `schema`
-prints the JSON Schema of a Bundle; `list` shows the registered sources, shapers and operations, as text or as JSON.
+A thin layer over the library; no logic of its own. `validate` loads each file as a Bundle (or, if it ends in `.toml`,
+a Patch) and reports it; `schema` prints the JSON Schema of a Bundle or a Patch; `list` shows the registered sources,
+shapers and operations, as text or as JSON; `sample` reads the signals of a patch at evenly spaced times.
 """
 
 import argparse
+import csv
 import json
+import math
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
+import numpy as np
+
 from . import __version__
-from .errors import BullterrierControlError
-from .formats import bundle_schema, load
+from .errors import BullterrierControlError, InvalidError, UnknownNameError
+from .formats import Bundle, Series, Unit, bundle_schema, dumps, load
+from .patch import load_patch, patch_schema
 from .registry import all_registered, get
+from .rounding import TOLERANCE
+from .signal import Signal
+
+# a terminal or a pipe cannot use more rows than this, and a typo (`--rate 1e9`) should not fill the memory first
+_MOST_SAMPLES = 10_000_000
 
 _EXIT_CODES = """\
 exit codes:
   0    success
-  1    a file is not a valid bundle, a name is unknown, or a file cannot be read (reason after "error:" on stderr)
-  2    wrong usage: an unknown command or option (argparse explains)
+  1    a file is not a valid bundle or patch, a name is unknown, or a file cannot be read ("error:" on stderr)
+  2    wrong usage: an unknown command or option, or a range that makes no sense (argparse explains)
 
 Errors go to stderr, results to stdout.
 """
+
+
+def _seconds(text: str) -> float:
+    """An argparse type: a finite number of seconds from 0 up."""
+    value = float(text)
+    if not math.isfinite(value) or value < 0:
+        raise argparse.ArgumentTypeError(f"must be a finite number of seconds, 0 or more (got {text!r})")
+    return value
+
+
+def _hertz(text: str) -> float:
+    """An argparse type: a finite number of samples a second, above 0."""
+    value = float(text)
+    if not math.isfinite(value) or value <= 0:
+        raise argparse.ArgumentTypeError(f"must be a finite number above 0 (got {text!r})")
+    return value
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run the command line with `argv` (default: `sys.argv[1:]`) and return the exit code.
 
     Results go to stdout, errors to stderr. Without arguments it prints the help. A failure the user can fix (a file
-    that is not a valid bundle or cannot be read, a name that is not registered) prints `error: <what is wrong>` and
-    makes the exit code 1; `validate` still checks every file. See the exit codes in `--help`.
+    that is not a valid bundle or patch or cannot be read, a name that is not registered) prints `error: <what is
+    wrong>` and makes the exit code 1; `validate` still checks every file. See the exit codes in `--help`.
     """
     parser = argparse.ArgumentParser(
         prog="bt-control",
@@ -44,16 +71,28 @@ def main(argv: list[str] | None = None) -> int:
 
     def command(name: str, handler: Callable[[argparse.Namespace], int], summary: str) -> argparse.ArgumentParser:
         added = commands.add_parser(name, help=summary)
-        added.set_defaults(handler=handler)
+        added.set_defaults(handler=handler, usage_error=added.error)
         return added
 
-    command("validate", _validate, "check that files are valid bundles (docs/formats.md)").add_argument(
-        "files", nargs="+", type=Path, metavar="FILE", help="a bundle file (JSON)"
+    command("validate", _validate, "check that files are valid bundles or (.toml) patches").add_argument(
+        "files", nargs="+", type=Path, metavar="FILE", help="a bundle (JSON) or a patch (TOML) file"
     )
-    command("schema", _schema, "print the JSON Schema of a bundle")
+    command("schema", _schema, "print the JSON Schema of a bundle or a patch").add_argument(
+        "format", nargs="?", choices=["bundle", "patch"], default="bundle", help="which one (default: bundle)"
+    )
     listing = command("list", _list, "list the sources, shapers and operations, or show some in full")
     listing.add_argument("names", nargs="*", metavar="NAME", help="show only these, with every parameter")
     listing.add_argument("--json", action="store_true", help="describe them as JSON, for another tool")
+    sampling = command("sample", _sample, "read the signals of a patch at evenly spaced times")
+    sampling.add_argument("patch", type=Path, metavar="PATCH", help="a patch file (TOML)")
+    sampling.add_argument("nodes", nargs="*", metavar="NODE", help="the nodes to read (default: every signal)")
+    sampling.add_argument("--bundle", type=Path, metavar="FILE", help="the bundle its events, series and grid are in")
+    sampling.add_argument(
+        "--from", dest="start", type=_seconds, default=0.0, metavar="S", help="first time (default 0)"
+    )
+    sampling.add_argument("--to", dest="stop", type=_seconds, required=True, metavar="S", help="last time, in seconds")
+    sampling.add_argument("--rate", type=_hertz, required=True, metavar="HZ", help="samples a second")
+    sampling.add_argument("--csv", action="store_true", help="write CSV (t, then a column per node), not a bundle")
     args = parser.parse_args(argv)
     if args.handler is None:
         parser.print_help()
@@ -70,8 +109,8 @@ def _validate(args: argparse.Namespace) -> int:
     failed = False
     for path in args.files:
         try:
-            load(path)
-        # a file that cannot be read (OSError) or is not a bundle (BullterrierControlError) is the user's to fix;
+            load_patch(path) if path.suffix == ".toml" else load(path)
+        # a file that cannot be read (OSError) or is not valid (BullterrierControlError) is the user's to fix;
         # the other files are still checked
         except (BullterrierControlError, OSError) as error:
             print(f"error: {error}", file=sys.stderr)
@@ -82,7 +121,8 @@ def _validate(args: argparse.Namespace) -> int:
 
 
 def _schema(args: argparse.Namespace) -> int:
-    print(json.dumps(bundle_schema(), indent=2, sort_keys=True))
+    schema = bundle_schema() if args.format == "bundle" else patch_schema()
+    print(json.dumps(schema, indent=2, sort_keys=True))
     return 0
 
 
@@ -97,4 +137,48 @@ def _list(args: argparse.Namespace) -> int:
         kind_width = max(len(found.kind) for found in chosen.values())
         for name, found in chosen.items():
             print(f"{name:<{width}}  {found.kind:<{kind_width}}  {found.summary}")
+    return 0
+
+
+def _signals(args: argparse.Namespace) -> dict[str, Signal]:
+    """The signal nodes of the patch named by `args` (the ones asked for, else all), built against its bundle."""
+    patch = load_patch(args.patch)
+    built = patch.build(load(args.bundle) if args.bundle else None)
+    names = args.nodes or [name for name, node in patch.nodes.items() if node.returns == "signal"]
+    for name in names:
+        if name not in patch.nodes:
+            raise UnknownNameError(f"unknown node {name!r}; the patch has: {', '.join(patch.nodes) or 'none'}")
+        if patch.nodes[name].returns != "signal":
+            raise InvalidError(f"{name}: gives {patch.nodes[name].returns}, not a signal")
+    return {name: built[name] for name in names}
+
+
+def _times(args: argparse.Namespace) -> np.ndarray:
+    """The times `--from` to `--to` at `--rate` a second; the end is the last one if it falls on a sample time to
+    within `TOLERANCE`, else the last sample time before it."""
+    if args.stop < args.start:
+        args.usage_error(f"--to ({args.stop}) is before --from ({args.start})")
+    intervals = (args.stop - args.start + TOLERANCE) * args.rate
+    if intervals >= _MOST_SAMPLES:
+        args.usage_error(
+            f"that is {intervals:.3g} samples; at most {_MOST_SAMPLES} (use a lower --rate or a shorter range)"
+        )
+    return args.start + np.arange(int(np.floor(intervals)) + 1) / args.rate
+
+
+def _sample(args: argparse.Namespace) -> int:
+    times = _times(args)
+    signals = _signals(args)
+    values = {name: signal.sample(times) for name, signal in signals.items()}
+    if args.csv:
+        writer = csv.writer(sys.stdout, lineterminator="\n")
+        writer.writerow(["t", *values])
+        writer.writerows([float(t), *(float(column[i]) for column in values.values())] for i, t in enumerate(times))
+        return 0
+    series = {
+        name: Series(start=args.start, rate=args.rate, values=tuple(column.tolist()), unit=Unit.RATIO)
+        for name, column in values.items()
+    }
+    source = f"bt-control {__version__} sample {args.patch.name}"
+    sys.stdout.write(dumps(Bundle(format="bullterrier-control/bundle", version=1, source=source, series=series)))
     return 0

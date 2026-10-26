@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import re
 import tomllib
@@ -6,8 +8,9 @@ from pathlib import Path
 import jsonschema
 import pytest
 
-from bullterrier_control import Bundle, Series, Unit, registry, save
+from bullterrier_control import Bundle, Series, Unit, load, load_patch, registry, save
 from bullterrier_control.cli import main
+from bullterrier_control.patch import patch_schema
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -30,10 +33,11 @@ def test_help_names_the_program_and_lists_the_exit_codes(capsys):
     assert stop.value.code == 0
     assert "bt-control" in out
     assert re.search(r"exit codes:\n\s+0\s+success", out)
-    assert re.search(r"\n\s+1\s+a file is not a valid bundle", out)
+    assert re.search(r"\n\s+1\s+a file is not a valid bundle or patch", out)
     assert "validate" in out
     assert "schema" in out
     assert "list" in out
+    assert "sample" in out
 
 
 def test_no_arguments_print_the_help_and_succeed(capsys):
@@ -159,3 +163,199 @@ def test_list_json_of_an_unknown_name_prints_nothing_on_stdout_and_fails(capsys)
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "nosuch" in captured.err
+
+
+# ---------------------------------------------------------------- sample
+
+GLOW = ROOT / "examples" / "glow.toml"
+KICKS = ROOT / "examples" / "kicks.json"
+# kicks at 0.5, 1.0 (0.6: below the patch's threshold) and 1.5 s; a flare of time constant 0.25 s on each strong one
+E = [1.0, 0.36787944117144233, 0.1353352832366127, 0.049787068367863944]  # e^0, e^-1, e^-2, e^-3
+
+
+def a_patch(folder: Path, text: str, name: str = "look.toml") -> Path:
+    path = folder / name
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+LEVELS = """\
+format = "bullterrier-control/patch"
+version = 1
+
+[low]
+use = "constant"
+value = 0.25
+
+[high]
+use = "constant"
+value = 0.75
+"""
+
+
+def rows_of(output: str) -> list[list[str]]:
+    return list(csv.reader(io.StringIO(output)))
+
+
+def test_sample_csv_gives_a_row_per_time_with_the_signal_nodes_as_columns(capsys):
+    argv = ["sample", str(GLOW), "--bundle", str(KICKS), "--to", "2", "--rate", "4", "--csv"]
+    assert main(argv) == 0
+    rows = rows_of(capsys.readouterr().out)
+    assert rows[0] == ["t", "glow"]  # the node that gives events is not a column
+    assert [float(row[0]) for row in rows[1:]] == [0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+    # nothing before the first kick; 1 at it, then e^-1, e^-2, e^-3 a quarter second apart (the 0.6 kick is not strong
+    # enough); the third kick at 1.5 s beats the first one's tail
+    expected = [0.0, 0.0, E[0], E[1], E[2], E[3], E[0], E[1], E[2]]
+    assert [float(row[1]) for row in rows[1:]] == pytest.approx(expected, abs=1e-9)
+
+
+def test_sample_json_is_a_bundle_with_a_series_per_node_that_starts_where_the_range_does(capsys):
+    argv = ["sample", str(GLOW), "--bundle", str(KICKS), "--from", "0.5", "--to", "1.5", "--rate", "4"]
+    assert main(argv) == 0
+    bundle = Bundle.parse(json.loads(capsys.readouterr().out))
+    series = bundle.series["glow"]
+    assert (series.start, series.rate, series.unit) == (0.5, 4, Unit.RATIO)
+    assert list(series.values) == pytest.approx([E[0], E[1], E[2], E[3], E[0]], abs=1e-9)
+    assert "glow.toml" in (bundle.source or "")
+    assert str(ROOT) not in (bundle.source or "")  # the name of the patch, not a path on this machine
+
+
+TIMES = {
+    "ten samples a second for one second": (["--to", "1", "--rate", "10"], 11, 1.0),
+    "a last time that float rounding puts a hair short": (["--to", "0.29", "--rate", "100"], 30, 0.29),
+    "a range that starts later": (["--from", "0.5", "--to", "1", "--rate", "2"], 2, 1.0),
+    "a last time between two samples is left out": (["--to", "1.05", "--rate", "10"], 11, 1.0),
+    "an empty range is one sample": (["--from", "2", "--to", "2", "--rate", "5"], 1, 2.0),
+}
+
+
+@pytest.mark.parametrize(("flags", "count", "last"), TIMES.values(), ids=TIMES.keys())
+def test_sample_reads_every_sample_time_from_the_start_up_to_and_including_the_end(
+    flags, count, last, tmp_path, capsys
+):
+    patch = a_patch(tmp_path, LEVELS)
+    assert main(["sample", str(patch), "low", "--csv", *flags]) == 0
+    times = [float(row[0]) for row in rows_of(capsys.readouterr().out)[1:]]
+    assert len(times) == count
+    assert times[-1] == pytest.approx(last, abs=1e-12)
+
+
+def test_sample_gives_each_chosen_node_in_the_order_asked(tmp_path, capsys):
+    patch = a_patch(tmp_path, LEVELS)
+    assert main(["sample", str(patch), "high", "low", "--to", "0.5", "--rate", "2", "--csv"]) == 0
+    assert rows_of(capsys.readouterr().out) == [
+        ["t", "high", "low"],
+        ["0.0", "0.75", "0.25"],
+        ["0.5", "0.75", "0.25"],
+    ]
+    assert main(["sample", str(patch), "--to", "0.5", "--rate", "2", "--csv"]) == 0
+    assert rows_of(capsys.readouterr().out)[0] == ["t", "low", "high"]  # every signal node, in file order
+
+
+NODE_ERRORS = {
+    "a node that gives events": (["strong"], "strong", "events"),
+    "a node that is not in the patch": (["nosuch"], "nosuch", "glow"),
+}
+
+
+@pytest.mark.parametrize(("nodes", "named", "also"), NODE_ERRORS.values(), ids=NODE_ERRORS.keys())
+def test_sample_of_a_node_that_cannot_be_sampled_is_an_error_naming_it(nodes, named, also, capsys):
+    argv = ["sample", str(GLOW), *nodes, "--bundle", str(KICKS), "--to", "1", "--rate", "4"]
+    assert main(argv) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("error: ")
+    assert named in captured.err
+    assert also in captured.err  # what is wrong, or what the patch does have
+
+
+def test_sample_of_a_patch_that_needs_a_bundle_without_one_names_the_node_and_key(capsys):
+    assert main(["sample", str(GLOW), "--to", "1", "--rate", "4"]) == 1
+    captured = capsys.readouterr()
+    assert captured.err.startswith("error: ")
+    assert "strong.events" in captured.err
+    assert "bundle" in captured.err
+
+
+def test_sample_of_a_broken_patch_is_an_error_naming_the_file_and_the_key(tmp_path, capsys):
+    patch = a_patch(tmp_path, GLOW.read_text(encoding="utf-8").replace("0.25", "-1"))
+    assert main(["sample", str(patch), "--bundle", str(KICKS), "--to", "1", "--rate", "4"]) == 1
+    err = capsys.readouterr().err
+    assert str(patch) in err
+    assert "glow.decay" in err
+    assert "Traceback" not in err
+
+
+USAGE = {
+    "an end before the start": ["--from", "2", "--to", "1", "--rate", "4"],
+    "a rate of zero": ["--to", "1", "--rate", "0"],
+    "a negative rate": ["--to", "1", "--rate", "-4"],
+    "a start before time 0": ["--from", "-1", "--to", "1", "--rate", "4"],
+    "an end that is not a number": ["--to", "nan", "--rate", "4"],
+    "an end that is infinite": ["--to", "inf", "--rate", "4"],
+    "no end": ["--rate", "4"],
+    "no rate": ["--to", "1"],
+    "more samples than a terminal could show": ["--to", "1e12", "--rate", "1000"],
+}
+
+
+@pytest.mark.parametrize("flags", USAGE.values(), ids=USAGE.keys())
+def test_sample_with_a_range_that_makes_no_sense_is_a_usage_error(flags, tmp_path, capsys):
+    patch = a_patch(tmp_path, LEVELS)
+    with pytest.raises(SystemExit) as stop:
+        main(["sample", str(patch), *flags])
+    assert stop.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "usage:" in captured.err
+
+
+# ---------------------------------------------------------------- patches in validate and schema
+
+
+def test_validate_checks_a_toml_file_as_a_patch_and_any_other_as_a_bundle(tmp_path, capsys):
+    bad = a_patch(tmp_path, GLOW.read_text(encoding="utf-8").replace("0.25", "-1"), "bad.toml")
+    assert main(["validate", str(GLOW), str(KICKS), str(bad)]) == 1
+    captured = capsys.readouterr()
+    assert f"{GLOW}: ok" in captured.out
+    assert f"{KICKS}: ok" in captured.out
+    assert "bad.toml" in captured.err
+    assert "glow.decay" in captured.err
+
+
+def test_schema_prints_the_bundle_schema_by_default_and_the_patch_schema_when_asked(capsys):
+    assert main(["schema"]) == 0
+    assert json.loads(capsys.readouterr().out)["title"] == "Bundle"
+    assert main(["schema", "bundle"]) == 0
+    assert json.loads(capsys.readouterr().out)["title"] == "Bundle"
+    assert main(["schema", "patch"]) == 0
+    assert json.loads(capsys.readouterr().out) == json.loads(json.dumps(patch_schema()))
+
+
+def test_schema_of_something_else_is_a_usage_error(capsys):
+    with pytest.raises(SystemExit) as stop:
+        main(["schema", "recipe"])
+    assert stop.value.code == 2
+    assert "recipe" in capsys.readouterr().err
+
+
+PATCH_SCHEMA_FILE = ROOT / "schemas" / "patch-1.schema.json"
+
+
+def test_the_committed_patch_schema_accepts_a_valid_patch_and_rejects_a_misshapen_one():
+    schema = json.loads(PATCH_SCHEMA_FILE.read_text(encoding="utf-8"))
+    patch = tomllib.loads(GLOW.read_text(encoding="utf-8"))
+    jsonschema.validate(patch, schema)
+    for misshapen in (
+        {**patch, "version": 2},
+        {**patch, "Loud": {"use": "constant"}},
+        {**patch, "level": {"value": 1}},
+        {key: value for key, value in patch.items() if key != "format"},
+    ):
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(misshapen, schema)
+
+
+def test_the_example_patch_is_valid_and_builds_against_the_example_bundle():
+    built = load_patch(GLOW).build(load(KICKS))
+    assert built["glow"].sample(0.5) == 1.0

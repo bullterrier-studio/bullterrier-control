@@ -1,0 +1,13 @@
+format = "bullterrier-control/patch"
+version = 1
+
+# kicks of the bundle that are strong enough, then a flare on each that fades with a time constant of 0.25 s
+[strong]
+use = "select"
+events = "events.kick"
+threshold = 0.7
+
+[glow]
+use = "envelope"
+events = "strong"
+decay = 0.25

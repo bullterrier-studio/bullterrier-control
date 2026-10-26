@@ -54,7 +54,7 @@ class SignalError(BullterrierControlError, ValueError):
 
 
 class UnknownNameError(BullterrierControlError, KeyError):
-    """No source, shaper or operation is registered under that name; the message lists the names that are."""
+    """No source, shaper, operation or patch node has that name; the message lists the names that exist."""
 
     def __str__(self) -> str:
         """The message as written (a `KeyError` would show it in quotes)."""
