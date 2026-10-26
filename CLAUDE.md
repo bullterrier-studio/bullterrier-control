@@ -7,8 +7,9 @@ what DAWs call automation, animation tools keyframes and synthesizers modulation
 **Write docs tersely.** This file, the README, `docs/`, docstrings, reports and briefs: state the rule or fact, drop preamble,
 repetition and justification a reader does not need to act. Reasons go in `docs/design-decisions.md`, once.
 
-**State: scaffold only.** The project shell and gates exist; no signal, source or shaper is written yet. The first work is the
-specification of the formats below in `docs/formats.md`, before any code that reads or writes them.
+**State: scaffold only.** The project shell and gates exist; no signal, source or shaper is written yet. Work goes in batches,
+each planned before it starts: `docs/roadmap.md` (next: C0, the formats). Earlier experiments with code worth reusing are listed
+in `.local/prior-work.md` (git-ignored, this machine only; read it before writing a source, shaper or format).
 
 ## Responsibility
 
@@ -29,11 +30,13 @@ video knows the others.
 Test for where a number belongs: would it change if the look changed? If yes, it is control's (smoothing times, ranges, gates).
 
 **No sound, no pixels, no frames:** time is in seconds everywhere. No fps, frame number, sample rate of audio, or file format of a
-picture or sound in code, parameters or docs. A reader asks for a value at a time; the consumer chooses the times.
+picture or sound in code, parameters or docs. A reader asks for a value at a time; the consumer chooses the times. Musical time is
+a parameter unit, not a second clock: a value in `beats` is turned into seconds through a Grid.
 
 **Formats this package owns** (plain data, documented and versioned here; changing one is a breaking release): **Series** (values at
 a fixed rate from a start time, with a unit and a documented scaling), **Event** (a moment in seconds, a strength, an optional
-label or pitch), **Grid** (tempo, beat times, downbeat times). `bullterrier-audio` writes them **without importing this package**:
+duration, label and pitch: one type for onsets, beats, notes and sections), **Grid** (tempo map, beat and downbeat times, meter;
+converts beats and seconds). `bullterrier-audio` writes them **without importing this package**:
 the schema is a file here, audio checks its output against a copy. A format is never shared as code.
 
 ## Names
@@ -56,6 +59,8 @@ errors     BullterrierControlError and its subclasses     (imports nothing from 
 Planned, each arriving with its first consumer (`vulture` fails on unused code): formats (Series, Event, Grid) at the bottom, then
 modulation sources and shapers as **plugins registered by name** (one vertical slice per source, joined by its name; `tests/`
 mirrors `src/`), a registry, and the app layer on top. Pipes-and-filters: a shaper is a pure function `signal -> signal`.
+**Evaluation:** a signal is read with `sample(times)` in seconds. Analytic sources (keyframes, LFOs, envelopes on events) are exact
+at any time; stateful shapers (slew, followers) render on an internal grid at a declared rate and are read by interpolation.
 
 ## The rules
 
@@ -63,7 +68,8 @@ mirrors `src/`), a registry, and the app layer on top. Pipes-and-filters: a shap
    owned by one package, not code.
 2. **Sources and shapers never import each other.** Shared numeric code goes to a module named for its concept (`interpolation`,
    `smoothing`, `noise`), never `utils`/`common`/`helpers`. Extract when a second consumer needs it.
-3. **Parameters are declared once**, with unit, range and description, and drive validation, defaults and generated docs.
+3. **Parameters are declared once** as a pydantic model (as in bullterrier-image), with unit, range and description, and drive
+   validation, defaults and generated docs. Units include `seconds`, `beats` (through a Grid), `hz`, `cycles`, `fraction`.
 4. **Open/closed:** adding a source or shaper creates files named for it and modifies none.
 5. **No hidden tunables.** Every value that shapes a result is a named, documented parameter in the field's own terms (attack,
    release, rate, depth, phase, slew). Exempt: mathematical and standard constants, each cited in a comment.
@@ -78,9 +84,10 @@ mirrors `src/`), a registry, and the app layer on top. Pipes-and-filters: a shap
 
 - `src/` holds only code and the data it runs on. Tests, examples and docs live outside it.
 - Public API has `__all__`: `bullterrier_control` and the modules named there. Everything else is internal.
-- Runtime dependency: none yet; numpy only, declared with the first signal (`deptry` fails on a dependency nothing imports).
-  Adding another needs a reason in `docs/design-decisions.md`: control must install without librosa, torch, Pillow or any media
-  library.
+- Runtime dependencies: none yet; numpy and pydantic, each declared with the first code that imports it (`deptry` fails on a
+  dependency nothing imports). Adding another needs a reason in `docs/design-decisions.md`: control must install without
+  librosa, torch, Pillow or any media library.
+- Offline only in v1: no live clock, MIDI or OSC output.
 - No backwards-compatibility shims, aliases or re-exports before 1.0 unless the owner asks: change the callers.
 - The CLI catches `BullterrierControlError` and never prints a traceback for a user's mistake (added with the first command that can
   raise it: no `try` for an error nothing raises).

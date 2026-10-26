@@ -12,3 +12,6 @@ dist/
 
 # agent worktrees (created by the harness)
 .claude/
+
+# notes about this machine: where earlier experiments live (paths outside the repository), for agents to reuse
+.local/

@@ -8,14 +8,14 @@ business: an image effect, a synthesizer, a light.
 
 ## Status
 
-Pre-alpha. The project is scaffolded and gated; no signal exists yet. The first piece is the specification of the three
-plain-data formats this package owns, in `docs/formats.md` (not written yet):
+Pre-alpha. The project is scaffolded and gated; no signal exists yet. The work is planned in batches
+([docs/roadmap.md](docs/roadmap.md)); the first is the specification of the three plain-data formats this package owns:
 
 | Format | Meaning |
 |---|---|
 | Series | Values at a fixed rate, from a start time, with a unit |
-| Event | A moment in seconds with a strength and an optional label |
-| Grid | Tempo, beat times and downbeat times |
+| Event | A moment in seconds with a strength, and optionally a duration, label and pitch |
+| Grid | Tempo map, beat and downbeat times; converts beats and seconds |
 
 ```bash
 uv sync

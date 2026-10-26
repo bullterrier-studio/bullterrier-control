@@ -18,13 +18,28 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
 - **Series, Event and Grid are plain data owned here.** `bullterrier-audio` writes them without importing this package; it
   validates its output against a copy of the schema published here. *Reason:* the ecosystem rule is that packages connect through
   data formats, not code, so audio stays installable without control. *Cost:* the format is known in two places; it is kept tiny
-  and each side tests against the schema. Not written yet: `docs/formats.md` is the first piece of work.
+  and each side tests against the schema. Specified in `docs/formats.md` (batch C0).
 
 ## Dependencies
 
-- **numpy is the only runtime dependency, added with the first signal** (deptry fails on a dependency nothing imports, so
-  none is declared in the scaffold). *Reason:* control must install in a second on a machine with no media libraries, and
-  `bullterrier-audio` carries the heavy ones (librosa, torch).
+- **numpy and pydantic are the runtime dependencies, each added with the first code that imports it** (deptry fails on a
+  dependency nothing imports, so none is declared in the scaffold). *Reason:* control must install in a second on a machine
+  with no media libraries, and `bullterrier-audio` carries the heavy ones (librosa, torch). pydantic declares parameters the
+  way bullterrier-image does, so one parameter description has one shape across the ecosystem.
+
+## Agreed with the owner (2026-10-26)
+
+- **Musical time is a unit, resolved through a Grid.** Time stays in seconds; a parameter may be in `beats` (a release of
+  0.3 beats, an LFO at 1 cycle per beat). *Reason:* music is written in beats (the Sonic Pi experiment works only in beats),
+  and one clock in seconds keeps signals readable by anyone. *Consequence:* Grid is a format of this package.
+- **One Event type with an optional duration.** Onsets, beats, notes, sections and risers are all Events; a moment has no
+  duration. *Reason:* one type is a smaller format than Event plus Span, and every consumer handles both the same way.
+- **Analytic where possible, rendered where stateful.** Keyframes, LFOs and envelopes on events are exact at any time; slew,
+  followers and other stateful shapers render on an internal grid at a declared rate and are read by interpolation.
+  *Reason:* random access in seconds with no hidden history, without forbidding the shapers every DAW has.
+- **Parameters are pydantic models, as in bullterrier-image.**
+- **Offline only in v1.** Real-time output (a live clock to MIDI or OSC) is later, as an optional extra.
+- **Order:** formats first (C0), then control's core and audio's analysis in parallel (`docs/roadmap.md`).
 
 ## Project
 
