@@ -297,3 +297,55 @@ separate ramp. Changed:
   above that error for times under a day and far below any time that means something; a bound missed by a millionth
   is still missed. A position at 0 within the tolerance is set to 0 exactly. The sample-relative `_ROUNDING` of `signal`
   and `rendered` (shares of a sample) is another quantity and stays.
+
+## Decided in C4
+
+- **A patch names signals only, and is built against a bundle given later.** A patch is a look, a bundle one song's
+  measurements, so one patch serves every song (`Patch.build(bundle)`, `--bundle FILE`). *Reason:* control shapes and the
+  consumer routes (ecosystem rule); a patch that said what a signal drives, or which song it was for, would be a project
+  file, which is video's. A top-level key that is not a node, and a node key that is no input or parameter, are refused,
+  so a mapping cannot creep in. A video project embeds a patch as a table (`Patch.parse`) and refers to its nodes by name.
+- **Inputs are inline data or references: `events.<name>`, `series.<name>`, `grid` (paths into the bundle) or a node
+  above.** *Reason:* the paths are the ones error messages already use, and a new series in audio's output can never clash
+  with a node name, because `events`, `series` and `grid` (and `format`, `version`) are not node names. A node uses only
+  the nodes above it: no cycles, and a patch reads top to bottom like a recipe. A reference must fit the key (events for
+  `events`, a series for `series`, the grid for `grid`, a signal or a series for `signal`); `points` and `values` are
+  inline only, since no bundle holds them.
+- **A series where a signal is wanted is read linearly.** *Reason:* the common case (a measured curve into `slew`); `hold`
+  interpolation waits for a consumer, and a patch can reach it by a source of `steps`.
+- **A node's keys are `use`, `signal`, inputs and parameters; a parameter cannot be named `use` or `signal`.** *Reason:*
+  one flat table reads best in TOML, and the registry refuses the clash once, as it does for input names.
+- **The header is `format = "bullterrier-control/patch"` and `version = 1`, like the bundle.** *Reason:* a reader tells the
+  two files apart by `format`, and the versioning rules are the bundle's.
+- **Every problem of a patch is reported together, as `<node>.<key>: rule`; everything that needs no bundle is checked
+  when the patch is read.** *Reason:* a patch is written by hand and checked before a song exists; one error at a time
+  makes a long patch a long conversation. Only the names a bundle must hold wait for `build`.
+- **The patch schema is written by hand from the reader's own constants, not generated from a model.** *Reason:* the keys
+  of a patch are the node names, which no model declares; the node-name rule and the header live once in `patch.py`. The
+  schema is structural; what depends on the registry is `bt-control list --json`'s.
+- **`list --json` describes a thing with the JSON Schema of its parameter model, in the shape bullterrier-image gives its
+  parameters** (`minimum`, `maximum`, `enum`, `default`, `description`, and the extras `unit`, `advanced`, `cyclic`).
+  *Reason:* video reads the parameter description of every package to map a signal onto a parameter; one shape means one
+  reader. The range is stated once (the duplicate `min` and `max` extras went), and `returns` is lower case everywhere
+  (`signal`, `events`, `series`). No wrapper or version key, as in image. The unit names are stable: a consumer maps a
+  signal onto its own units (pixels, degrees) from them.
+- **`cyclic` means what it does in image:** a number whose value one cycle further is the same position wraps. Here it is a
+  decimal in `cycles` whose range is exactly one cycle (`max == min + 1`); any finite real is accepted and wrapped into
+  the range, and a value inside it, either end included, is kept as given. `lfo.phase` is the first. The schema keeps the
+  one-cycle `minimum` and `maximum`, so a generic validator refuses a value the model wraps: a consumer wraps first.
+  *Reason:* a rotating phase needs no wrap of its own, and the same flag has one meaning in every package.
+- **`sample` includes the last time when it falls on a sample time to within a nanosecond** (`rounding.TOLERANCE`), and
+  refuses more than ten million samples. *Reason:* `0.29 * 100` is `28.999999999999996`, and a range written in decimals
+  must not lose its last sample to it; a typo (`--rate 1e9`) must not fill the memory first. Its JSON output is a bundle
+  (a series of unit `ratio` per node, starting at `--from`), so what `sample` writes is what the rest of the ecosystem reads.
+- **matplotlib is an optional extra (`plot`), imported when a picture is drawn.** *Reason:* control installs with numpy and
+  pydantic only; a picture is a convenience of the command line and the gallery. Without it `plot` is a
+  `BackendUnavailableError` (as in image) naming the extra. A PNG carries no version or date, so a rerun writes the same
+  bytes. matplotlib writes its font cache with the locale's encoding when first imported, which the warning gate reports,
+  so that one warning from that module is exempt in `filterwarnings`.
+- **The gallery is one patch per built-in source and shaper, a picture of each, and one generated page.** The patch is
+  `examples/gallery/<name>.toml` (its node `<name>` is the thing, its other nodes feed it), drawn over four seconds into
+  `docs/gallery/<name>.png`; `poe new-source` writes the patch. No picture is compared (it depends on the drawing library);
+  tests check that every built-in has a patch that builds and moves, a picture exists, and the page's text is current.
+  *Cost:* `docs/gallery.md` lists every source, so adding one modifies it (the exception to rule 4), and two branches that
+  add sources conflict in it; regenerating it resolves that. Operations have no picture: they give no signal.

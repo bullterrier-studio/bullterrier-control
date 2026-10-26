@@ -16,7 +16,7 @@ working session, **M** two or three. Decisions behind the batches: [design-decis
 | C2d | `noise` (seeded, read at any time) | S | done |
 | C3a | Causal shapers; the scenes example | M | done |
 | C3b | Operations on events and series | M | done |
-| C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | |
+| C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | done |
 | C5 | First release | S | |
 
 C2a went first: it added the inputs mechanism every later source uses. C2b, C2c and C2d then depend only on C2a and can
@@ -118,7 +118,7 @@ it becomes a signal. (`slew` and `clip` shipped in C1.)
 - Series: `normalise` (between two percentiles, to a `fraction` series that states its `scaling`).
 - Example 7: strong kicks only, thinned, through `envelope`.
 
-## C4 Patch files, CLI, gallery
+## C4 Patch files, CLI, gallery (done)
 
 - Patch file (TOML): a named graph of sources, shapers and operations with their values, the way an image recipe is a list of steps.
 - `bt-control sample PATCH --from --to --rate` (JSON/CSV Series out), `bt-control list` (sources, shapers, parameters),

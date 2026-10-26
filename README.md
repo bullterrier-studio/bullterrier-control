@@ -7,7 +7,7 @@
 <p align="center">
   <b>Control signals for Python.</b><br>
   Keyframes with easing, LFOs, envelopes, step sequences and seeded noise, shaped by slew, clip, follow, gate and more,<br>
-  read at any moment in seconds. The same inputs and seed always give the same values.
+  read at any moment in seconds. A look is a patch file; the same inputs and seed always give the same values.
 </p>
 
 <p align="center">
@@ -36,15 +36,16 @@ synthesizers modulation.
   </tr>
   <tr>
     <td width="33%" valign="top"><b>Parameters declared once</b><br>Every parameter has a unit, a range and a description. <code>help(btc.lib.slew)</code> lists them, and a bad value fails with the field and the value.</td>
-    <td width="33%" valign="top"><b>Plain data in and out</b><br>Measurements and curves travel as one JSON file, a bundle, with a JSON Schema for tools in other languages. <code>bt-control validate</code> checks one.</td>
+    <td width="33%" valign="top"><b>Plain data in and out</b><br>Measurements and curves travel as one JSON file, a bundle, and a look as a TOML patch, each with a JSON Schema for tools in other languages. <code>bt-control validate</code> checks both.</td>
     <td width="33%" valign="top"><b>Small and extensible</b><br>Two dependencies, numpy and pydantic. Offline. A package of your own sources, shapers and operations plugs in as an entry point.</td>
   </tr>
 </table>
 
 ## Contents
 
-[Install](#install) | [Quick start](#quick-start) | [Sources, shapers and operations](#sources-shapers-and-operations) | [Concepts](#concepts) |
-[Formats](#formats) | [Status](#status) | [Development](#development) | [Works with](#works-with) | [License](#license)
+[Install](#install) | [Quick start](#quick-start) | [Sources, shapers and operations](#sources-shapers-and-operations) |
+[Patch files](#patch-files) | [Concepts](#concepts) | [Formats](#formats) | [Status](#status) | [Development](#development) |
+[Works with](#works-with) | [License](#license)
 
 ## Install
 
@@ -54,7 +55,13 @@ Requires Python 3.12+. Pre-alpha, not yet on PyPI. From GitHub:
 pip install git+https://github.com/bullterrier-studio/bullterrier-control.git
 ```
 
-From a checkout, with [uv](https://docs.astral.sh/uv/):
+`bt-control plot` draws with matplotlib, an optional extra; everything else needs only numpy and pydantic:
+
+```bash
+pip install "bullterrier-control[plot] @ git+https://github.com/bullterrier-studio/bullterrier-control.git"
+```
+
+From a checkout, with [uv](https://docs.astral.sh/uv/) (this installs matplotlib too):
 
 ```bash
 git clone https://github.com/bullterrier-studio/bullterrier-control.git
@@ -137,7 +144,50 @@ called with keyword inputs (`btc.lib.thin(events=kicks, gap=0.25)`), and give ev
 | `normalise` | a series | The series scaled between two of its percentiles, to 0 to 1 |
 
 A package of your own imports `bullterrier_control.plugin` and names its module as an entry point of the group
-`bullterrier_control.sources`; its sources, shapers and operations then appear in `btc.lib`.
+`bullterrier_control.sources`; its sources, shapers and operations then appear in `btc.lib`. [docs/gallery.md](docs/gallery.md)
+draws every source and shaper.
+
+## Patch files
+
+A look is data: a patch names sources, shapers and operations and their values, one table per node. An input is written
+inline, or refers to a node above it, or to what the song's bundle holds (`events.kick`, `series.bass`, `grid`), so one
+patch serves every song. A patch names signals only: what a signal drives is up to the consumer.
+
+```toml
+# examples/glow.toml
+format = "bullterrier-control/patch"
+version = 1
+
+[strong]
+use = "select"
+events = "events.kick"   # the bundle's events "kick"
+threshold = 0.7
+
+[glow]
+use = "envelope"
+events = "strong"        # the node above
+decay = 0.25
+```
+
+```python
+import bullterrier_control as btc
+from pathlib import Path
+
+glow = btc.load_patch(Path("examples/glow.toml")).build(btc.load(Path("examples/kicks.json")))["glow"]
+glow.sample([0.5, 0.75, 1.0, 1.5])  # a flare on each strong kick, then e^-1 and e^-2; the kick at 1.0 s is too weak
+# array([1.    , 0.3679, 0.1353, 1.    ])
+```
+
+```bash
+bt-control sample examples/glow.toml --bundle examples/kicks.json --to 2 --rate 4   # a bundle of series (--csv: a table)
+bt-control plot examples/glow.toml --bundle examples/kicks.json --to 2 --out glow.png
+bt-control list                      # every source, shaper and operation; `list slew` shows one in full
+bt-control list --json               # the same as data for another tool: inputs, and every parameter with its unit and range
+```
+
+`bt-control list --json` describes each parameter as JSON Schema (`minimum`, `maximum`, `unit`, `cyclic` for a phase that
+wraps), the shape `bullterrier-image` gives its parameters, so a tool can check a pipeline before it runs. The patch format
+is in [docs/formats.md](docs/formats.md), its schema in [schemas/patch-1.schema.json](schemas/patch-1.schema.json).
 
 ## Concepts
 
@@ -159,13 +209,14 @@ Measurements come in, and curves go out, as one JSON file, a *bundle* ([docs/for
 | Grid | Beat times, meter and first downbeat; converts beat positions and seconds |
 
 ```bash
-bt-control validate analysis.json    # is this file a valid bundle?
-bt-control schema                    # the JSON Schema of a bundle, for tools in other languages
+bt-control validate analysis.json    # is this file a valid bundle? (a .toml file is checked as a patch)
+bt-control schema                    # the JSON Schema of a bundle, for tools in other languages (`schema patch`: a patch's)
 ```
 
 ## Status
 
-Pre-alpha, not yet on PyPI. The formats and the core exist, with the sources `constant`, `keyframes`, `envelope`, `latch`,
+Pre-alpha, not yet on PyPI. The formats, patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`)
+and the core exist, with the sources `constant`, `keyframes`, `envelope`, `latch`,
 `lfo`, `steps` and `noise`, the shapers `clip`, `delay`, `follow`, `gate`, `hold`, `remap` and `slew`, and the operations
 `beats`, `every`, `normalise`, `quantize`, `select`, `shift` and `thin`.
 

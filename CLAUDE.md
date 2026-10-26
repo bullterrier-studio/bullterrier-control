@@ -24,13 +24,16 @@ uv run poe check                     # the whole gate, before you report or merg
 | declare parameters | `params.py` (`Params`, `param`); the rules in "Parameters" below |
 | write a signal that needs history | `rendered.py` (`Rendered`) |
 | read or write a file | `formats/` (`load`, `save`, `Bundle`); `docs/formats.md` |
+| write or read a patch (sources, shapers and operations as data) | `patch.py` (`Patch`, `load_patch`); `docs/formats.md`, "Patch"; `examples/glow.toml` |
+| see what a source or shaper looks like | `docs/gallery.md`; `uv run poe gallery` redraws it from `examples/gallery/` |
 | see a worked example with numbers | `docs/examples.md` and `examples/` |
 | find what is planned | `docs/roadmap.md`: work goes in small batches, each planned before it starts |
 
 **State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`), inputs (`points`, `events`, `grid`, `values`, `series`), easing, cadence, hashing and scaling, and
 the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `noise`, the shapers `clip`, `slew`, `follow`,
-`gate`, `hold`, `remap` and `delay`, and the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`
-exist. Next: batch C4 (`docs/roadmap.md`).
+`gate`, `hold`, `remap` and `delay`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`,
+patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. Next: batch C5, the
+first release (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.
@@ -80,6 +83,8 @@ Layers, imports flow **downward only** (import-linter: contracts in `pyproject.t
 app        __main__, cli
 builtin    the built-in sources, shapers and operations: one module each, never importing each other, using only `plugin`
 lib        every registered source, shaper and operation by name (`lib.slew`), with `help()` built from its parameters
+patch      Patch, load_patch: a graph of them as data (TOML), built against a bundle; the patch schema
+plotting   plot: signals drawn as a PNG (matplotlib, an optional extra, imported when a picture is drawn)
 plugin     the author API: everything a source needs (built-ins use it too); the one door, enforced by a contract
 registry   the table of sources, shapers and operations; `@source`, `@shaper`, `@operation`; entry-point loading
 rendered   Rendered: a signal that needs history, rendered once and read by holding the latest sample  |  inputs   `INPUTS`, Keyframe
@@ -123,7 +128,8 @@ when called again, with events reversed or as dicts; valid, time-ordered events 
    `smoothing`, `noise`), never `utils`/`common`/`helpers`. Extract when a second consumer needs it.
 3. **Parameters are declared once** as a pydantic model (as in bullterrier-image), with unit, range and description, and drive
    validation, defaults and generated docs. Units include `seconds`, `beats` (through a Grid), `hertz`, `cycles`, `fraction`.
-4. **Open/closed:** adding a source, shaper or operation creates files named for it and modifies none.
+4. **Open/closed:** adding a source, shaper or operation creates files named for it and modifies none. The one exception
+   is `docs/gallery.md`, which lists every source and shaper and is rewritten by `uv run poe gallery`.
 5. **No hidden tunables.** Every value that shapes a result is a named, documented parameter in the field's own terms (attack,
    release, rate, depth, phase, slew). Exempt: mathematical and standard constants, each cited in a comment.
 6. **Determinism:** same inputs and `seed` give the same signal on the same machine and library versions; across platforms equal
@@ -140,7 +146,8 @@ when called again, with events reversed or as dicts; valid, time-ordered events 
 - Public API has `__all__`: `bullterrier_control`, `bullterrier_control.plugin` (for authors) and `bullterrier_control.registry`
   (queries). Everything else is internal.
 - Runtime dependencies: numpy and pydantic. Adding another needs a reason in `docs/design-decisions.md`: control must
-  install without librosa, torch, Pillow or any media library.
+  install without librosa, torch, Pillow or any media library. matplotlib is the one optional extra (`plot`), for
+  `bt-control plot` and the gallery only; nothing else imports it.
 - Offline only in v1: no live clock, MIDI or OSC output.
 - No backwards-compatibility shims, aliases or re-exports before 1.0 unless the owner asks: change the callers.
 - The CLI catches `BullterrierControlError` and never prints a traceback for a user's mistake (added with the first command that can
@@ -181,7 +188,8 @@ load, naming source, field, constraint and value. Not parameters: the fields of 
 ## Adding a source or shaper
 
 1. **Scaffold:** `uv run poe new-source <name> --kind source|shaper|operation` writes `src/bullterrier_control/builtin/<name>.py` and
-   `tests/builtin/test_<name>.py`, working as written (the package imports every module it holds: no list to edit).
+   `tests/builtin/test_<name>.py`, working as written (the package imports every module it holds: no list to edit). A source
+   or shaper also gets `examples/gallery/<name>.toml`, the patch its gallery picture is drawn from.
 2. **Fill in:** the `Params` model (the field's own terms, unit, range, description: "Parameters"), the body (analytic where it
    can be; a causal recurrence through `Rendered` where it needs history), the docstring's first sentence (what
    `help(lib.<name>)` shows). Data that is not a parameter (keyframes, events, a grid) is a keyword-only argument after
@@ -191,8 +199,9 @@ load, naming source, field, constraint and value. Not parameters: the fields of 
    `SMALLEST_INPUTS` in `tests/builtin/test_contract.py` (and in `INPUTS` of `test_operation_contract.py`, if an operation takes it).
 3. **Test:** what it promises, each expected number worked out by hand; the contract tests already cover shapes, ranges,
    determinism, read order and causality for every registered one. If `docs/examples.md` names it under **Needs**, that
-   example must now pass.
-4. **Gate:** `uv run poe check`, then `uv run lint-imports`. Only the two new files (and docs naming it) appear in `git status`.
+   example must now pass. Edit the gallery patch so the picture shows what it does (a shaper's has a feeding node).
+4. **Gallery and gate:** `uv run poe gallery` draws its picture and rewrites `docs/gallery.md`; `uv run poe check`, then
+   `uv run lint-imports`. Only the new files, its picture and the page (and docs naming it) appear in `git status`.
 
 ## Fixing defects: structurally, not defensively
 

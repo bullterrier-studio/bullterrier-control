@@ -190,3 +190,48 @@ signal = lib.envelope(events=strong, decay=0.25)
 | 2.0 | 0.7 | the last kick, above the second one's 0.8 · e⁻⁴ = 0.015 |
 
 The consumer (video): `flash_gain = 1 + 2 * value`.
+
+## 8. A patch file
+
+The same flare as example 1, but the look is data: a patch file names the steps and their values, and the song comes
+from the bundle it is built against, so one patch serves every song. It keeps only the strong kicks and flares on each.
+
+```toml
+# examples/glow.toml
+format = "bullterrier-control/patch"
+version = 1
+
+[strong]
+use = "select"
+events = "events.kick"   # the bundle's events "kick"
+threshold = 0.7
+
+[glow]
+use = "envelope"
+events = "strong"        # the node above
+decay = 0.25
+```
+
+```python
+from pathlib import Path
+
+from bullterrier_control import load, load_patch
+
+patch = load_patch(Path("examples/glow.toml"))
+bundle = load(Path("examples/kicks.json"))  # kicks at 0.5 s (strength 1.0), 1.0 s (0.6) and 1.5 s (1.0)
+signal = patch.build(bundle)["glow"]
+```
+
+`select` drops the kick of strength 0.6, below the threshold of 0.7; `envelope` flares on the other two and fades with a time
+constant of 0.25 s. `patch.build` gives every node by name (`strong` is the two events, `glow` the signal).
+
+| t (s) | value | by hand |
+|---|---|---|
+| 0.0 | 0 | before the first kick |
+| 0.5 | 1.0 | the first kick, at full strength |
+| 0.75 | 0.36787944117144233 | one decay time later: e⁻¹ |
+| 1.0 | 0.1353352832366127 | e⁻²; the dropped kick at 1.0 s would have made it 0.6 |
+| 1.5 | 1.0 | the third kick |
+| 1.75 | 0.36787944117144233 | e⁻¹ after the third kick |
+
+The same from a shell: `bt-control sample examples/glow.toml --bundle examples/kicks.json --to 2 --rate 4 --csv`.

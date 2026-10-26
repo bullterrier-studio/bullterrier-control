@@ -43,6 +43,7 @@ Identity is spelled in full, `bullterrier-<concept>` (the distribution and repos
 | Parameter description (unit, range, meaning) | image | video |
 | Drawing (shapes, modifiers and their values); its SVG or RGBA picture | vector | video, image |
 | Series, Event, Grid (in a bundle file) | control | audio, video |
+| Patch (sources, shapers and operations with their values, as data) | control | video |
 | Project (timeline, mappings) | video | apps |
 
 The owner documents and versions a format; changing one is a breaking release of its owner.

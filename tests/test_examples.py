@@ -2,7 +2,8 @@
 
 Each `## ` section has one Python block that builds `signal`, a table whose first two columns are a time and the value
 worked out by hand, and optionally a **Needs:** line naming the sources it uses; until those are registered the example
-is skipped with their names, so the skips are the to-do list. The example files in examples/ are valid bundles.
+is skipped with their names, so the skips are the to-do list. The example files in examples/ are valid bundles (JSON)
+and patches (TOML).
 """
 
 import re
@@ -11,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from bullterrier_control import load, registry
+from bullterrier_control import load, load_patch, registry
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = (ROOT / "docs" / "examples.md").read_text(encoding="utf-8")
@@ -36,7 +37,7 @@ EXAMPLES = [example(section) for section in SECTIONS]
 
 
 def test_the_page_has_its_examples():
-    assert len(EXAMPLES) == 7
+    assert len(EXAMPLES) == 8
 
 
 @pytest.mark.parametrize(("title", "needs", "code", "rows"), EXAMPLES, ids=[title for title, *_ in EXAMPLES])
@@ -55,3 +56,8 @@ def test_each_example_gives_the_numbers_its_table_shows(title, needs, code, rows
 @pytest.mark.parametrize("path", sorted((ROOT / "examples").glob("*.json")), ids=lambda path: path.name)
 def test_every_example_file_is_a_valid_bundle(path):
     load(path)
+
+
+@pytest.mark.parametrize("path", sorted((ROOT / "examples").glob("*.toml")), ids=lambda path: path.name)
+def test_every_example_patch_is_valid(path):
+    load_patch(path)
