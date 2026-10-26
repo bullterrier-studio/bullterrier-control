@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.import_linter_cache/
+.DS_Store
+dist/
+
+# scratch for agent-driven development: plans, briefs, reports (shared by absolute path, never committed)
+.superpowers/
+
+# agent worktrees (created by the harness)
+.claude/
