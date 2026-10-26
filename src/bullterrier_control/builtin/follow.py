@@ -54,14 +54,19 @@ def follow(signal: Signal, params: FollowParams) -> Signal:
     """
     step = 1.0 / params.rate
     # the share of the gap left after one step; a time of 0 leaves none, so the output is the input and nothing divides
-    up = math.exp(-step / params.attack) if params.attack > 0 else 0.0
-    down = math.exp(-step / params.release) if params.release > 0 else 0.0
+    left_up = math.exp(-step / params.attack) if params.attack > 0 else 0.0
+    left_down = math.exp(-step / params.release) if params.release > 0 else 0.0
+    # (kept, taken) per direction: the output is kept * output + taken * input, a mix that cannot overflow however far
+    # apart the two are, and with kept = 0 is the input exactly
+    rising = (left_up, 1.0 - left_up)
+    falling = (left_down, 1.0 - left_down)
 
     def run(inputs: NDArray[np.float64]) -> NDArray[np.float64]:
         outputs = np.empty_like(inputs)
         level = float(inputs[0])
         for index, target in enumerate(inputs.tolist()):
-            level = target + (level - target) * (up if target > level else down)
+            kept, taken = rising if target > level else falling
+            level = kept * level + taken * target
             outputs[index] = level
         return outputs
 

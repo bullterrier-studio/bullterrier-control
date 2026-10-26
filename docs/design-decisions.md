@@ -241,11 +241,13 @@ separate ramp. Changed:
   and pitch are ignored.
 - **`delay` only lags** (`lag` 0 or more). *Reason:* a lead would read the input's future; it exists for events only
   (C3b `shift`). Before `lag` seconds have passed it shows the input at time 0.
-- **The formulas of `follow` and `gate`.** `follow` writes `level = x + (level - x) * d`,
+- **The formulas of `follow` and `gate`.** `follow` writes `level = d * level + (1 - d) * x`,
   `d = e^(-1 / (rate * time))`, with `d = 0` for a time of 0 (no division, and the output is the input exactly, which
-  `level + (x - level) * 1` is not in floats). It stays between the lowest and highest input so far to within float
-  rounding. `gate` opens at `x >= open` and closes at `x < close`, so equality opens and does not close; `close` above
-  `open` is refused, and `close == open` is a plain threshold.
+  `level + (x - level) * 1` is not in floats). *Reason for the mix:* it cannot overflow however far apart `level` and
+  `x` are (`x + (level - x) * d` took 1e308 to -1e308 across a gap no float holds), so a pass-through is exact at the
+  edge of the floats too. It stays between the lowest and highest input so far to within float rounding. `gate` opens
+  at `x >= open` and closes at `x < close`, so equality opens and does not close; `close` above `open` is refused, and
+  `close == open` is a plain threshold.
 - **The causality contract test builds each shaper from the sample inputs** (it built them from a signal alone, which
   a shaper with a required input, `hold`, cannot be), and the sample events gain one after the time the two inputs
   differ at. *Reason:* a shaper that reads the input only at events would otherwise show no difference after the

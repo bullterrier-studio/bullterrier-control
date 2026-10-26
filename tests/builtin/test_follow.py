@@ -105,3 +105,10 @@ def test_by_default_a_fall_closes_the_gap_with_a_time_constant_of_250_ms_at_1000
     # release 0.25 s at 1000 Hz: the gap shrinks by e^(-1 / 250) per sample
     falling = held((1.0,) * 10 + (0.0,) * 100)
     assert lib.follow(falling).sample([1.0 + n / 1000.0]).tolist() == pytest.approx([np.exp(-(n + 1) / 250)], abs=1e-12)
+
+
+def test_with_both_times_zero_the_output_is_the_input_even_at_the_edge_of_the_floats():
+    # the gap between 1e308 and -1e308 does not fit in a float, but nothing needs to be taken across it
+    extremes = held((1e308, -1e308) * 5)
+    times = (np.arange(10) + 0.5) / 10
+    assert lib.follow(extremes, attack=0, release=0).sample(times).tolist() == [1e308, -1e308] * 5
