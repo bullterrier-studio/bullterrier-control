@@ -108,7 +108,7 @@ The consumer (a light, or a MIDI controller): `cc = round(127 * value)`.
 
 ## 5. The wake at a drop
 
-Everything should switch to its "after the drop" state when the drop arrives. **Needs:** `latch` (batch C2b).
+Everything should switch to its "after the drop" state when the drop arrives.
 
 ```python
 from pathlib import Path
