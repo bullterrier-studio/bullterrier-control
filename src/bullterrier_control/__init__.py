@@ -18,6 +18,7 @@ from .errors import (
 )
 from .formats import Bundle, Event, Grid, Series, Unit, load, save
 from .inputs import Keyframe
+from .patch import Patch, load_patch
 from .signal import Signal, from_series, maximum, minimum
 
 __version__ = metadata.version("bullterrier-control")
@@ -31,6 +32,7 @@ __all__ = [
     "InvalidError",
     "Keyframe",
     "ParameterError",
+    "Patch",
     "Series",
     "Signal",
     "SignalError",
@@ -40,6 +42,7 @@ __all__ = [
     "from_series",
     "lib",
     "load",
+    "load_patch",
     "maximum",
     "minimum",
     "save",

@@ -2,7 +2,8 @@
 import only the layers below it:
 
     app        __main__ > cli
-    builtin | lib   bullterrier-control's own sources and shapers (never importing each other) | all of them by name
+    builtin | lib | patch   bullterrier-control's own sources and shapers (never importing each other) | all of them
+               by name | a graph of them as data
     plugin     the author API: the names a package of sources and shapers uses
     registry   the table of sources and shapers, and the queries over it
     rendered | inputs   a signal that needs history, rendered once | the data a source takes besides parameters
@@ -34,7 +35,7 @@ ROOT = PACKAGE.parent.parent  # the repository: pyproject.toml holds the contrac
 LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-imports` from the repository root
 
 LAYERS = (
-    "Layers: app > builtin | lib > plugin > registry > rendered | inputs > signal | params | easing | cadence"
+    "Layers: app > builtin | lib | patch > plugin > registry > rendered | inputs > signal | params | easing | cadence"
     " | hashing | scaling | rounding > formats > validated > errors"
 )
 SOURCES_APART = "Built-in sources never import each other"
@@ -104,6 +105,15 @@ FORBIDDEN = {
     "a source to the command line": (
         "builtin/clip.py",
         "import bullterrier_control.cli",
+        "bullterrier_control.builtin.clip",
+        LAYERS,
+    ),
+    "a patch to the command line": ("patch.py", "import bullterrier_control.cli", "bullterrier_control.patch", LAYERS),
+    "a patch to lib": ("patch.py", "import bullterrier_control.lib", "bullterrier_control.patch", LAYERS),
+    "lib to a patch": ("lib.py", "import bullterrier_control.patch", "bullterrier_control.lib", LAYERS),
+    "a source to a patch": (
+        "builtin/clip.py",
+        "import bullterrier_control.patch",
         "bullterrier_control.builtin.clip",
         LAYERS,
     ),

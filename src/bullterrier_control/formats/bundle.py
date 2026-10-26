@@ -22,13 +22,14 @@ from ..errors import FormatError, InvalidError
 from ..validated import Finite, Text, whole_number
 from .event import Event
 from .grid import Grid
-from .model import FormatModel
+from .model import FormatModel, read_text
 from .series import Series
 
-__all__ = ["Bundle", "bundle_schema", "load", "save"]
+__all__ = ["NAME_PATTERN", "Bundle", "bundle_schema", "load", "save"]
 
 # the name of a series or an event list: `bass`, `stem.drums`, `kick`
-Name = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_.-]*$")]
+NAME_PATTERN = r"^[a-z0-9][a-z0-9_.-]*$"
+Name = Annotated[str, Field(pattern=NAME_PATTERN)]
 
 
 class Bundle(FormatModel):
@@ -90,7 +91,7 @@ def _no_constant(name: str) -> object:
 
 def load(path: Path) -> Bundle:
     """The Bundle in the JSON file at `path`, or a `FormatError` starting with the path when the file is not valid."""
-    text = _read(path)
+    text = read_text(path)
     try:
         data = json.loads(text, object_pairs_hook=_no_repeated_key, parse_constant=_no_constant)
         if not isinstance(data, dict):
@@ -103,13 +104,6 @@ def load(path: Path) -> Bundle:
     # what the JSON decoder itself refuses: nesting deeper than Python can follow, an integer of thousands of digits
     except (RecursionError, ValueError) as error:
         raise FormatError(f"{path}: cannot be read as JSON ({error})") from None
-
-
-def _read(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError as error:
-        raise FormatError(f"{path}: not UTF-8 text ({error.reason})") from None
 
 
 def save(bundle: Bundle, path: Path) -> None:

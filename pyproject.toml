@@ -241,6 +241,7 @@ ignore_decorators = [
 ]
 ignore_names = [
     "model_config",  # pydantic reads each model's settings from this class attribute
+    "build",  # `Patch.build`: the public way to make a patch's signals, called by users and other packages (the CLI uses it from C4 task 4)
     "sample",  # `Signal.sample`: the public way to read a signal, called by users and other packages, not in the package yet
     "summary",  # `Registered.summary`: the first sentence of a source's docstring, for listings; not read in the package yet
     "__getattr__",  # module-level hooks (PEP 562) of `lib`: Python calls them for `lib.<name>` and `dir(lib)`
@@ -285,14 +286,14 @@ DEP004 = ["packaging"]
 root_package = "bullterrier_control"
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > builtin | lib > plugin > registry > rendered | inputs > signal | params | easing | cadence | hashing | scaling | rounding > formats > validated > errors"
+name = "Layers: app > builtin | lib | patch > plugin > registry > rendered | inputs > signal | params | easing | cadence | hashing | scaling | rounding > formats > validated > errors"
 type = "layers"
 containers = ["bullterrier_control"]
 exhaustive = true  # a new top-level module must be placed in a layer here
 layers = [
     "__main__",  # `python -m bullterrier_control`: runs the command line
     "cli",  # app: the command line
-    "builtin | lib",  # bullterrier-control's own sources and shapers (found through the entry point) | every one by name
+    "builtin | lib | patch",  # bullterrier-control's own sources and shapers (found through the entry point) | every one by name | a graph of them as data
     "plugin",  # the author API: the names a package of sources and shapers uses
     "registry",  # the table of sources and shapers, and the queries over it
     "rendered | inputs",  # a signal that needs history, rendered once | the data a source takes besides parameters (keyframes)
