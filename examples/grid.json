@@ -1,0 +1,2 @@
+{"format": "bullterrier-control/bundle", "version": 1, "source": "hand-written example: a beat that slows down", "duration": 2.0,
+ "grid": {"beats": [0.0, 0.5, 1.1, 1.8], "meter": 4, "first_downbeat": 0}}

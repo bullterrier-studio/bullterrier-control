@@ -171,6 +171,18 @@ swing, seed, offset), never `strength`, `intensity`, `factor`, `val`, `k`, or th
 load, naming source, field, constraint and value. Not parameters: the fields of a format (`Event.strength`, `Series.rate`), which
 `docs/formats.md` defines.
 
+## Adding a source or shaper
+
+1. **Scaffold:** `uv run poe new-source <name> --kind source|shaper` writes `src/bullterrier_control/builtin/<name>.py` and
+   `tests/builtin/test_<name>.py`, working as written (the package imports every module it holds: no list to edit).
+2. **Fill in:** the `Params` model (the field's own terms, unit, range, description: "Parameters"), the body (analytic where it
+   can be; a causal recurrence through `Rendered` where it needs history), the docstring's first sentence (what
+   `help(lib.<name>)` shows). A source that takes events, a grid or other data declares them as keyword-only inputs.
+3. **Test:** what it promises, each expected number worked out by hand; the contract tests already cover shapes, ranges,
+   determinism, read order and causality for every registered one. If `docs/examples.md` names it under **Needs**, that
+   example must now pass.
+4. **Gate:** `uv run poe check`, then `uv run lint-imports`. Only the two new files (and docs naming it) appear in `git status`.
+
 ## Fixing defects: structurally, not defensively
 
 A fix removes the cause, not the symptom.
@@ -185,7 +197,8 @@ A fix removes the cause, not the symptom.
 5. **No defensive code:** no fallback or default hiding a missing or invalid value; no `try/except` that continues (`except
    Exception`, bare `except`, `contextlib.suppress`); no `isinstance`, `None` or range re-checks of internal arguments; no
    clamping, `np.nan_to_num` or retry "just in case"; no `getattr`/`.get()` with a default for something that must exist; no
-   widening a type to silence an error; no skipped, xfailed or loosened tests.
+   widening a type to silence an error; no skipped, xfailed or loosened tests (the one skip allowed: a worked example in
+   `docs/examples.md` waiting for the source it names under **Needs**).
 6. **A fix that needs a design change says so:** propose it under "Needs from others" instead of patching around the design.
 7. **One decision, one place.** A table, constant, name or rule that exists twice is a defect. Keep one definition in the owning
    module. For tests: look for existing coverage first; add a row to the existing table; setup two files need is a fixture in the

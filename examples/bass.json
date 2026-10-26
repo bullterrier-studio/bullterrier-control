@@ -1,0 +1,3 @@
+{"format": "bullterrier-control/bundle", "version": 1, "source": "hand-written example: the bass comes in at 1 s", "duration": 3.0,
+ "series": {"bass": {"start": 0.0, "rate": 10, "unit": "fraction", "scaling": "share of the loudest bass in the song",
+   "values": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]}}}

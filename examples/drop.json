@@ -1,0 +1,2 @@
+{"format": "bullterrier-control/bundle", "version": 1, "source": "hand-written example: the drop at 12 s", "duration": 30.0,
+ "events": {"drop": [{"t": 12.0, "label": "drop"}]}}

@@ -1,0 +1,2 @@
+{"format": "bullterrier-control/bundle", "version": 1, "source": "hand-written example: three kicks", "duration": 2.0,
+ "events": {"kick": [{"t": 0.5, "strength": 1.0}, {"t": 1.0, "strength": 0.6}, {"t": 1.5, "strength": 1.0}]}}
