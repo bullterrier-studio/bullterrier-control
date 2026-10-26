@@ -75,8 +75,9 @@ class _Lfo(Signal):
     def compute(self, times: NDArray[np.float64]) -> NDArray[np.float64]:
         params = self._params
         cycle = np.mod(self._position(times) + params.phase, 1.0)
-        # a float modulo of a tiny negative number rounds to exactly 1.0, the end of a cycle that starts again at 0
-        cycle = np.where(cycle == 1.0, 0.0, cycle)
+        # a float modulo of a tiny negative number rounds to exactly 1.0, which is the end of a cycle, not its start:
+        # one step below it, where a square with duty 1 is still high and a saw is at the top of its ramp
+        cycle = np.where(cycle == 1.0, np.nextafter(1.0, 0.0), cycle)
         low, high = params.low, params.high
         values = low + (high - low) * _wave(params.shape, cycle, params.duty)
         # low + (high - low) * 1 can land an ulp beyond high: the range is a promise, so it is kept exactly

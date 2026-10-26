@@ -140,6 +140,21 @@ def test_a_square_with_duty_1_is_high_just_before_the_first_beat_too():
     assert signal.sample([0.0]).tolist() == [1.0]
 
 
+@pytest.mark.parametrize(
+    ("shape", "expected"),
+    [
+        pytest.param("saw", 1.0, id="a saw is at the top of its ramp"),
+        pytest.param("saw-down", 0.0, id="a saw-down is at the bottom of its ramp"),
+        pytest.param("triangle", 0.0, id="a triangle is at the bottom"),
+    ],
+)
+def test_just_before_a_first_beat_near_zero_the_wave_is_at_the_end_of_its_cycle_not_the_start(shape, expected):
+    # beat_at(0) is -2e-17, a hair before the cycle starts again: the end of the previous cycle
+    grid = Grid(beats=(1e-17, 0.5), meter=1, first_downbeat=0)
+    signal = lib.lfo(shape=shape, per="beat", grid=grid)
+    assert signal.sample([0.0]).tolist() == pytest.approx([expected], abs=1e-9)
+
+
 def test_per_beat_needs_a_grid(reports):
     with pytest.raises(ParameterError) as refused:
         lib.lfo(per="beat")
@@ -180,7 +195,7 @@ def test_the_top_of_the_wave_is_exactly_high_even_where_float_rounding_would_ove
     duty=st.floats(0, 1),
     low=st.floats(-1e6, 1e6),
     high=st.floats(-1e6, 1e6),
-    time=st.floats(0, 1e9),
+    time=st.floats(0, 1e300),
 )
 def test_the_output_never_leaves_low_and_high_whichever_way_round(shape, rate, phase, duty, low, high, time):
     signal = lib.lfo(shape=shape, rate=rate, phase=phase, duty=duty, low=low, high=high)

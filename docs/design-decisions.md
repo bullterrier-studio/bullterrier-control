@@ -188,7 +188,8 @@ separate ramp. Changed:
 - **An `lfo` stays inside `low` and `high` exactly, by clipping.** *Reason:* `low + (high - low) * s` lands an ulp beyond
   `high` in about one case in twenty at `s = 1`, and a consumer doing `round(127 * value)` would leave its range. The range
   is documented as a promise, so it is enforced.
-- **A cycle position of exactly 1.0 is read as 0.0.** *Reason:* `np.mod` of a tiny negative number (a time just before a
-  first beat that is not at 0) rounds to 1.0, which would read a `square` with `duty` 1 as low at that instant.
+- **A cycle position of exactly 1.0 is read one float step below 1.** *Reason:* `np.mod` of a tiny negative number (a time
+  just before a first beat that is not at 0) rounds to 1.0, though the true position is a hair before the end of a cycle;
+  reading it as 0.0 would send a `square` with `duty` 1 low and flip a saw from the top of its ramp to the bottom.
 - **Before the first beat the position is negative and `steps` counts back from the end of its list.** *Reason:* the Grid
   continues the first beat length backwards, so a cycle or list runs on without a seam at the first beat.
