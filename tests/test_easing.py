@@ -180,3 +180,23 @@ def test_a_curve_is_vectorised_to_the_same_values_as_one_at_a_time():
 def test_a_bad_name_is_refused_with_the_valid_ones_listed(name):
     with pytest.raises(InvalidError, match=r"in-out.*cubic-bezier\(x1, y1, x2, y2\)"):
         curve(name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("cubic-bezier(1.2, 0, 0, 1)", id="x1 above 1"),
+        pytest.param("cubic-bezier(-0.1, 0, 0.5, 1)", id="x1 below 0"),
+        pytest.param("cubic-bezier(0, 0, -0.1, 1)", id="x2 below 0"),
+        pytest.param("cubic-bezier(0.5, 0, 1.5, 1)", id="x2 above 1"),
+    ],
+)
+def test_a_well_formed_bezier_with_x_outside_0_to_1_says_so(name):
+    with pytest.raises(InvalidError, match=r"x1 and x2 must be in 0\.\.1.*in-out"):
+        curve(name)
+
+
+def test_a_bezier_that_is_not_well_formed_is_not_blamed_on_its_x():
+    with pytest.raises(InvalidError, match="unknown ease") as refused:
+        curve("cubic-bezier(0.1, 0.2, 0.3)")
+    assert "must be in 0..1" not in str(refused.value)

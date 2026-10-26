@@ -24,12 +24,12 @@ from .errors import InvalidError
 
 __all__ = ["EASES", "curve"]
 
-type Shape = Callable[[NDArray[np.float64]], NDArray[np.float64]]
+type EaseFn = Callable[[NDArray[np.float64]], NDArray[np.float64]]
 
 # Penner's overshoot constant: it makes the back-out rise about 10 % past the end before settling.
 _PENNER_OVERSHOOT = 1.70158
 
-_SHAPES: dict[str, Shape] = {
+_SHAPES: dict[str, EaseFn] = {
     "linear": lambda p: p,
     "hold": lambda p: np.where(p < 1.0, 0.0, 1.0),
     "in": lambda p: p**2,
@@ -48,14 +48,17 @@ _BEZIER = re.compile(rf"\s*cubic-bezier\({','.join([_NUMBER] * 4)}\)\s*")
 _FORMS = f"{', '.join(EASES)}, or cubic-bezier(x1, y1, x2, y2) with x1 and x2 in 0..1 and finite y1 and y2"
 
 
-def _bezier(name: str) -> Shape | None:
-    """The shape for a `cubic-bezier(...)` name, or None when the name is not a valid one."""
+def _bezier(name: str) -> EaseFn | None:
+    """The shape for a `cubic-bezier(...)` name; None when the name is not of that form (or a y is not finite), and
+    `InvalidError` when it is well formed but x1 or x2 lies outside 0..1."""
     match = _BEZIER.fullmatch(name)
     if match is None:
         return None
     x1, y1, x2, y2 = (float(group) for group in match.groups())
-    if not (np.isfinite([y1, y2]).all() and 0.0 <= x1 <= 1.0 and 0.0 <= x2 <= 1.0):
+    if not np.isfinite([y1, y2]).all():
         return None
+    if not (0.0 <= x1 <= 1.0 and 0.0 <= x2 <= 1.0):
+        raise InvalidError(f"bad ease {name!r}: x1 and x2 must be in 0..1 (got {x1:g} and {x2:g}); use {_FORMS}")
 
     def coordinate(a: float, b: float, t: NDArray[np.float64]) -> NDArray[np.float64]:
         return 3 * a * (1 - t) ** 2 * t + 3 * b * (1 - t) * t**2 + t**3
@@ -81,7 +84,7 @@ def curve(name: str) -> Callable[[ArrayLike], NDArray[np.float64]]:
 
     def ease(progress: ArrayLike) -> NDArray[np.float64]:
         p = np.clip(np.asarray(progress, dtype=np.float64), 0.0, 1.0)
-        # float arithmetic misses the ends by a rounding (overshoot at 1, a bezier at 0), so they are forced
+        # a bezier's bisection stops about 1e-16 short of the ends, so the ends are forced for every curve
         return np.where(p == 0.0, 0.0, np.where(p == 1.0, 1.0, shape(p)))
 
     return ease
