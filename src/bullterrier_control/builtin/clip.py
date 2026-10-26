@@ -2,7 +2,7 @@
 
 from pydantic import model_validator
 
-from ..plugin import Finite, FormatError, Params, Signal, maximum, minimum, param, shaper
+from ..plugin import Finite, InvalidError, Params, Signal, maximum, minimum, param, shaper
 
 
 class ClipParams(Params):
@@ -18,7 +18,7 @@ class ClipParams(Params):
     @model_validator(mode="after")
     def _high_is_not_below_low(self) -> "ClipParams":
         if self.high < self.low:
-            raise FormatError.at("high", f"{self.high} is below low = {self.low}")
+            raise InvalidError.at("high", f"{self.high} is below low = {self.low}")
         return self
 
 

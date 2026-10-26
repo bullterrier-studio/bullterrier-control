@@ -7,7 +7,7 @@ covered the moment it is registered and no test names it.
 import numpy as np
 import pytest
 
-from bullterrier_control import FormatError, Series, Signal, SignalError, Unit, registry
+from bullterrier_control import ParameterError, Series, Signal, SignalError, Unit, registry
 from bullterrier_control.signal import from_series
 
 ALL = sorted(registry.all_registered())
@@ -119,18 +119,18 @@ def test_every_one_works_with_all_its_numbers_at_the_same_end_of_their_ranges(na
 def test_every_number_beyond_its_range_is_refused(name, field, side):
     doc = next(f for f in numeric_fields(name) if f.name == field)
     beyond = getattr(doc, side) + (1 if side == "maximum" else -1)
-    with pytest.raises(FormatError, match=field):
+    with pytest.raises(ParameterError, match=field):
         build(name, **{field: value_at(doc, beyond)})
 
 
 @pytest.mark.parametrize(("name", "field"), sorted({(name, field) for name, field, _ in LIMITS}))
 @pytest.mark.parametrize("wrong", [True, "0.5", None], ids=["a bool", "a string", "nothing"])
 def test_every_number_refuses_what_is_not_a_number(name, field, wrong):
-    with pytest.raises(FormatError, match=field):
+    with pytest.raises(ParameterError, match=field):
         build(name, **{field: wrong})
 
 
 @pytest.mark.parametrize("name", ALL)
 def test_every_one_refuses_an_unknown_parameter(name):
-    with pytest.raises(FormatError, match="speed"):
+    with pytest.raises(ParameterError, match="speed"):
         build(name, speed=1)

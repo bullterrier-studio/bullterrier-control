@@ -4,10 +4,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from bullterrier_control import BullterrierControlError, FormatError, UnknownNameError, registry
-from bullterrier_control.formats.model import Finite
+from bullterrier_control import BullterrierControlError, ParameterError, UnknownNameError, registry
 from bullterrier_control.params import Params, param
 from bullterrier_control.plugin import Constant, Signal, shaper, source
+from bullterrier_control.validated import Finite
 
 
 class Level(Params):
@@ -78,10 +78,10 @@ def test_a_value_that_breaks_a_rule_is_refused_naming_the_registered_thing_and_t
     def level(params: Level) -> Signal:
         return Constant(params.value)
 
-    with pytest.raises(FormatError, match="source 'level'") as refused:
+    with pytest.raises(ParameterError, match="source 'level'") as refused:
         level(value=2)
     reports(refused.value, "value")
-    with pytest.raises(FormatError) as unknown:
+    with pytest.raises(ParameterError) as unknown:
         level(speed=1)
     reports(unknown.value, "speed")
 

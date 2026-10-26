@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from importlib import metadata
 from typing import Any, Literal
 
-from .errors import BullterrierControlError, FormatError, UnknownNameError
+from .errors import BullterrierControlError, ParameterError, UnknownNameError
 from .params import Params
 from .signal import Signal
 
@@ -56,6 +56,7 @@ class Registered[P: Params]:
         self.name = function.__name__
         first_paragraph = (inspect.getdoc(function) or "").split("\n\n")[0]
         self.summary = " ".join(first_paragraph.split())
+        self.__doc__ = _documentation(self, inspect.getdoc(function) or "")
 
     def __call__(self, *signals: Signal, **values: object) -> Signal:
         """The signal for these input signals and parameter values; unset values take their defaults."""
@@ -65,11 +66,22 @@ class Registered[P: Params]:
         return self.function(*signals, self.validate(values))
 
     def validate(self, values: Mapping[str, object]) -> P:
-        """The parameters for `values` (name to value), or a `FormatError` naming this thing and each problem."""
+        """The parameters for `values` (name to value), or a `ParameterError` naming this thing and each problem."""
         try:
             return self.params_model.parse(values)
-        except FormatError as error:
-            raise FormatError(f"{self.kind} {self.name!r}: {error}", error.problems) from None
+        except ParameterError as error:
+            raise ParameterError(f"{self.kind} {self.name!r}: {error}", error.problems) from None
+
+
+def _documentation(registered: "Registered[Any]", described: str) -> str:
+    """What `help()` shows: how to call it, the function's own description, then every parameter in its own terms."""
+    takes = "signal, " if registered.kind == "shaper" else ""
+    lines = [f"{registered.kind} {registered.name}({takes}**values) -> Signal", "", described, "", "Parameters:"]
+    for one in registered.params_model.fields_doc():
+        measure = f" ({one.unit}, {one.minimum:g} to {one.maximum:g})" if one.unit else ""
+        lines.append(f"  {one.name}{measure}, default {one.default!r}{', advanced' if one.advanced else ''}")
+        lines.append(f"      {one.doc}")
+    return "\n".join(lines)
 
 
 _TABLE: dict[str, Registered[Any]] = {}

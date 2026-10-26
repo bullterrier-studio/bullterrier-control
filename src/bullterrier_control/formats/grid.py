@@ -10,8 +10,9 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from pydantic import Field, model_validator
 
-from ..errors import FormatError
-from .model import Finite, FormatModel, Whole
+from ..errors import FormatError, InvalidError
+from ..validated import Finite, Whole
+from .model import FormatModel
 
 __all__ = ["Grid"]
 
@@ -28,9 +29,9 @@ class Grid(FormatModel):
         for index in range(1, len(self.beats)):
             if self.beats[index] <= self.beats[index - 1]:
                 now, before = self.beats[index], self.beats[index - 1]
-                raise FormatError.at(f"beats[{index}]", f"{now} does not come after beats[{index - 1}] = {before}")
+                raise InvalidError.at(f"beats[{index}]", f"{now} does not come after beats[{index - 1}] = {before}")
         if self.first_downbeat >= min(self.meter, len(self.beats)):
-            raise FormatError.at(
+            raise InvalidError.at(
                 "first_downbeat",
                 f"{self.first_downbeat} must be a beat inside a bar of meter = {self.meter} ({len(self.beats)} beats)",
             )

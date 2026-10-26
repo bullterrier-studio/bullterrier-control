@@ -3,7 +3,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from bullterrier_control import FormatError, Series, Unit, registry
+from bullterrier_control import ParameterError, Series, Unit, registry
 from bullterrier_control.signal import from_series
 
 clip = registry.get("clip")
@@ -32,7 +32,7 @@ def test_low_may_equal_high():
 
 
 def test_a_low_above_the_high_is_refused_naming_the_field(reports):
-    with pytest.raises(FormatError) as refused:
+    with pytest.raises(ParameterError) as refused:
         clip(series_signal([0.0]), low=1.0, high=0.5)
     reports(refused.value, "high")
 

@@ -4,8 +4,9 @@ from typing import Annotated
 
 from pydantic import Field, model_validator
 
-from ..errors import FormatError
-from .model import Finite, FormatModel, Text
+from ..errors import InvalidError
+from ..validated import Finite, Text
+from .model import FormatModel
 from .units import Unit
 
 __all__ = ["Series"]
@@ -25,8 +26,8 @@ class Series(FormatModel):
         if self.unit is not Unit.FRACTION:
             return self
         if not self.scaling:
-            raise FormatError.at("scaling", "is required when unit is 'fraction': say how 0..1 was reached")
+            raise InvalidError.at("scaling", "is required when unit is 'fraction': say how 0..1 was reached")
         for index, value in enumerate(self.values):
             if not 0.0 <= value <= 1.0:
-                raise FormatError.at(f"values[{index}]", f"{value} is outside 0..1 (unit 'fraction')")
+                raise InvalidError.at(f"values[{index}]", f"{value} is outside 0..1 (unit 'fraction')")
         return self

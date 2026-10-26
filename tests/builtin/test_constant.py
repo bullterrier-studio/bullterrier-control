@@ -1,6 +1,6 @@
 import pytest
 
-from bullterrier_control import FormatError, registry
+from bullterrier_control import ParameterError, registry
 
 constant = registry.get("constant")
 
@@ -18,5 +18,5 @@ def test_a_negative_value_is_fine():
 
 
 def test_a_value_outside_the_documented_range_is_refused():
-    with pytest.raises(FormatError, match="value"):
+    with pytest.raises(ParameterError, match="value"):
         constant(value=1e9)

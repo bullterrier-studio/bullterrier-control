@@ -18,10 +18,11 @@ from typing import Annotated, Literal
 
 from pydantic import BeforeValidator, Field, field_serializer, field_validator, model_validator
 
-from ..errors import FormatError
+from ..errors import FormatError, InvalidError
+from ..validated import Finite, Text, whole_number
 from .event import Event
 from .grid import Grid
-from .model import Finite, FormatModel, Text, whole_number
+from .model import FormatModel
 from .series import Series
 
 __all__ = ["Bundle", "bundle_schema", "load", "save"]
@@ -57,18 +58,18 @@ class Bundle(FormatModel):
             for index in range(1, len(found)):
                 if found[index].t < found[index - 1].t:
                     now, before = found[index].t, found[index - 1].t
-                    raise FormatError.at(
+                    raise InvalidError.at(
                         f"events.{name}[{index}]",
                         f"t = {now} comes before t = {before} of the event before it: sort by t",
                     )
             if self.duration is not None:
                 late = next((event for event in found if event.t > self.duration), None)
                 if late is not None:
-                    raise FormatError.at(f"events.{name}", f"t = {late.t} is after the duration of {self.duration}")
+                    raise InvalidError.at(f"events.{name}", f"t = {late.t} is after the duration of {self.duration}")
         if self.duration is not None:
             for name, series in self.series.items():
                 if series.start > self.duration:
-                    raise FormatError.at(
+                    raise InvalidError.at(
                         f"series.{name}.start", f"{series.start} is after the duration of {self.duration}"
                     )
         return self

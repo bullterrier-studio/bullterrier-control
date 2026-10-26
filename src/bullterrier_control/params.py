@@ -13,19 +13,19 @@ Promises:
   raises `ValueError` naming the model and the field, so it never reaches a patch.
 - Values are checked when a model is built (`parse`, or the constructor), strictly whatever the annotation: unknown
   fields, `true` or a string for a number, a float for a whole number, 1 for a switch and values out of range are
-  refused with a `FormatError` naming each field, the rule and the value. A validator a subclass adds that changes
+  refused with a `ParameterError` naming each field, the rule and the value. A validator a subclass adds that changes
   values is the subclass's own business and is not checked.
 - `fields_doc` describes the fields for docs, listings and tests: basic fields first, then the advanced ones
   (`advanced=True`: they tune the technique rather than choose the shape; settable and validated like the rest).
 """
 
 import math
-from typing import Any, Literal, NamedTuple, get_args, get_origin
+from typing import Any, ClassVar, Literal, NamedTuple, get_args, get_origin
 
 from pydantic import ConfigDict, Field
 
-from .errors import FormatError
-from .formats.model import FormatModel
+from .errors import InvalidError, ParameterError
+from .validated import ValidatedModel
 
 __all__ = ["DISCOURAGED", "UNITS", "FieldDoc", "Params", "param"]
 
@@ -77,11 +77,12 @@ class FieldDoc(NamedTuple):
     advanced: bool
 
 
-class Params(FormatModel):
+class Params(ValidatedModel):
     """The parameters of one source or shaper. Subclass it, with a docstring, and declare each field with `param`."""
 
     # strict: a plain float or int is as strict as Finite and Whole; validate_default: defaults obey the same rules
     model_config = ConfigDict(strict=True, validate_default=True)
+    error: ClassVar[type[InvalidError]] = ParameterError
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
@@ -91,7 +92,7 @@ class Params(FormatModel):
             _check(f"{cls.__name__}.{name}", name, info, _extra(info.json_schema_extra))
         try:
             cls.parse({})
-        except FormatError as error:
+        except ParameterError as error:
             raise ValueError(f"{cls.__name__}: a default is not valid: {error}") from None
 
     @classmethod

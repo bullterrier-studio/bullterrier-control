@@ -2,9 +2,9 @@ from typing import Literal
 
 import pytest
 
-from bullterrier_control import FormatError
-from bullterrier_control.formats.model import Finite, Switch, Whole
+from bullterrier_control import ParameterError
 from bullterrier_control.params import UNITS, Params, param
+from bullterrier_control.validated import Finite, Switch, Whole
 
 
 class Wave(Params):
@@ -88,7 +88,7 @@ INVALID = {
 
 @pytest.mark.parametrize(("values", "named"), INVALID.values(), ids=INVALID.keys())
 def test_an_invalid_value_is_refused_naming_the_field(values, named, reports):
-    with pytest.raises(FormatError) as refused:
+    with pytest.raises(ParameterError) as refused:
         Wave.parse(values)
     reports(refused.value, named)
 
@@ -162,7 +162,7 @@ def test_a_number_declared_with_a_plain_float_or_int_is_as_strict_as_the_shared_
     annotation, default, wrong, reports
 ):
     model = declared(annotation, param(default, doc="Some number.", unit="count", min=0, max=9))
-    with pytest.raises(FormatError) as refused:
+    with pytest.raises(ParameterError) as refused:
         model.parse({"amount": wrong})
     reports(refused.value, "amount")
 

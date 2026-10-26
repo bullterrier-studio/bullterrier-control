@@ -44,7 +44,7 @@ bt-control = "bullterrier_control.cli:main"
 # Packages of sources and shapers: the registry imports every module of this group on its first query
 # (bullterrier_control.registry). Our own come in the way a third party's do.
 [project.entry-points."bullterrier_control.sources"]
-bullterrier_control = "bullterrier_control.sources"
+bullterrier_control = "bullterrier_control.builtin"
 
 [build-system]
 requires = ["uv_build>=0.13.0,<0.14.0"]
@@ -238,11 +238,11 @@ ignore_decorators = [
 ]
 ignore_names = [
     "model_config",  # pydantic reads each model's settings from this class attribute
-    "fields_doc",  # `Params.fields_doc` and the `FieldDoc` parts: read by listings and tests, not inside the package yet
-    "minimum",
-    "maximum",
     "sample",  # `Signal.sample`: the public way to read a signal, called by users and other packages, not in the package yet
     "summary",  # `Registered.summary`: the first sentence of a source's docstring, for listings; not read in the package yet
+    "__getattr__",  # module-level hooks (PEP 562) of `lib`: Python calls them for `lib.<name>` and `dir(lib)`
+    "__dir__",
+    "__doc__",  # `Registered.__doc__`: what `help()` shows
     "downbeats",  # `Grid`: the public conversions of a format, called by users and other packages' readers, not in the package yet
     "seconds_at",
     "beat_at",
@@ -282,40 +282,43 @@ DEP004 = ["packaging"]
 root_package = "bullterrier_control"
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > sources > plugin > registry > rendered > signal | params > formats > errors"
+name = "Layers: app > builtin | lib > plugin > registry > rendered > signal | params > formats > validated > errors"
 type = "layers"
 containers = ["bullterrier_control"]
 exhaustive = true  # a new top-level module must be placed in a layer here
 layers = [
     "__main__",  # `python -m bullterrier_control`: runs the command line
     "cli",  # app: the command line
-    "sources",  # bullterrier-control's own sources and shapers, found through the entry point
+    "builtin | lib",  # bullterrier-control's own sources and shapers (found through the entry point) | every one by name
     "plugin",  # the author API: the names a package of sources and shapers uses
     "registry",  # the table of sources and shapers, and the queries over it
     "rendered",  # a signal that needs history, rendered once
     "signal | params",  # what a signal is and how it is read | how a source or shaper declares its parameters
     "formats",  # the plain-data formats
+    "validated",  # the base of every validated model and its strict value types
     "errors",  # the exceptions: they import nothing, so every layer may raise them
 ]
 
 [[tool.importlinter.contracts]]
-name = "Sources never import each other"
+name = "Built-in sources never import each other"
 type = "independence"
-# shared numeric code goes to a module named for its concept, below `sources`, not from one source into another
-modules = ["bullterrier_control.sources.*"]
+# shared numeric code goes to a module named for its concept, below `builtin`, not from one source into another
+modules = ["bullterrier_control.builtin.*"]
 
 [[tool.importlinter.contracts]]
-name = "Sources use only the author API"
+name = "Built-in sources use only the author API"
 type = "forbidden"
-source_modules = ["bullterrier_control.sources"]
+source_modules = ["bullterrier_control.builtin"]
 forbidden_modules = [
     "bullterrier_control.cli",
     "bullterrier_control.errors",
     "bullterrier_control.formats",
+    "bullterrier_control.lib",
     "bullterrier_control.params",
     "bullterrier_control.registry",
     "bullterrier_control.rendered",
     "bullterrier_control.signal",
+    "bullterrier_control.validated",
 ]
 # `bullterrier_control.plugin` is the one door: it re-exports what a source needs, so a source reaches the rest only
 # through it (the import of plugin itself reaches them indirectly, which is the point)

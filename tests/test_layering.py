@@ -2,12 +2,13 @@
 import only the layers below it:
 
     app        __main__ > cli
-    sources    bullterrier-control's own sources and shapers; never import each other
+    builtin | lib   bullterrier-control's own sources and shapers (never importing each other) | all of them by name
     plugin     the author API: the names a package of sources and shapers uses
     registry   the table of sources and shapers, and the queries over it
     rendered   a signal that needs history, rendered once
     signal | params   what a signal is and how it is read | how a source or shaper declares its parameters
     formats    bundle > series | event | grid > model | units (each format builds on the base and the units only)
+    validated  the base of every validated model and its strict value types
     errors     the exceptions; import nothing from bullterrier_control, so every layer may raise them
 
 These are architecture tests: their subject is the package's structure (its import graph and its source files), so,
@@ -29,9 +30,9 @@ PACKAGE = Path(bullterrier_control.__file__).parent
 ROOT = PACKAGE.parent.parent  # the repository: pyproject.toml holds the contracts
 LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-imports` from the repository root
 
-LAYERS = "Layers: app > sources > plugin > registry > rendered > signal | params > formats > errors"
-SOURCES_APART = "Sources never import each other"
-SOURCES_DOOR = "Sources use only the author API"
+LAYERS = "Layers: app > builtin | lib > plugin > registry > rendered > signal | params > formats > validated > errors"
+SOURCES_APART = "Built-in sources never import each other"
+SOURCES_DOOR = "Built-in sources use only the author API"
 FORMATS = "Formats: bundle > series | event | grid > model | units"
 CONTRACTS = [LAYERS, SOURCES_APART, SOURCES_DOOR, FORMATS]
 
@@ -87,59 +88,59 @@ FORBIDDEN = {
     ),
     "registry to plugin": ("registry.py", "import bullterrier_control.plugin", "bullterrier_control.registry", LAYERS),
     "signal to registry": ("signal.py", "import bullterrier_control.registry", "bullterrier_control.signal", LAYERS),
-    "plugin to sources": ("plugin.py", "import bullterrier_control.sources", "bullterrier_control.plugin", LAYERS),
+    "plugin to sources": ("plugin.py", "import bullterrier_control.builtin", "bullterrier_control.plugin", LAYERS),
     "registry to sources": (
         "registry.py",
-        "import bullterrier_control.sources",
+        "import bullterrier_control.builtin",
         "bullterrier_control.registry",
         LAYERS,
     ),
     "a source to the command line": (
-        "sources/clip.py",
+        "builtin/clip.py",
         "import bullterrier_control.cli",
-        "bullterrier_control.sources.clip",
+        "bullterrier_control.builtin.clip",
         LAYERS,
     ),
     "a source to the signal module": (
-        "sources/clip.py",
+        "builtin/clip.py",
         "import bullterrier_control.signal",
-        "bullterrier_control.sources.clip",
+        "bullterrier_control.builtin.clip",
         SOURCES_DOOR,
     ),
     "a source to the errors": (
-        "sources/clip.py",
+        "builtin/clip.py",
         "import bullterrier_control.errors",
-        "bullterrier_control.sources.clip",
+        "bullterrier_control.builtin.clip",
         SOURCES_DOOR,
     ),
     "a source to the registry": (
-        "sources/clip.py",
+        "builtin/clip.py",
         "import bullterrier_control.registry",
-        "bullterrier_control.sources.clip",
+        "bullterrier_control.builtin.clip",
         SOURCES_DOOR,
     ),
     "a source to the params module": (
-        "sources/clip.py",
+        "builtin/clip.py",
         "import bullterrier_control.params",
-        "bullterrier_control.sources.clip",
+        "bullterrier_control.builtin.clip",
         SOURCES_DOOR,
     ),
     "a source to the rendered module": (
-        "sources/slew.py",
+        "builtin/slew.py",
         "import bullterrier_control.rendered",
-        "bullterrier_control.sources.slew",
+        "bullterrier_control.builtin.slew",
         SOURCES_DOOR,
     ),
     "a source to the formats": (
-        "sources/clip.py",
+        "builtin/clip.py",
         "import bullterrier_control.formats",
-        "bullterrier_control.sources.clip",
+        "bullterrier_control.builtin.clip",
         SOURCES_DOOR,
     ),
     "a source to another source": (
-        "sources/clip.py",
-        "import bullterrier_control.sources.slew",
-        "bullterrier_control.sources.clip",
+        "builtin/clip.py",
+        "import bullterrier_control.builtin.slew",
+        "bullterrier_control.builtin.clip",
         SOURCES_APART,
     ),
     "errors to formats": ("errors.py", "import bullterrier_control.formats", "bullterrier_control.errors", LAYERS),
@@ -209,8 +210,8 @@ ALLOWED = {
     "registry to params": ("registry.py", "import bullterrier_control.params"),
     "plugin to registry": ("plugin.py", "import bullterrier_control.registry"),
     "cli to plugin": ("cli.py", "import bullterrier_control.plugin"),
-    "cli to sources": ("cli.py", "import bullterrier_control.sources"),
-    "a source to the plugin api": ("sources/clip.py", "import bullterrier_control.plugin"),
+    "cli to sources": ("cli.py", "import bullterrier_control.builtin"),
+    "a source to the plugin api": ("builtin/clip.py", "import bullterrier_control.plugin"),
     "rendered to errors": ("rendered.py", "import bullterrier_control.errors"),
     "signal to formats": ("signal.py", "import bullterrier_control.formats.series"),
     "series to model": ("formats/series.py", "import bullterrier_control.formats.model"),

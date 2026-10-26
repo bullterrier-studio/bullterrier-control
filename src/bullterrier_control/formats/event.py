@@ -4,7 +4,8 @@ from typing import Annotated
 
 from pydantic import Field
 
-from .model import Finite, FormatModel, Text
+from ..validated import Finite, Text
+from .model import FormatModel
 
 __all__ = ["Event"]
 
