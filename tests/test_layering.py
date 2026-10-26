@@ -2,7 +2,7 @@
 import only the layers below it:
 
     app        __main__ > cli
-    formats    series > model | units (each format builds on the base and the units, never on another format)
+    formats    series | event | grid > model | units (each format builds on the base and the units only)
     errors     the exceptions; import nothing from bullterrier_control, so every layer may raise them
 
 These are architecture tests: their subject is the package's structure (its import graph and its source files), so,
@@ -25,7 +25,7 @@ ROOT = PACKAGE.parent.parent  # the repository: pyproject.toml holds the contrac
 LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-imports` from the repository root
 
 LAYERS = "Layers: app > formats > errors"
-FORMATS = "Formats: series > model | units"
+FORMATS = "Formats: series | event | grid > model | units"
 CONTRACTS = [LAYERS, FORMATS]
 
 
@@ -69,6 +69,24 @@ FORBIDDEN = {
         "bullterrier_control.formats.units",
         FORMATS,
     ),
+    "event to grid": (
+        "formats/event.py",
+        "import bullterrier_control.formats.grid",
+        "bullterrier_control.formats.event",
+        FORMATS,
+    ),
+    "grid to series": (
+        "formats/grid.py",
+        "import bullterrier_control.formats.series",
+        "bullterrier_control.formats.grid",
+        FORMATS,
+    ),
+    "series to event": (
+        "formats/series.py",
+        "import bullterrier_control.formats.event",
+        "bullterrier_control.formats.series",
+        FORMATS,
+    ),
     "model to series": (
         "formats/model.py",
         "import bullterrier_control.formats.series",
@@ -91,6 +109,8 @@ ALLOWED = {
     "cli to errors": ("cli.py", "import bullterrier_control.errors"),
     "cli to formats": ("cli.py", "import bullterrier_control.formats"),
     "series to model": ("formats/series.py", "import bullterrier_control.formats.model"),
+    "event to units": ("formats/event.py", "import bullterrier_control.formats.units"),
+    "grid to model": ("formats/grid.py", "import bullterrier_control.formats.model"),
 }
 
 

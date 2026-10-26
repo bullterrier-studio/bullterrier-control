@@ -224,8 +224,15 @@ ignore_decorators = [
 ignore_names = [
     "model_config",  # pydantic reads each model's settings from this class attribute
     "parse",  # `FormatModel.parse`: the public way in for data from outside, called by users, tools and tests
-    "start",  # format fields: the data consumers read (a Series' start and rate, the Unit vocabulary), not used inside the package
+    # format fields and vocabulary: data that consumers read (a Series' start and rate, an Event's t, strength, duration,
+    # label and pitch, the Unit members), not all of it used inside the package
+    "start",
     "rate",
+    "t",
+    "strength",
+    "duration",
+    "label",
+    "pitch",
     "DECIBELS",
     "HERTZ",
     "MIDI",
@@ -263,13 +270,12 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "Formats: series > model | units"
+name = "Formats: series | event | grid > model | units"
 type = "layers"
 containers = ["bullterrier_control.formats"]
 exhaustive = true  # a new format module must be placed in a layer here
-# each format builds on the shared base and the units, never on another format; the formats are siblings (Tasks add them
-# to the sibling group as they arrive)
-layers = ["series", "model | units"]
+# each format builds on the shared base and the units, never on another format: the formats are independent siblings
+layers = ["series | event | grid", "model | units"]
 
 # Read by git-cliff when `uv run poe release` writes a release's section of CHANGELOG.md: the Conventional Commits since
 # the last tag, grouped as Keep a Changelog does. A commit only appears if a parser below names its group; the rest
