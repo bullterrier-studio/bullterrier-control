@@ -86,8 +86,6 @@ class Registered[P: Params]:
                 given[name] = self._named(INPUTS[name].check, values[name])
             elif required:
                 raise TypeError(f"{self.kind} {self.name!r} needs the input {name!r}")
-            else:
-                given[name] = None
         parameters = self.validate({name: value for name, value in values.items() if name not in INPUTS})
         return self.function(*signals, parameters, **given)
 
