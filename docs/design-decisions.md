@@ -211,3 +211,17 @@ separate ramp. Changed:
   can round just below `k` (rate 7, t = 61/7 reads step 60), so a read at a "frame time" may land on the step before. No
   float formula avoids it for every rate, and a read inside a step is exact, so the docs say so rather than hide it behind
   a tolerance. It applies to `steps` and `noise` `hold`; `lfo`, `linear` and `smooth` are continuous there.
+
+## Decided before C3 (agreed with the owner, 2026-10-26)
+
+- **A shaper stays causal; whatever needs the whole data or its future works on the data.** Percentile normalising needs
+  every value, a lead reads ahead, snapping an event to the nearest beat may move it earlier. These are operations on
+  events and series, done before the data becomes a signal; the shapers (follow, gate, hold, remap, delay) read only the
+  past. *Reason:* the signal contract (causal, the same value however it is read) is what lets a consumer read any time
+  in any order; one shaper that looks ahead would break that for every signal built on it, and the contract tests would
+  refuse it anyway. *Consequence:* a lead exists for events only; a signal can only lag (`delay`).
+- **C3 is two batches: causal shapers (C3a), then operations on data (C3b).** *Reason:* they are two kinds of thing with
+  different contracts (signal to signal; data to data), and small batches each end with worked examples checked by hand.
+- **The scenes example comes first.** Sections are events with a duration, and `envelope` turns them into a scene
+  intensity with no new code. *Reason:* it checks long events through `envelope` before the new shapers build on it, and
+  shows a consumer the pattern.

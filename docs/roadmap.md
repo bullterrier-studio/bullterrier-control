@@ -14,7 +14,8 @@ working session, **M** two or three. Decisions behind the batches: [design-decis
 | C2b | `envelope`, `latch` (examples 1 and 5) | M | done |
 | C2c | `lfo`, `steps` (example 4) | S | done |
 | C2d | `noise` (seeded, read at any time) | S | done |
-| C3 | Shapers and event operations | M | |
+| C3a | Causal shapers; the scenes example | M | |
+| C3b | Operations on events and series | M | |
 | C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | |
 | C5 | First release | S | |
 
@@ -96,13 +97,26 @@ test; `docs/ecosystem.md` so the repository stands on its own.
   order, the same on every platform.
 - `noise`: held, linear or smooth between random values at `rate` per second, a `seed`, output between `low` and `high`.
 
-## C3 Shapers and event operations
+## C3 Shapers and operations
 
-- Signal shapers: attack/release follower, one-pole smoothing, gate with hysteresis, sample and hold, quantize to the grid,
-  range map with response curve (linear, exponential, gamma), normalise (percentiles), time shift (lead/lag). (`slew` and
-  `clip` ship in C1.)
-- Event operations: filter by label or strength, every Nth, downbeats only, minimum gap (thinning), shift, quantize to the
-  grid, merge.
+Split by the signal contract ([design-decisions.md](design-decisions.md), "Decided before C3"): a shaper is causal, so
+whatever needs the whole data or its future (percentiles, a lead, snapping to the nearest beat) works on the data before
+it becomes a signal. (`slew` and `clip` shipped in C1.)
+
+### C3a Causal shapers; the scenes example
+
+- First, example 6: sections (events with a duration) through `envelope` give a scene intensity, with no new code.
+- `follow` (attack/release follower; equal times are one-pole smoothing), `gate` (hysteresis), `hold` (sample and hold at
+  events), `remap` (0..1 onto `low`..`high` through an ease), `delay` (a lag).
+
+### C3b Operations on events and series
+
+- A third registered kind, the operation: data in, data out, parameters declared like a source's, in `lib`.
+- Events: `select` (label, strength threshold), `every` (every Nth), `thin` (minimum gap), `shift` (lead or lag),
+  `quantize` (to the grid), `beats` (events from a grid: beats, downbeats, subdivisions). Merging is concatenation, since
+  the `events` input sorts; a signal quantized to the grid is `hold` at `beats`.
+- Series: `normalise` (between two percentiles, to a `fraction` series that states its `scaling`).
+- Example 7: strong kicks only, thinned, through `envelope`.
 
 ## C4 Patch files, CLI, gallery
 
@@ -115,11 +129,20 @@ test; `docs/ecosystem.md` so the repository stands on its own.
   (pixels, degrees, ...), and control's names (`seconds`, `beats`, `fraction`, ...) are its side of that mapping.
 - A gallery: one plot per source and shaper, generated, in `docs/`.
 - README example that runs.
+- Parameter descriptions keep one shape across the ecosystem: if `bullterrier-image` marks parameters that wrap (a
+  `cyclic` flag for angles), `list --json` carries it too (`lfo.phase` wraps).
 
 ## C5 First release
 
 GitHub repository under `bullterrier-studio`, first CI run (the workflows have only been linted so far), trusted
 publishing on TestPyPI and PyPI, `uv run poe release 0.1.0rc1`, then `0.1.0`.
+
+## Later, with a trigger
+
+- **Conventional names**, when `bullterrier-audio` writes its first analysis: list once in `docs/formats.md` the event
+  labels and series names producers and consumers share (`kick`, `snare`, `hat`, section labels, band names, and C3b's
+  `beat`, `downbeat`, `sub`), so the producer and every consumer do not each decide them. The format does not validate
+  them.
 
 ## Not in v1
 
