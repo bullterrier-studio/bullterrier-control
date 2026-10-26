@@ -62,7 +62,7 @@ bt-control schema                    # the JSON Schema of a bundle, for tools in
 ## Status
 
 Pre-alpha, not yet on PyPI. The formats and the core exist, with the sources `constant`, `keyframes`,
-`envelope` and `latch` and the shapers `clip` and `slew`; LFOs, step sequences and noise come next
+`envelope`, `latch`, `lfo` and `steps` and the shapers `clip` and `slew`; noise comes next
 ([docs/roadmap.md](docs/roadmap.md)).
 
 ## Development

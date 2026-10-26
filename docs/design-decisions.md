@@ -173,3 +173,22 @@ separate ramp. Changed:
   special case; the parameter docs say that 0 falls at once.
 - **The `label` field and its rule `params.label in ("", event.label)` are written in both `envelope` and `latch`.**
   *Reason:* two short copies; they are extracted when a third consumer (the C3 event operations) needs them.
+
+## Decided in C2c
+
+- **`lfo` and `steps` share one module, `cadence`, for the position of a read.** *Reason:* "rate times seconds, or times
+  beats of a grid" and the rule that `per="beat"` needs a grid are one decision; two copies would drift. It sits in the
+  layer of `signal`, `params` and `easing`, below `plugin`, which re-exports `counter`.
+- **A time out of reach is a `SignalError`, whichever way it is out.** *Reason:* a `Grid` refuses a position it cannot
+  compute with a `FormatError`, but the contract says a signal gives a finite value or a `SignalError` at any time, so
+  `cadence` re-raises it as one; an overflowing `rate * t` is refused the same way, so no source sees a non-finite position.
+- **`per` defaults to `"second"` in both sources, and `grid` is optional.** *Reason:* the contract tests build every source
+  from its required inputs alone, and a source must work with its defaults. `per="beat"` without a grid is a
+  `ParameterError` naming `per`; a grid given per second is ignored, so one grid can be passed to every source of a patch.
+- **An `lfo` stays inside `low` and `high` exactly, by clipping.** *Reason:* `low + (high - low) * s` lands an ulp beyond
+  `high` in about one case in twenty at `s = 1`, and a consumer doing `round(127 * value)` would leave its range. The range
+  is documented as a promise, so it is enforced.
+- **A cycle position of exactly 1.0 is read as 0.0.** *Reason:* `np.mod` of a tiny negative number (a time just before a
+  first beat that is not at 0) rounds to 1.0, which would read a `square` with `duty` 1 as low at that instant.
+- **Before the first beat the position is negative and `steps` counts back from the end of its list.** *Reason:* the Grid
+  continues the first beat length backwards, so a cycle or list runs on without a seam at the first beat.
