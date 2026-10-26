@@ -323,7 +323,7 @@ def one_argument(params: Nothing) -> Signal:
 BROKEN = {
     "parameters that are not a Params model": lambda: source(params=dict)(_named("fine")),  # type: ignore[type-var]
     "a source taking a signal": lambda: source(params=Nothing)(not_params),  # type: ignore[arg-type]
-    "a shaper taking none": lambda: shaper(params=Nothing)(one_argument),  # type: ignore[arg-type]  # the wrong shape is the case  # type: ignore[arg-type]
+    "a shaper taking none": lambda: shaper(params=Nothing)(one_argument),  # type: ignore[arg-type]  # the wrong shape is the case
     "a name that is not lower case": lambda: source(params=Nothing)(_named("Loud")),
     "a name with a space": lambda: source(params=Nothing)(_named("a b")),
     "a name with a trailing newline": lambda: source(params=Nothing)(_named("level\n")),

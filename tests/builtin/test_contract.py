@@ -211,6 +211,12 @@ VALID = {"events": events_are_valid, "series": series_is_valid}
 
 
 @pytest.mark.parametrize("name", OPERATIONS)
+def test_every_operation_gives_valid_data_from_the_smallest_inputs_it_accepts(name):
+    # the least a call can give: no events, a grid of two beats, a series of one value, optional inputs left out
+    VALID[registry.get(name).returns](make(name, SMALLEST_INPUTS, {}, required_only=True))
+
+
+@pytest.mark.parametrize("name", OPERATIONS)
 @pytest.mark.parametrize("case", ["defaults", "minimum", "maximum"])
 def test_every_operation_gives_the_valid_data_it_declares_with_its_defaults_and_with_all_numbers_at_one_end(name, case):
     numbers = {} if case == "defaults" else limits_at(name, case)
