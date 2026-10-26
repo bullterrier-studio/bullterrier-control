@@ -62,6 +62,18 @@ Also: CLAUDE.md gains "The signal contract" (what every source and shaper promis
 - Latch: 0 before an event, 1 after (the "wake" at a drop).
 - Also: `poe new-source NAME` scaffolds a source's files from a template, and CLAUDE.md gains "Adding a source or shaper",
   as image's "Adding an effect" does (the template and the command arrive together).
+- **Worked examples first** (they are C2's acceptance tests, written before the sources): `docs/examples.md` with a small
+  input Bundle per scenario in `examples/`, the signal built from it, and the output as plain numbers at the times a
+  consumer would ask. Output is numbers: no picture, no sound, and the examples never import another package; what the
+  consumer does with the numbers is a line of arithmetic in a comment, labelled as the consumer's. Scenarios, from the
+  ecosystem design (`bullterrier-design/README.md`, "Where does it go?"):
+  1. **Kicks to a glow radius** (audio, image): kick Events with a decay envelope, read at 30 per second.
+  2. **A ramp for a progress parameter** (image): "evaporate from 0 to 90 % over 5 s": keyframes with easing.
+  3. **Bass energy to a size** (audio, vector): a Series, slewed, clipped.
+  4. **Tempo-synced LFO** (standalone, a MIDI controller or a light): a Grid and an LFO in cycles per beat.
+  5. **The wake at a drop** (audio, video): a latch on one Event.
+  Each expected number comes from a hand computation or an analytic formula, never from running the code. A test runs every
+  example and compares; an example whose source does not exist yet is the to-do list.
 
 ## C3 Shapers and event operations
 
