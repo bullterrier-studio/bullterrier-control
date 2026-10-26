@@ -357,10 +357,11 @@ def test_a_package_that_fails_after_registering_leaves_nothing_of_itself_behind(
         raise RuntimeError("not today")
 
     entry_points(FakeEntryPoint("broken", half_done))
-    for _ in range(2):  # it fails again the second time: nothing it registered survived the first failure
-        with pytest.raises(BullterrierControlError, match="broken"):
+    for _ in range(2):
+        # the second try registers `half` again: it would be refused as a name taken had the first one stayed behind
+        with pytest.raises(BullterrierControlError, match="not today"):
             registry.sources()
-    with pytest.raises(BullterrierControlError, match="broken"):
+    with pytest.raises(BullterrierControlError, match="not today"):
         registry.get("half")
 
 
@@ -391,3 +392,14 @@ def test_an_isolated_registry_starts_empty_and_gives_back_what_it_took(throwaway
 
         assert list(registry.all_registered()) == ["inside"]
     assert dict(registry.all_registered()) == before
+
+
+def test_leaving_an_isolated_block_gives_back_whether_the_packages_were_loaded(entry_points):
+    package = FakeEntryPoint("package", lambda: None)
+    entry_points(package)
+    registry.sources()
+    assert package.loads == 1
+    with registry.isolated():
+        pass
+    registry.sources()
+    assert package.loads == 1  # not loaded again: the registry was loaded before the block, and is after it

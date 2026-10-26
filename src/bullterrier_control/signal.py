@@ -36,9 +36,8 @@ _ROUNDING = 1e-9
 class Signal(ABC):
     """A value that changes over time, readable at any moment in seconds. Subclasses implement `compute`."""
 
-    __array_ufunc__ = (
-        None  # numpy defers to the operators below: an array times a signal is an error, not an array of signals
-    )
+    # numpy defers to the operators below: an array times a signal is an error, not an array of signals
+    __array_ufunc__ = None
 
     @final
     def sample(self, times: ArrayLike) -> NDArray[np.float64]:
