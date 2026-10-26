@@ -5,7 +5,7 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-from ..plugin import Finite, Grid, Params, Positions, Signal, counter, param, source
+from ..plugin import Finite, Grid, Params, Positions, Signal, between, counter, param, source
 
 
 class LfoParams(Params):
@@ -78,10 +78,7 @@ class _Lfo(Signal):
         # a float modulo of a tiny negative number rounds to exactly 1.0, which is the end of a cycle, not its start:
         # one step below it, where a square with duty 1 is still high and a saw is at the top of its ramp
         cycle = np.where(cycle == 1.0, np.nextafter(1.0, 0.0), cycle)
-        low, high = params.low, params.high
-        values = low + (high - low) * _wave(params.shape, cycle, params.duty)
-        # low + (high - low) * 1 can land an ulp beyond high: the range is a promise, so it is kept exactly
-        return np.clip(values, min(low, high), max(low, high))
+        return between(params.low, params.high, _wave(params.shape, cycle, params.duty))
 
 
 def _wave(shape: str, cycle: NDArray[np.float64], duty: float) -> NDArray[np.float64]:

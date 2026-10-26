@@ -27,6 +27,7 @@ from .inputs import Keyframe
 from .params import Params, param
 from .registry import shaper, source
 from .rendered import Rendered
+from .scaling import between
 from .signal import Constant, Signal, maximum, minimum
 from .validated import Finite, Switch, Text, Whole
 
@@ -46,6 +47,7 @@ __all__ = [
     "Switch",
     "Text",
     "Whole",
+    "between",
     "counter",
     "curve",
     "maximum",

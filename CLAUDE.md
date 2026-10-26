@@ -27,7 +27,7 @@ uv run poe check                     # the whole gate, before you report or merg
 | see a worked example with numbers | `docs/examples.md` and `examples/` |
 | find what is planned | `docs/roadmap.md`: work goes in small batches, each planned before it starts |
 
-**State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`), inputs (`points`, `events`, `grid`, `values`), easing and cadence, and
+**State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`), inputs (`points`, `events`, `grid`, `values`), easing, cadence and scaling, and
 the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps`, `clip` and `slew` exist. Next: batch C2d
 (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
@@ -82,7 +82,7 @@ lib        every registered source and shaper by name (`lib.slew`), with `help()
 plugin     the author API: everything a source needs (built-ins use it too); the one door, enforced by a contract
 registry   the table of sources and shapers; `@source`, `@shaper`; entry-point loading
 rendered   Rendered: a signal that needs history, rendered once and read by holding the latest sample  |  inputs   `INPUTS`, Keyframe
-signal     Signal, Constant, from_series, arithmetic  |  params   Params, param, UNITS  |  easing   `curve`: named and Bezier eases  |  cadence   `counter`: a read's position in cycles or steps, per second or beat
+signal     Signal, Constant, from_series, arithmetic  |  params   Params, param, UNITS  |  easing   `curve`: named and Bezier eases  |  cadence   `counter`: a read's position in cycles or steps, per second or beat  |  scaling   `between`: 0..1 onto `low`..`high`, exactly inside
 formats    Bundle > Series | Event | Grid > the format base and Unit
 validated  ValidatedModel and the strict value types (Finite, Whole, Switch, Text)
 errors     BullterrierControlError > InvalidError > FormatError | ParameterError; SignalError; UnknownNameError
