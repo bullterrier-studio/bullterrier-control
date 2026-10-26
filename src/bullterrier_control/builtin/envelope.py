@@ -108,6 +108,8 @@ class _Envelope(Signal):
         self, since: NDArray[np.float64], strength: float | NDArray[np.float64], sustain: float | NDArray[np.float64]
     ) -> NDArray[np.float64]:
         """The value `since` seconds after an event starts, as long as it has not ended (one event, or each of many)."""
+        # np.where evaluates both branches: without the clamp, the unused one computes exp(+large), giving inf
+        # or 0 * inf = NaN
         return np.where(
             since < self._attack,
             strength * (1.0 - self._rise_left(since)),

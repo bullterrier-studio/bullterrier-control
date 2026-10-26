@@ -230,10 +230,11 @@ def test_no_events_give_zeros_without_a_warning():
 
 
 def test_reading_before_the_first_event_gives_zero():
-    assert lib.envelope(events=[Event(t=5, strength=0.6)], attack=2).sample([0.0, 2.5, 4.999]).tolist() == [0, 0, 0]
+    envelope = lib.envelope(events=[Event(t=5, strength=0.6)], attack=2)
+    assert envelope.sample([0.0, 2.5, 4.999]).tolist() == [0.0, 0.0, 0.0]
 
 
-def test_a_long_decay_read_far_away_gives_zero_without_a_warning():
+def test_a_long_decay_read_far_away_gives_zero():
     assert lib.envelope(events=[Event(t=1.0)], decay=3600).sample(1e12).tolist() == 0.0
 
 
