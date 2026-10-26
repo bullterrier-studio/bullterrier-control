@@ -4,7 +4,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from .model import Finite, FormatModel
+from .model import Finite, FormatModel, Text
 
 __all__ = ["Event"]
 
@@ -17,5 +17,5 @@ class Event(FormatModel):
     t: Annotated[Finite, Field(ge=0)]
     strength: Annotated[Finite, Field(ge=0, le=1)] = 1.0
     duration: Annotated[Finite, Field(gt=0)] | None = None
-    label: Annotated[str, Field(min_length=1)] | None = None
+    label: Annotated[Text, Field(min_length=1)] | None = None
     pitch: Annotated[Finite, Field(ge=0, le=_HIGHEST_MIDI_NOTE)] | None = None

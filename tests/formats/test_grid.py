@@ -25,15 +25,17 @@ INVALID = {
     "meter a float": ({**STEADY, "meter": 4.0}, "meter"),
     "downbeat equal to the meter": ({**STEADY, "first_downbeat": 4}, "first_downbeat"),
     "downbeat negative": ({**STEADY, "first_downbeat": -1}, "first_downbeat"),
+    "downbeat past the last beat": ({"beats": [0.0, 1.0], "meter": 4, "first_downbeat": 3}, "first_downbeat"),
     "tempo is not stored": ({**STEADY, "bpm": 120}, "bpm"),
     "beats missing": ({"meter": 4, "first_downbeat": 0}, "beats"),
 }
 
 
 @pytest.mark.parametrize(("data", "named"), INVALID.values(), ids=INVALID.keys())
-def test_an_invalid_grid_is_refused_naming_the_field(data, named):
-    with pytest.raises(FormatError, match=named):
+def test_an_invalid_grid_is_refused_naming_the_field(data, named, reports):
+    with pytest.raises(FormatError) as refused:
         Grid.parse(data)
+    reports(refused.value, named)
 
 
 def test_the_error_names_the_first_beat_that_does_not_increase():
@@ -47,7 +49,7 @@ def test_the_error_names_the_first_beat_that_does_not_increase():
     data=st.data(),
 )
 def test_any_increasing_beat_times_are_a_valid_grid(beats, meter, data):
-    first_downbeat = data.draw(st.integers(min_value=0, max_value=meter - 1))
+    first_downbeat = data.draw(st.integers(min_value=0, max_value=min(meter, len(beats)) - 1))
     grid = Grid.parse({"beats": beats, "meter": meter, "first_downbeat": first_downbeat})
     assert grid.beats == tuple(beats)
     assert (grid.meter, grid.first_downbeat) == (meter, first_downbeat)

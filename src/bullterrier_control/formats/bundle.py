@@ -11,15 +11,17 @@ Promises:
 """
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Annotated, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import BeforeValidator, Field, field_serializer, field_validator, model_validator
 
 from ..errors import FormatError
 from .event import Event
 from .grid import Grid
-from .model import Finite, FormatModel
+from .model import Finite, FormatModel, Text, whole_number
 from .series import Series
 
 __all__ = ["Bundle", "bundle_schema", "load", "save"]
@@ -32,38 +34,43 @@ class Bundle(FormatModel):
     """Everything one producer measured of one piece of material: named Series, named Event lists, a Grid."""
 
     format: Literal["bullterrier-control/bundle"]
-    version: Literal[1]
-    source: str | None = None
+    version: Annotated[Literal[1], BeforeValidator(whole_number)]
+    source: Text | None = None
     duration: Annotated[Finite, Field(gt=0)] | None = None
     grid: Grid | None = None
-    series: dict[Name, Series] = Field(default_factory=dict)
-    events: dict[Name, tuple[Event, ...]] = Field(default_factory=dict)
+    series: Mapping[Name, Series] = Field(default_factory=lambda: MappingProxyType({}))
+    events: Mapping[Name, tuple[Event, ...]] = Field(default_factory=lambda: MappingProxyType({}))
 
-    @field_validator("version", mode="before")
+    @field_validator("series", "events", mode="after")
     @classmethod
-    def _version_is_a_whole_number(cls, value: object) -> object:
-        # a Literal accepts True and 1.0 for 1; a version is the integer written in the file
-        if type(value) is not int:
-            raise FormatError(f"the version is the whole number 1 (got {value!r})")
-        return value
+    def _read_only(cls, value: Mapping[str, object]) -> Mapping[str, object]:
+        # the model is frozen; its mappings must not be a way round that (an edit would skip every rule)
+        return MappingProxyType(dict(value))
+
+    @field_serializer("series", "events")
+    def _as_dict(self, value: Mapping[str, object]) -> dict[str, object]:
+        return dict(value)  # a read-only view is not something the serializer knows
 
     @model_validator(mode="after")
     def _events_are_sorted_and_everything_starts_inside_the_material(self) -> "Bundle":
         for name, found in self.events.items():
             for index in range(1, len(found)):
                 if found[index].t < found[index - 1].t:
-                    raise FormatError(
-                        f"events.{name}[{index}]: t = {found[index].t} comes before t = {found[index - 1].t}"
-                        " of the event before it; events are sorted by t"
+                    now, before = found[index].t, found[index - 1].t
+                    raise FormatError.at(
+                        f"events.{name}[{index}]",
+                        f"t = {now} comes before t = {before} of the event before it: sort by t",
                     )
             if self.duration is not None:
                 late = next((event for event in found if event.t > self.duration), None)
                 if late is not None:
-                    raise FormatError(f"events.{name}: t = {late.t} is after the duration of {self.duration}")
+                    raise FormatError.at(f"events.{name}", f"t = {late.t} is after the duration of {self.duration}")
         if self.duration is not None:
             for name, series in self.series.items():
                 if series.start > self.duration:
-                    raise FormatError(f"series.{name}: start = {series.start} is after the duration of {self.duration}")
+                    raise FormatError.at(
+                        f"series.{name}.start", f"{series.start} is after the duration of {self.duration}"
+                    )
         return self
 
 
@@ -92,6 +99,9 @@ def load(path: Path) -> Bundle:
         raise FormatError(f"{path}: not JSON ({error.msg}, line {error.lineno} column {error.colno})") from None
     except FormatError as error:
         raise FormatError(f"{path}: {error}") from None
+    # what the JSON decoder itself refuses: nesting deeper than Python can follow, an integer of thousands of digits
+    except (RecursionError, ValueError) as error:
+        raise FormatError(f"{path}: cannot be read as JSON ({error})") from None
 
 
 def _read(path: Path) -> str:
@@ -110,4 +120,7 @@ def save(bundle: Bundle, path: Path) -> None:
 def bundle_schema() -> dict[str, object]:
     """The JSON Schema of a Bundle file, for tools in other languages. It states shapes, types and ranges; the rules a
     schema cannot state (sorted events, duration bounds, increasing beats, repeated keys) are enforced by `load`."""
-    return Bundle.model_json_schema()
+    schema = Bundle.model_json_schema()
+    for field in ("series", "events"):  # the name rule: a key outside the pattern is not allowed
+        schema["properties"][field]["additionalProperties"] = False
+    return schema

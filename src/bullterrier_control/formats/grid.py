@@ -2,14 +2,12 @@
 
 from typing import Annotated
 
-from pydantic import Field, Strict, model_validator
+from pydantic import Field, model_validator
 
 from ..errors import FormatError
-from .model import Finite, FormatModel
+from .model import Finite, FormatModel, Whole
 
 __all__ = ["Grid"]
-
-Whole = Annotated[int, Strict()]  # a JSON integer: not a float, not a bool
 
 
 class Grid(FormatModel):
@@ -20,11 +18,14 @@ class Grid(FormatModel):
     first_downbeat: Annotated[Whole, Field(ge=0)]
 
     @model_validator(mode="after")
-    def _beats_increase_and_the_downbeat_is_in_the_bar(self) -> "Grid":
+    def _beats_increase_and_the_downbeat_is_a_beat_in_the_bar(self) -> "Grid":
         for index in range(1, len(self.beats)):
             if self.beats[index] <= self.beats[index - 1]:
                 now, before = self.beats[index], self.beats[index - 1]
-                raise FormatError(f"beats[{index}] = {now} does not come after beats[{index - 1}] = {before}")
-        if self.first_downbeat >= self.meter:
-            raise FormatError(f"first_downbeat = {self.first_downbeat} is not inside a bar of meter = {self.meter}")
+                raise FormatError.at(f"beats[{index}]", f"{now} does not come after beats[{index - 1}] = {before}")
+        if self.first_downbeat >= min(self.meter, len(self.beats)):
+            raise FormatError.at(
+                "first_downbeat",
+                f"{self.first_downbeat} must be a beat inside a bar of meter = {self.meter} ({len(self.beats)} beats)",
+            )
         return self

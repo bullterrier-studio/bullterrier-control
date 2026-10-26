@@ -6,7 +6,8 @@ and `schemas/bundle-1.schema.json` are the contract. Changing a rule is a new `v
 
 Conventions: JSON, UTF-8, one object per file. Times are **seconds** from the start of the material, never frames. Every
 number is finite (`NaN`, `Infinity`, `-Infinity` are rejected). A number is a JSON number: a whole number is fine where a
-decimal is expected, `true` and a string are not. An optional field is absent when unset; a reader also accepts it
+decimal is expected, `true` and a string are not (an integer-valued field such as `version` or `meter` also refuses
+`1.0`). Strings must be writable as UTF-8 (no lone surrogates). An optional field is absent when unset; a reader also accepts it
 written as `null`.
 
 ## Bundle
@@ -23,7 +24,8 @@ written as `null`.
 
 Names (the keys of `series` and `events`) match `^[a-z0-9][a-z0-9_.-]*$` (`bass`, `stem.drums`, `kick`, `sections`). A repeated
 key is an error. With `duration` set, every event has `t <= duration` (equal is valid) and every series has
-`start <= duration`.
+`start <= duration`. An event's span and a Grid's beats may run past `duration`. A name may be used in both `series` and
+`events`.
 
 ## Series
 
@@ -61,7 +63,7 @@ The musical clock, stored as the beat times themselves.
 |---|---|---|
 | `beats` | array of numbers | at least 2, strictly increasing, each `>= 0`: the time of every beat |
 | `meter` | int | beats per bar, `>= 1` |
-| `first_downbeat` | int | index into `beats` of the first downbeat, `0 <= first_downbeat < meter` |
+| `first_downbeat` | int | index into `beats` of the first downbeat: `0 <= first_downbeat < meter` and `< len(beats)` |
 
 Downbeats are `beats[first_downbeat::meter]`. Tempo is not stored: it is `60 / (beats[i+1] - beats[i])`, so a tempo and its
 beats cannot disagree. A beat position *p* (fractional; 0 is `beats[0]`) maps to seconds by linear interpolation between
@@ -70,11 +72,14 @@ conversion itself ships with the code that reads signals (roadmap C1); the meani
 
 ## Versioning
 
-`version` is `1`. A new optional field, a loosened or tightened rule, or a new unit is a new version; a reader rejects a
+`version` is `1`. A reader reports a file it cannot read as JSON (too deeply nested, an integer of thousands of digits) as
+invalid. A new optional field, a loosened or tightened rule, or a new unit is a new version; a reader rejects a
 version it does not know and says which it supports. Producers write the lowest version that carries their data.
 
 ## Schema
 
 `schemas/bundle-1.schema.json` is generated from the models (`uv run bt-control schema`) for tools in other languages. It
-states the shapes, types and ranges; the rules a schema cannot state (sorted events, `duration` bounds, strictly increasing
-beats, names, repeated keys) are enforced by `bt-control validate FILE` and by `bullterrier_control.load`.
+states the shapes, types, ranges and names. A schema cannot state, and `bt-control validate FILE` and
+`bullterrier_control.load` enforce: sorted events, `duration` bounds, strictly increasing beats, `first_downbeat` below
+`meter` and `len(beats)`, `scaling` and the 0..1 range of a `fraction` series, repeated keys, integers written as `1.0`
+(JSON Schema counts `1.0` as an integer), and UTF-8 text.

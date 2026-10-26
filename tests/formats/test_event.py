@@ -51,6 +51,7 @@ INVALID = {
 
 
 @pytest.mark.parametrize(("data", "named"), INVALID.values(), ids=INVALID.keys())
-def test_an_invalid_event_is_refused_naming_the_field(data, named):
-    with pytest.raises(FormatError, match=named):
+def test_an_invalid_event_is_refused_naming_the_field(data, named, reports):
+    with pytest.raises(FormatError) as refused:
         Event.parse(data)
+    reports(refused.value, named)

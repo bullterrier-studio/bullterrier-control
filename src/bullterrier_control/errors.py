@@ -16,4 +16,18 @@ class BullterrierControlError(Exception):
 
 
 class FormatError(BullterrierControlError, ValueError):
-    """Data does not follow a format of docs/formats.md: the message names each field path, the rule and the value."""
+    """Data does not follow a format of docs/formats.md: the message names each field path, the rule and the value.
+
+    `problems` holds the same as (path, rule) pairs when the error came from a format model, so a model that holds
+    another can report the inner paths under its own; it is empty for an error that has only a message.
+    """
+
+    def __init__(self, message: str, problems: tuple[tuple[str, str], ...] = ()) -> None:
+        """An error with `message`, and optionally the (path, rule) pairs it lists."""
+        super().__init__(message)
+        self.problems = problems
+
+    @classmethod
+    def at(cls, path: str, rule: str) -> "FormatError":
+        """The error for one broken `rule` at the field `path` (`values[2]`, `series.bass.start`)."""
+        return cls(f"{path}: {rule}", ((path, rule),))
