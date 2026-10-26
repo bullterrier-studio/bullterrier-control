@@ -6,7 +6,8 @@ import only the layers below it:
     plugin     the author API: the names a package of sources and shapers uses
     registry   the table of sources and shapers, and the queries over it
     rendered   a signal that needs history, rendered once
-    signal | params   what a signal is and how it is read | how a source or shaper declares its parameters
+    signal | params | easing   what a signal is and how it is read | how a source or shaper declares its parameters |
+                              how progress is reshaped (easing curves)
     formats    bundle > series | event | grid > model | units (each format builds on the base and the units only)
     validated  the base of every validated model and its strict value types
     errors     the exceptions; import nothing from bullterrier_control, so every layer may raise them
@@ -30,7 +31,10 @@ PACKAGE = Path(bullterrier_control.__file__).parent
 ROOT = PACKAGE.parent.parent  # the repository: pyproject.toml holds the contracts
 LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-imports` from the repository root
 
-LAYERS = "Layers: app > builtin | lib > plugin > registry > rendered > signal | params > formats > validated > errors"
+LAYERS = (
+    "Layers: app > builtin | lib > plugin > registry > rendered > signal | params | easing"
+    " > formats > validated > errors"
+)
 SOURCES_APART = "Built-in sources never import each other"
 SOURCES_DOOR = "Built-in sources use only the author API"
 FORMATS = "Formats: bundle > series | event | grid > model | units"

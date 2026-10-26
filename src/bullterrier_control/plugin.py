@@ -19,6 +19,7 @@ the group `bullterrier_control.sources` in its `pyproject.toml`:
     my_package = "my_package.sources"
 """
 
+from .easing import EASES, curve
 from .errors import InvalidError, ParameterError
 from .params import Params, param
 from .registry import shaper, source
@@ -27,6 +28,7 @@ from .signal import Constant, Signal, maximum, minimum
 from .validated import Finite, Switch, Text, Whole
 
 __all__ = [
+    "EASES",
     "Constant",
     "Finite",
     "InvalidError",
@@ -37,6 +39,7 @@ __all__ = [
     "Switch",
     "Text",
     "Whole",
+    "curve",
     "maximum",
     "minimum",
     "param",
