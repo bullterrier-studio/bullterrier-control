@@ -286,3 +286,12 @@ separate ramp. Changed:
   Percentiles are numpy's `linear` (Hyndman and Fan, type 7). Equal percentiles give zeros, an outlier included.
 - **`beats` marks a downbeat by `(beat - first_downbeat) % meter == 0`.** *Reason:* `first_downbeat` is below `meter`
   (the Grid checks it), so no beat before it can satisfy the rule and a second test for it would be dead code.
+- **A time that is a bound to within a nanosecond is the bound, decided once in `rounding`.** `at_least(value, bound)` and
+  `more_than(value, bound)` (`TOLERANCE = 1e-9` seconds, re-exported by `plugin`) decide `thin`'s gap, `shift`'s landing at
+  and ending at 0, and `quantize`'s "before 0". *Reason:* with decimal inputs the arithmetic lands a rounding error either
+  side of the bound (`0.3 - 0.1` is `0.19999999999999998`, a span of `0.1 + 0.2 - 0.3` is 3e-17 s long, a position
+  3 beats before beats at 0.6, 0.8, 1.0 is at -2e-16 s), and the first versions dropped an event or bumped one a whole
+  position for it. The tests had used only multiples of 1/8 and 1/64, which floats hold exactly. A nanosecond is far
+  above that error for times under a day and far below any time that means something; a bound missed by a millionth
+  is still missed. A position at 0 within the tolerance is set to 0 exactly. The sample-relative `_ROUNDING` of `signal`
+  and `rendered` (shares of a sample) is another quantity and stays.

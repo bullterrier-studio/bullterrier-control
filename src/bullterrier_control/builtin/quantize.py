@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from ..plugin import Event, FormatError, Grid, ParameterError, Params, operation, param
+from ..plugin import Event, FormatError, Grid, ParameterError, Params, at_least, operation, param
 
 
 class QuantizeParams(Params):
@@ -25,10 +25,11 @@ def quantize(params: QuantizeParams, *, events: tuple[Event, ...], grid: Grid) -
     """The events, each moved to the nearest beat position that is a multiple of 1/`division` of a beat.
 
     Nearest is measured in beats, so it follows tempo changes; exactly halfway goes to the later position, and an event
-    whose nearest position would be before time 0 goes to the next position up. Before the first beat and after the
-    last the grid's first or last beat length goes on. Events that snap to one time stay in the order given; every
-    other field is unchanged (a duration does not move its end). A time too far from the beats to snap is a
-    `ParameterError` naming `events`.
+    whose nearest position would be before time 0 goes to the next position up (a position at 0 to within float
+    rounding, a nanosecond, is 0). Before the first beat and after the last the grid's first or last beat length goes
+    on. The result is in time order, and events that snap to one time keep the order they had; every other field is
+    unchanged (a duration does not move its end). A time too far from the beats to snap is a `ParameterError` naming
+    `events`.
     """
     division = params.division
     try:
@@ -36,8 +37,9 @@ def quantize(params: QuantizeParams, *, events: tuple[Event, ...], grid: Grid) -
         with np.errstate(over="ignore"):
             steps = np.floor(grid.beat_at([event.t for event in events]) * division + 0.5)
             snapped = grid.seconds_at(steps / division)
-            before_zero = snapped < 0
+            before_zero = ~at_least(snapped, 0.0)
             snapped[before_zero] = grid.seconds_at((steps[before_zero] + 1) / division)
+            snapped = np.maximum(snapped, 0.0)  # a position at 0 to within rounding is 0
     except FormatError as error:
         raise ParameterError.at("events", f"a time is too far from the grid's beats to snap ({error})") from None
     # the snap never decreases, so events sorted by time stay sorted

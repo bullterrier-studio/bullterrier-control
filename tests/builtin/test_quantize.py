@@ -66,6 +66,48 @@ def test_quantize_never_moves_an_event_to_before_zero_but_to_the_next_position_u
     assert snapped(LATE, given) == pytest.approx(expected, abs=1e-12)
 
 
+@pytest.mark.parametrize(
+    ("grid", "given", "expected"),
+    [
+        pytest.param(
+            Grid(beats=(0.6, 0.8, 1.0), meter=1, first_downbeat=0),
+            0.0,
+            0.0,
+            id="beats 0.6, 0.8, 1.0: the position 3 beats back is at -2e-16 s, which is 0",
+        ),
+        pytest.param(
+            Grid(beats=(0.3, 0.4, 0.5), meter=1, first_downbeat=0),
+            0.0,
+            0.0,
+            id="beats 0.3, 0.4, 0.5: the position 3 beats back is at 0 within rounding",
+        ),
+        pytest.param(
+            Grid(beats=(0.3, 0.4, 0.5), meter=1, first_downbeat=0),
+            0.04,
+            0.0,
+            id="0.04 is nearer the position at 0 (0.04 away) than the one at 0.1 (0.06)",
+        ),
+        pytest.param(
+            Grid(beats=(0.3, 0.4, 0.5), meter=1, first_downbeat=0),
+            0.06,
+            0.1,
+            id="0.06 is nearer the position at 0.1 (0.04 away) than the one at 0 (0.06)",
+        ),
+        pytest.param(
+            Grid(beats=(0.499999, 0.999999), meter=1, first_downbeat=0),
+            0.0,
+            0.499999,
+            id="the nearest position, 1e-6 s before 0, is before 0: the next one up",
+        ),
+    ],
+)
+def test_quantize_treats_a_position_at_zero_within_float_rounding_as_zero_and_one_a_millionth_before_it_as_before(
+    grid, given, expected
+):
+    assert snapped(grid, [given]) == pytest.approx([expected], rel=0, abs=1e-12)
+    assert snapped(grid, [given])[0] >= 0.0
+
+
 def test_quantize_steps_up_by_one_division_when_the_nearest_position_is_before_zero_and_not_the_first_beat():
     # beats at 0.7 and 1.2, positions every quarter second: ..., -0.05, 0.2, 0.45, ...; 0.01 is 0.06 from -0.05 and 0.19
     # from 0.2, so -0.05 is the nearest and the next position up is 0.2

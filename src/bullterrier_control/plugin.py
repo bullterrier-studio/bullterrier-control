@@ -28,6 +28,7 @@ from .inputs import Keyframe, matching
 from .params import Params, param
 from .registry import operation, shaper, source
 from .rendered import Rendered
+from .rounding import at_least, more_than
 from .scaling import between
 from .signal import Constant, Signal, maximum, minimum
 from .validated import Finite, Switch, Text, Whole
@@ -51,12 +52,14 @@ __all__ = [
     "Text",
     "Unit",
     "Whole",
+    "at_least",
     "between",
     "counter",
     "curve",
     "matching",
     "maximum",
     "minimum",
+    "more_than",
     "operation",
     "param",
     "shaper",

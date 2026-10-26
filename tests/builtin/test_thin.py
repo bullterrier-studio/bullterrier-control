@@ -37,6 +37,13 @@ def times(events):
         pytest.param({"gap": 0.25}, [1.0, 1.0], [1.0], id="two at the same time: the second is 0 after the first"),
         pytest.param({}, [0.5, 0.55, 0.625, 0.75], [0.5, 0.625, 0.75], id="the default gap is 0.1 s"),
         pytest.param({"gap": 3600}, [0.0, 3599.0, 3600.0], [0.0, 3600.0], id="the longest gap"),
+        pytest.param(
+            {"gap": 0.2}, [0.1, 0.3], [0.1, 0.3], id="decimals: 0.3 - 0.1 is 0.19999999999999998, which is the gap"
+        ),
+        pytest.param({"gap": 0.2}, [1.1, 1.3], [1.1, 1.3], id="decimals: 1.3 - 1.1 is a hair under the gap"),
+        pytest.param({"gap": 0.1}, [0.1, 0.2, 0.3], [0.1, 0.2, 0.3], id="decimals: three events a tenth apart"),
+        pytest.param({"gap": 0.2}, [0.5, 0.699999], [0.5], id="decimals: 1e-6 short of the gap is dropped"),
+        pytest.param({"gap": 0.2}, [0.5, 0.7000001], [0.5, 0.7000001], id="decimals: 1e-7 past the gap is kept"),
     ],
 )
 def test_thin_keeps_an_event_when_it_is_at_least_gap_after_the_last_one_kept(values, given, expected):
