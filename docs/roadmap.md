@@ -64,9 +64,9 @@ Also: CLAUDE.md gains "The signal contract" (what every source and shaper promis
 
 ## C3 Shapers and event operations
 
-- Signal shapers: slew (separate rise/fall), attack/release follower, one-pole smoothing, gate with hysteresis, sample and
-  hold, quantize to the grid, range map with response curve (linear, exponential, gamma), normalise (percentiles),
-  time shift (lead/lag), clip.
+- Signal shapers: attack/release follower, one-pole smoothing, gate with hysteresis, sample and hold, quantize to the grid,
+  range map with response curve (linear, exponential, gamma), normalise (percentiles), time shift (lead/lag). (`slew` and
+  `clip` ship in C1.)
 - Event operations: filter by label or strength, every Nth, downbeats only, minimum gap (thinning), shift, quantize to the
   grid, merge.
 
