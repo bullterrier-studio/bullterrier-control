@@ -33,10 +33,10 @@ def accumulate(values, *, rate=RATE) -> Rendered:
     return Rendered(from_series(Series(rate=3.0, values=tuple(values), unit=Unit.RATIO)), rate=rate, run=integrate)
 
 
-def test_a_constant_one_integrates_to_the_time_plus_one_step():
+def test_a_constant_one_integrates_to_the_time_plus_one_step_and_holds_between_samples():
     signal = Rendered(Constant(1.0), rate=RATE, run=integrate)
-    # the sum at grid point k includes sample k: (k + 1) / rate, and between grid points the line is straight
-    assert signal.sample([0.0, 0.05, 0.3, 2.55]).tolist() == pytest.approx([0.1, 0.15, 0.4, 2.65])
+    # the sum at grid point k includes sample k: (k + 1) / rate; a time between two grid points reads the earlier one
+    assert signal.sample([0.0, 0.05, 0.1, 0.15, 0.3, 2.55]).tolist() == pytest.approx([0.1, 0.1, 0.2, 0.2, 0.4, 2.6])
 
 
 def test_a_time_before_zero_reads_as_time_zero():
@@ -102,9 +102,9 @@ def test_a_read_just_inside_the_limit_works():
     assert signal.sample([50.0]).tolist() == pytest.approx([50.1])
 
 
-def test_a_recurrence_that_changes_the_length_is_a_programming_error_naming_both_lengths():
+def test_a_recurrence_that_changes_the_length_is_a_programming_error_naming_both_shapes():
     signal = Rendered(Constant(1.0), rate=RATE, run=lambda inputs: inputs[:-1])
-    with pytest.raises(ValueError, match=r"\d+ values .* \d+"):
+    with pytest.raises(ValueError, match=r"shape \(1023,\).*shape \(1024,\)"):
         signal.sample(1.0)
 
 
@@ -116,7 +116,7 @@ def test_a_rate_that_is_not_a_positive_finite_number_is_refused(rate):
 
 def test_a_read_far_beyond_the_first_render_is_still_exact():
     signal = Rendered(Constant(1.0), rate=RATE, run=integrate)
-    assert signal.sample([2000.0, 2000.05]).tolist() == pytest.approx([2000.1, 2000.15])
+    assert signal.sample([2000.0, 2000.05]).tolist() == pytest.approx([2000.1, 2000.1])
 
 
 def test_reading_later_and_later_renders_a_few_times_not_once_per_read():
@@ -146,3 +146,35 @@ def test_threads_reading_together_render_once_not_once_each():
     with ThreadPoolExecutor(8) as pool:
         assert all(values == pytest.approx([40_000.1]) for values in pool.map(read, range(8)))
     assert len(run.calls) == 1
+
+
+def test_a_read_never_depends_on_the_input_after_the_time_read():
+    steps = from_series(Series(rate=RATE, values=(0.0,) * 10 + (1.0,) * 50, unit=Unit.RATIO), interpolation="hold")
+    follow = Rendered(steps, rate=RATE, run=lambda inputs: inputs.copy())
+    # the input steps up at 1.0 s; a read at 0.95 or 0.99 must still see 0, however close the step is
+    assert follow.sample([0.0, 0.5, 0.95, 0.99]).tolist() == [0.0, 0.0, 0.0, 0.0]
+    assert follow.sample([1.0, 1.04, 1.5]).tolist() == [1.0, 1.0, 1.0]
+
+
+def test_a_read_at_a_time_too_large_to_count_samples_for_is_a_signal_error_not_an_overflow():
+    signal = Rendered(Constant(1.0), rate=RATE, run=integrate)
+    for time in (1.7e306, 1e308, 1.797e308):
+        with pytest.raises(SignalError, match="limit"):
+            signal.sample(time)
+
+
+@pytest.mark.parametrize("bad", [True, 0, -3], ids=["a bool", "zero", "negative"])
+def test_a_limit_that_is_not_a_positive_whole_number_of_samples_is_refused(bad):
+    with pytest.raises(ValueError, match="limit"):
+        Rendered(Constant(1.0), rate=RATE, run=integrate, limit=bad)
+
+
+def test_a_rate_that_is_a_bool_is_refused():
+    with pytest.raises(ValueError, match="rate"):
+        Rendered(Constant(1.0), rate=True, run=integrate)
+
+
+def test_a_recurrence_that_returns_the_wrong_shape_is_named_with_both_shapes():
+    signal = Rendered(Constant(1.0), rate=RATE, run=lambda inputs: np.zeros((len(inputs), 1)))
+    with pytest.raises(ValueError, match=r"shape \(\d+, 1\).*shape \(\d+,\)"):
+        signal.sample(1.0)

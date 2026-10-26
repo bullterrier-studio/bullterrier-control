@@ -72,15 +72,18 @@ shaper maps a signal to a signal. Each thing arrives with its first consumer (`v
 
 Every signal, and so every source and shaper, promises this (`tests/sources/test_contract.py` checks every registered one):
 - **Total:** a value at every time. A time before 0 reads as time 0; a Series-backed signal holds its first and last value.
-- **`sample(times)`** takes a number or an array of any shape, refuses NaN and infinity with `SignalError`, and returns float64
-  in the same shape. A signal implements `compute(times)`, which only ever sees finite times from 0 up.
+- **`sample(times)`** (final: never overridden) takes a number or an array of any shape, refuses what is not a finite number
+  (text, a bool, NaN, an infinity) with `SignalError`, and returns float64 in the same shape. A signal implements
+  `compute(times)`, which only ever sees finite times from 0 up.
+- **Finite:** a value that is not finite (an overflow) is a `SignalError`, never returned. At any time a signal gives a finite
+  value or raises `SignalError` (a stateful shaper refuses a time that needs more samples than its limit).
 - **Deterministic and read-independent:** the same times give the same values, whatever the order, size or number of earlier
   reads. A stateful shaper is a causal recurrence run through `Rendered` (output *i* depends on inputs 0 to *i*): never a
   field that remembers the last read.
-- **Causal:** what comes later in a shaper's input never changes an earlier output.
+- **Causal:** a read at time t depends on the input only up to t (a float rounding of a billionth of a sample aside). What
+  comes later in a shaper's input never changes an earlier output.
 - **Parameters declared** with `param` (unit, range, description): every number works at both ends of its range and is refused
   beyond it, `true` or a string is not a number, an unknown name is refused, and the refusal names the field.
-- **Finite output** for every finite input.
 A new source or shaper meets all of this by registering: the contract tests find it and no test names it.
 
 ## The rules
@@ -90,7 +93,7 @@ A new source or shaper meets all of this by registering: the contract tests find
 2. **Sources and shapers never import each other.** Shared numeric code goes to a module named for its concept (`interpolation`,
    `smoothing`, `noise`), never `utils`/`common`/`helpers`. Extract when a second consumer needs it.
 3. **Parameters are declared once** as a pydantic model (as in bullterrier-image), with unit, range and description, and drive
-   validation, defaults and generated docs. Units include `seconds`, `beats` (through a Grid), `hz`, `cycles`, `fraction`.
+   validation, defaults and generated docs. Units include `seconds`, `beats` (through a Grid), `hertz`, `cycles`, `fraction`.
 4. **Open/closed:** adding a source or shaper creates files named for it and modifies none.
 5. **No hidden tunables.** Every value that shapes a result is a named, documented parameter in the field's own terms (attack,
    release, rate, depth, phase, slew). Exempt: mathematical and standard constants, each cited in a comment.
@@ -99,7 +102,8 @@ A new source or shaper meets all of this by registering: the contract tests find
    on what was read before.
 7. **Layering and the contract are tests**, run over every source and shaper automatically.
 8. **Errors:** callers catch `BullterrierControlError` (`bullterrier_control.errors`). Library code raises a subclass, never a bare
-   `ValueError`, for anything a caller or an input file can get wrong; each also inherits the matching builtin.
+   `ValueError`, for anything a caller or an input file can get wrong; each also inherits the matching builtin. A bug in the
+   calling code (a wrong registration, a wrong argument to `Rendered`, a wrong call shape) is a plain `ValueError`/`TypeError`.
 
 ## Standards
 
@@ -128,10 +132,11 @@ A new source or shaper meets all of this by registering: the contract tests find
 
 ## Parameters
 
-A pydantic model per source or shaper (a `Params` base arrives in C1, as `EffectParams` is in bullterrier-image: frozen,
-`extra="forbid"`, strict), each field `param(default, doc=...)`. Every field has a default and a description (what it does, unit and
-range in words, what raising it does).
-- **Numeric** (`int`, `float`): also a `unit` (`seconds`, `beats`, `hz`, `cycles`, `fraction`, `decibels`, `ratio`, `semitones`,
+A pydantic model per source or shaper, a subclass of `Params` (as `EffectParams` is in bullterrier-image: frozen, `extra="forbid"`,
+strict whatever the annotation), each field `param(default, doc=...)`. Every field has a default and a description (what it does,
+unit and range in words, what raising it does). A field is a number, a `bool`, a `str` or a `Literal` choice of strings, nothing
+else; the declaration is checked when the class is made.
+- **Numeric** (`int`, `float`): also a `unit` (`seconds`, `beats`, `hertz`, `cycles`, `fraction`, `decibels`, `ratio`, `semitones`,
   `count`) and inclusive `min`/`max` that hold the default. A parameter in `beats` is turned into seconds through a Grid; the model
   declares the unit, the reader converts.
 - **Other** fields take no unit/min/max: `bool`, `Literal[...]` (the doc mentions every choice), `str`, lists of those.

@@ -129,3 +129,29 @@ def test_reading_seconds_and_back_returns_the_beat_position_and_time_only_moves_
     assert grid.beat_at(grid.seconds_at(positions)).tolist() == pytest.approx(positions, abs=1e-6)
     ordered = grid.seconds_at(sorted(positions))
     assert (ordered[1:] >= ordered[:-1]).all()
+
+
+NOT_NUMBERS = {
+    "text": ["1"],
+    "a bool": True,
+    "nothing": None,
+    "not a number": [float("nan")],
+    "infinity": [float("inf")],
+}
+
+
+@pytest.mark.parametrize("given", NOT_NUMBERS.values(), ids=NOT_NUMBERS.keys())
+def test_a_conversion_refuses_what_is_not_a_finite_number(given):
+    with pytest.raises(FormatError, match="finite"):
+        STEADY_HALF_SECOND.seconds_at(given)
+    with pytest.raises(FormatError, match="finite"):
+        STEADY_HALF_SECOND.beat_at(given)
+
+
+def test_a_conversion_whose_result_is_too_large_to_be_a_number_is_refused():
+    wide = Grid.parse({"beats": [0.0, 1e308], "meter": 1, "first_downbeat": 0})
+    with pytest.raises(FormatError, match="finite"):
+        wide.seconds_at(5.0)
+    tiny = Grid.parse({"beats": [0.0, 5e-324], "meter": 1, "first_downbeat": 0})
+    with pytest.raises(FormatError, match="finite"):
+        tiny.beat_at(1.0)

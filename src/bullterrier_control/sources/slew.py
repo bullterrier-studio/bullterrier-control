@@ -26,7 +26,7 @@ class SlewParams(Params):
     rate: Finite = param(
         1000.0,
         doc="Internal samples per second; the output is exact to one sample. Raising it is more exact and slower.",
-        unit="hz",
+        unit="hertz",
         min=10,
         max=48000,
         advanced=True,

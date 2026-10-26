@@ -16,16 +16,20 @@ Where they come from: the first query (`get`, `sources`, `shapers`, `all_registe
 the entry-point group `bullterrier_control.sources`, once. A package is a module whose import registers sources and
 shapers: bullterrier-control's own is one (declared in its `pyproject.toml`); a third party declares its own (see
 `bullterrier_control.plugin`). A package that fails to import raises `BullterrierControlError` naming its entry point,
-and the next query tries again. The registry names no package itself, so importing bullterrier-control loads none.
+whatever it registered before failing is taken back, and the next query tries again. The registry names no package
+itself, so importing bullterrier-control loads none.
 
 Threads: loading happens once, under a lock; threads that make the first query together wait for it and all see the
-whole table. After that queries only read. Registering is for import time.
+whole table. After that queries only read. Registering is for import time, and so is nothing else: a package must not
+query the registry while its module is being imported (the same thread sees the table so far; another thread that
+queries meanwhile can wait for the import lock the package holds).
 """
 
 import inspect
 import re
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from importlib import metadata
 from typing import Any, Literal
@@ -34,21 +38,10 @@ from .errors import BullterrierControlError, FormatError, UnknownNameError
 from .params import Params
 from .signal import Signal
 
-__all__ = [
-    "Registered",
-    "all_registered",
-    "get",
-    "reset",
-    "restore",
-    "shaper",
-    "shapers",
-    "source",
-    "sources",
-    "unregister",
-]
+__all__ = ["Registered", "all_registered", "get", "isolated", "shaper", "shapers", "source", "sources", "unregister"]
 
 _GROUP = "bullterrier_control.sources"
-_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+_NAME = re.compile(r"[a-z][a-z0-9_]*")
 _INPUTS = {"source": 0, "shaper": 1}  # how many signals each kind takes
 
 
@@ -84,10 +77,12 @@ _TABLE: dict[str, Registered[Any]] = {}
 
 @dataclass
 class _Loading:
-    """Whether the packages of the group are loaded, and the lock that makes one thread do it."""
+    """Whether the packages of the group are loaded (`done`) or being loaded right now (`running`, by the thread holding
+    the lock: its own queries meanwhile see the table as it is), and the lock that makes one thread do it."""
 
     lock: threading.RLock = field(default_factory=threading.RLock)
     done: bool = False
+    running: bool = False
 
 
 _LOADING = _Loading()
@@ -109,7 +104,7 @@ def _register[P: Params](
     name = function.__name__
     if not (isinstance(params, type) and issubclass(params, Params)):
         raise ValueError(f"{kind} {name!r}: params must be a Params subclass (got {params!r})")
-    if not _NAME.match(name):
+    if not _NAME.fullmatch(name):
         raise ValueError(
             f"{kind} {name!r}: a name is lower case letters, digits and underscores, starting with a letter"
         )
@@ -132,9 +127,17 @@ def _register[P: Params](
 
 
 def _same_function(existing: Registered[Any], function: Callable[..., Signal], kind: str) -> bool:
-    """Whether `function` is what is registered under its name, defined again (as reloading its module does)."""
+    """Whether `function` is what is registered under its name, defined again as reloading its module does. Only a
+    function defined at the top of a module can be: two made by one factory share a name and are different things."""
     old = existing.function
-    return existing.kind == kind and (old.__module__, old.__qualname__) == (function.__module__, function.__qualname__)
+    if old is function:
+        return existing.kind == kind
+    top_level = "<locals>" not in function.__qualname__
+    return (
+        top_level
+        and existing.kind == kind
+        and (old.__module__, old.__qualname__) == (function.__module__, function.__qualname__)
+    )
 
 
 def unregister(name: str) -> None:
@@ -143,20 +146,22 @@ def unregister(name: str) -> None:
     del _TABLE[name]
 
 
-def reset() -> None:
-    """Forget every registration and that the packages were loaded, so the next query loads them again. For tests."""
+@contextmanager
+def isolated() -> Iterator[None]:
+    """Inside the block nothing is registered and the packages count as not loaded; afterwards the registry is as it
+    was. For tests. A package already imported does not register again when loaded again, so use throwaway
+    registrations or packages that are made new each time."""
     with _LOADING.lock:
+        saved, was_done = dict(_TABLE), _LOADING.done
         _TABLE.clear()
         _LOADING.done = False
-
-
-def restore(table: Mapping[str, Registered[Any]]) -> None:
-    """Make `table` (what `all_registered` returned earlier) the registry again and count the packages as loaded. For
-    tests that emptied it with `reset`: a package imported once does not register again when imported again."""
-    with _LOADING.lock:
-        _TABLE.clear()
-        _TABLE.update(table)
-        _LOADING.done = True
+    try:
+        yield
+    finally:
+        with _LOADING.lock:
+            _TABLE.clear()
+            _TABLE.update(saved)
+            _LOADING.done = was_done
 
 
 def get(name: str) -> Registered[Any]:
@@ -186,14 +191,21 @@ def shapers() -> dict[str, Registered[Any]]:
 
 def _load_packages() -> None:
     with _LOADING.lock:
-        if _LOADING.done:
+        if _LOADING.done or _LOADING.running:
             return
-        for entry in sorted(metadata.entry_points(group=_GROUP), key=lambda found: found.name):
-            try:
-                entry.load()
-            # a package may raise anything while it is imported: the cause is chained and nothing is swallowed
-            except Exception as error:
-                raise BullterrierControlError(
-                    f"cannot load the package {entry.value!r} (entry point {entry.name!r} of {_GROUP}): {error}"
-                ) from error
-        _LOADING.done = True
+        _LOADING.running = True
+        try:
+            for entry in sorted(metadata.entry_points(group=_GROUP), key=lambda found: found.name):
+                before = dict(_TABLE)
+                try:
+                    entry.load()
+                # a package may raise anything while it is imported: take back what it registered, chain the cause
+                except Exception as error:
+                    _TABLE.clear()
+                    _TABLE.update(before)
+                    raise BullterrierControlError(
+                        f"cannot load the package {entry.value!r} (entry point {entry.name!r} of {_GROUP}): {error}"
+                    ) from error
+            _LOADING.done = True
+        finally:
+            _LOADING.running = False

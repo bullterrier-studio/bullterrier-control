@@ -51,8 +51,12 @@ BAD_TIMES = {
     "nan": ([0.0, float("nan")], "finite"),
     "infinity": ([float("inf")], "finite"),
     "minus infinity": (float("-inf"), "finite"),
-    "text": (["soon"], "numbers"),
-    "nothing, which reads as not a number": (None, "finite"),
+    "text in a list": (["soon"], "numbers"),
+    "a numeric string, which is not a number": ("0.15", "numbers"),
+    "bytes": (b"1", "numbers"),
+    "a bool": (True, "numbers"),
+    "nothing": (None, "numbers"),
+    "an integer too large for a float": (10**400, "numbers"),
 }
 
 
@@ -180,3 +184,62 @@ def test_arithmetic_on_signals_equals_arithmetic_on_their_values(first, second, 
     b = from_series(a_series(second, rate=3.0))
     expected = a.sample(times) * b.sample(times) - a.sample(times)
     assert (a * b - a).sample(times).tolist() == pytest.approx(expected.tolist())
+
+
+class Broken(Signal):
+    """A signal with a bug: it returns what it was told to."""
+
+    def __init__(self, values):
+        self._values = values
+
+    def compute(self, times):
+        return np.full(times.shape, self._values)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")], ids=["nan", "inf", "-inf"])
+def test_a_value_that_is_not_finite_is_refused_naming_the_time_not_returned(bad):
+    with pytest.raises(SignalError, match="finite"):
+        Broken(bad).sample([0.0, 1.0])
+
+
+def test_arithmetic_that_overflows_is_refused_not_returned_as_infinity():
+    with pytest.raises(SignalError, match="finite"):
+        (Constant(1e300) * 1e300).sample(0.0)
+
+
+def test_a_series_of_huge_values_that_overflows_between_samples_is_refused():
+    series = from_series(a_series([-1.7e308, 1.7e308], rate=1.0))
+    with pytest.raises(SignalError, match="finite"):
+        series.sample(0.5)
+
+
+def test_a_held_series_reads_its_last_value_at_any_time_without_warnings():
+    held = from_series(a_series([1.0, 2.0, 3.0], rate=1.0), interpolation="hold")
+    assert held.sample([1e19, 1e300, 1.7e308]).tolist() == [3.0, 3.0, 3.0]
+    fast = from_series(a_series([1.0, 2.0], rate=1e300), interpolation="hold")
+    assert fast.sample([1.0]).tolist() == [2.0]
+
+
+@pytest.mark.parametrize(
+    "number", [np.float32(2), np.int64(2), np.float64(2), np.int8(2)], ids=lambda n: type(n).__name__
+)
+def test_numpy_numbers_combine_with_signals_on_either_side(number):
+    assert (number * RAMP).sample([1.5]).tolist() == [2.0]
+    assert (RAMP * number).sample([1.5]).tolist() == [2.0]
+    assert (RAMP + number).sample([1.5]).tolist() == [3.0]
+    assert (number - RAMP).sample([1.5]).tolist() == [1.0]
+
+
+@pytest.mark.parametrize(
+    "combine",
+    [lambda s: np.array([1.0, 2.0]) * s, lambda s: s + np.array([1, 2]), lambda s: np.array([1.0]) - s],
+    ids=["array times signal", "signal plus array", "array minus signal"],
+)
+def test_an_array_is_not_an_operand_and_never_makes_an_array_of_signals(combine):
+    with pytest.raises(TypeError):
+        combine(RAMP)
+
+
+def test_a_number_too_large_to_be_a_float_is_refused_when_combined():
+    with pytest.raises(SignalError, match="finite"):
+        RAMP * 10**400

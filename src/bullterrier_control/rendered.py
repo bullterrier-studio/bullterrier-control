@@ -6,8 +6,9 @@ Promises:
 - `run` receives the input signal sampled at `rate` samples per second from time 0, and returns an array of the same
   length. It must be causal: output *i* depends only on inputs 0 to *i*. That makes the signal independent of what was
   read before: whatever the order and size of the reads, the same time gives the same value.
-- The signal is rendered as far as the largest time read needs, growing by doubling, and read by linear interpolation
-  between samples. A read that would need more than `limit` samples raises a `SignalError` before anything is allocated.
+- The signal is rendered as far as the largest time read needs, growing by doubling. A time between two samples reads
+  the earlier one, so a read at time t depends on the input only up to t (a float rounding of a billionth of a sample
+  aside). A read that would need more than `limit` samples raises a `SignalError` before anything is allocated.
 - Reading from several threads is safe.
 - A time before 0 reads as time 0 (as for every signal).
 """
@@ -25,9 +26,10 @@ from .signal import Signal
 __all__ = ["Rendered"]
 
 _DEFAULT_LIMIT = 20_000_000  # samples: 160 MB of float64; at 1000 Hz that is about five and a half hours
-_FIRST_RENDER = (
-    1024  # samples: a first read of a short span renders at least this much, so small reads share one render
-)
+# samples: a first read of a short span renders at least this much, so small reads share one render
+_FIRST_RENDER = 1024
+# float rounding of time * rate: a time within a billionth of a sample of a sample time is that sample
+_ROUNDING = 1e-9
 
 
 class Rendered(Signal):
@@ -42,28 +44,30 @@ class Rendered(Signal):
         limit: int = _DEFAULT_LIMIT,
     ) -> None:
         """`rate` is samples per second (positive, finite); `limit` the most samples one read may need."""
-        if not (math.isfinite(rate) and rate > 0):
+        if isinstance(rate, bool) or not (math.isfinite(rate) and rate > 0):
             raise ValueError(f"rate must be a positive finite number of samples per second (got {rate!r})")
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValueError(f"limit must be a whole number of samples, at least 1 (got {limit!r})")
         self._signal, self._rate, self._run, self._limit = signal, rate, run, limit
         self._values: NDArray[np.float64] = np.zeros(0)
         self._lock = threading.Lock()
 
     def compute(self, times: NDArray[np.float64]) -> NDArray[np.float64]:
-        """The rendered values at `times`, interpolated linearly between samples."""
+        """The rendered value at each time: that of the latest sample at or before it."""
         if times.size == 0:
             return np.zeros(times.shape)
-        position = times * self._rate
-        needed = math.ceil(float(position.max())) + 1  # samples 0 up to the one at or after the last time read
-        if needed > self._limit:
+        largest = float(times.max())
+        if largest * self._rate + 1 > self._limit:  # in floats: a time near the top of the range would overflow a count
             raise SignalError(
-                f"reading time {float(times.max())} s needs {needed} samples at {self._rate} Hz,"
-                f" over the limit of {self._limit}"
+                f"reading time {largest} s needs more than {self._limit} samples at {self._rate} Hz: over the limit"
             )
+        needed = math.floor(largest * self._rate + _ROUNDING) + 1
         with self._lock:
             if needed > len(self._values):
                 self._render(max(needed, 2 * len(self._values), _FIRST_RENDER))
             values = self._values
-        return np.interp(position, np.arange(len(values)), values)
+        index = np.floor(times * self._rate + _ROUNDING).astype(np.int64)
+        return values[index]
 
     def _render(self, count: int) -> None:
         count = min(count, self._limit)
@@ -71,6 +75,6 @@ class Rendered(Signal):
         outputs = np.asarray(self._run(inputs), dtype=np.float64)
         if outputs.shape != inputs.shape:
             raise ValueError(
-                f"the recurrence returned {outputs.size} values for {inputs.size} inputs; it must return as many"
+                f"the recurrence returned an array of shape {outputs.shape} for an input of shape {inputs.shape}"
             )
         self._values = outputs

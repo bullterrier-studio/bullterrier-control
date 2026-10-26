@@ -19,10 +19,25 @@ the group `bullterrier_control.sources` in its `pyproject.toml`:
     my_package = "my_package.sources"
 """
 
+from .errors import FormatError
 from .formats.model import Finite, Switch, Whole
 from .params import Params, param
 from .registry import shaper, source
 from .rendered import Rendered
-from .signal import Constant, Signal
+from .signal import Constant, Signal, maximum, minimum
 
-__all__ = ["Constant", "Finite", "Params", "Rendered", "Signal", "Switch", "Whole", "param", "shaper", "source"]
+__all__ = [
+    "Constant",
+    "Finite",
+    "FormatError",
+    "Params",
+    "Rendered",
+    "Signal",
+    "Switch",
+    "Whole",
+    "maximum",
+    "minimum",
+    "param",
+    "shaper",
+    "source",
+]

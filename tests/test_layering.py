@@ -31,8 +31,9 @@ LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-im
 
 LAYERS = "Layers: app > sources > plugin > registry > rendered > signal | params > formats > errors"
 SOURCES_APART = "Sources never import each other"
+SOURCES_DOOR = "Sources use only the author API"
 FORMATS = "Formats: bundle > series | event | grid > model | units"
-CONTRACTS = [LAYERS, SOURCES_APART, FORMATS]
+CONTRACTS = [LAYERS, SOURCES_APART, SOURCES_DOOR, FORMATS]
 
 
 def lint(cwd: Path, pythonpath: Path | None = None) -> subprocess.CompletedProcess:
@@ -98,6 +99,42 @@ FORBIDDEN = {
         "import bullterrier_control.cli",
         "bullterrier_control.sources.clip",
         LAYERS,
+    ),
+    "a source to the signal module": (
+        "sources/clip.py",
+        "import bullterrier_control.signal",
+        "bullterrier_control.sources.clip",
+        SOURCES_DOOR,
+    ),
+    "a source to the errors": (
+        "sources/clip.py",
+        "import bullterrier_control.errors",
+        "bullterrier_control.sources.clip",
+        SOURCES_DOOR,
+    ),
+    "a source to the registry": (
+        "sources/clip.py",
+        "import bullterrier_control.registry",
+        "bullterrier_control.sources.clip",
+        SOURCES_DOOR,
+    ),
+    "a source to the params module": (
+        "sources/clip.py",
+        "import bullterrier_control.params",
+        "bullterrier_control.sources.clip",
+        SOURCES_DOOR,
+    ),
+    "a source to the rendered module": (
+        "sources/slew.py",
+        "import bullterrier_control.rendered",
+        "bullterrier_control.sources.slew",
+        SOURCES_DOOR,
+    ),
+    "a source to the formats": (
+        "sources/clip.py",
+        "import bullterrier_control.formats",
+        "bullterrier_control.sources.clip",
+        SOURCES_DOOR,
     ),
     "a source to another source": (
         "sources/clip.py",
@@ -174,7 +211,6 @@ ALLOWED = {
     "cli to plugin": ("cli.py", "import bullterrier_control.plugin"),
     "cli to sources": ("cli.py", "import bullterrier_control.sources"),
     "a source to the plugin api": ("sources/clip.py", "import bullterrier_control.plugin"),
-    "a source to the errors": ("sources/clip.py", "import bullterrier_control.errors"),
     "rendered to errors": ("rendered.py", "import bullterrier_control.errors"),
     "signal to formats": ("signal.py", "import bullterrier_control.formats.series"),
     "series to model": ("formats/series.py", "import bullterrier_control.formats.model"),

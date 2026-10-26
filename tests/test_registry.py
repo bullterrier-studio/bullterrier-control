@@ -1,3 +1,4 @@
+import importlib.util
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -133,6 +134,7 @@ BROKEN = {
     "a shaper taking none": lambda: shaper(params=Nothing)(one_argument),  # type: ignore[arg-type]
     "a name that is not lower case": lambda: source(params=Nothing)(_named("Loud")),
     "a name with a space": lambda: source(params=Nothing)(_named("a b")),
+    "a name with a trailing newline": lambda: source(params=Nothing)(_named("level\n")),
 }
 
 
@@ -167,17 +169,52 @@ def test_a_second_function_with_a_registered_name_is_refused_naming_both():
     assert registry.get("clash").summary == clash.summary
 
 
-def test_registering_the_same_function_again_replaces_it_as_reloading_a_module_does():
-    def define(value):
+RELOADABLE = """
+from bullterrier_control.plugin import Constant, Params, Signal, source
+
+VALUE = {value}
+
+
+class LevelParams(Params):
+    \"\"\"No parameters.\"\"\"
+
+
+@source(params=LevelParams)
+def reloaded(params: LevelParams) -> Signal:
+    return Constant(VALUE)
+"""
+
+
+def import_from_file(path, name="reloadable_package"):
+    """Run the file as a module called `name`, as importing (or reloading) it would: a new module object each time."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_module_that_is_imported_again_replaces_what_it_registered_as_reloading_does(tmp_path):
+    path = tmp_path / "reloadable_package.py"
+    path.write_text(RELOADABLE.format(value=1.0), encoding="utf-8")
+    import_from_file(path)
+    assert registry.get("reloaded")().sample(0.0).tolist() == 1.0
+    path.write_text(RELOADABLE.format(value=22.0), encoding="utf-8")  # another size: no stale bytecode
+    import_from_file(path)
+    assert registry.get("reloaded")().sample(0.0).tolist() == 22.0
+
+
+def test_two_functions_made_by_one_factory_do_not_replace_each_other():
+    def make(value):
         @source(params=Nothing)
-        def twice(params: Nothing) -> Signal:
+        def made(params: Nothing) -> Signal:
             return Constant(value)
 
-        return twice
-
-    define(1.0)
-    define(2.0)
-    assert registry.get("twice")().sample(0.0).tolist() == 2.0
+    make(1.0)
+    with pytest.raises(ValueError, match="made"):
+        make(2.0)
+    assert registry.get("made")().sample(0.0).tolist() == 1.0
 
 
 def test_a_source_and_a_shaper_cannot_share_a_name():
@@ -204,14 +241,17 @@ def test_a_throwaway_registration_leaves_no_trace(throwaway_registry):
 
 
 class FakeEntryPoint:
-    """What `importlib.metadata` gives for an entry point: a name, the module it names, and `load`."""
+    """What `importlib.metadata` gives for an entry point: a name, the module it names, and `load`. Like importing a
+    module, `load` runs the package's code once; a failed import is not remembered, so it runs again."""
 
     def __init__(self, name, action):
-        self.name, self.value, self._action, self.loads = name, f"{name}_module", action, 0
+        self.name, self.value, self._action, self.loads, self._imported = name, f"{name}_module", action, 0, False
 
     def load(self):
         self.loads += 1
-        return self._action()
+        if not self._imported:
+            self._action()
+            self._imported = True
 
 
 @pytest.fixture
@@ -286,9 +326,68 @@ def test_the_packages_are_loaded_in_the_order_of_their_names_whatever_order_they
     assert order == ["a", "b"]
 
 
-def test_a_restored_registry_counts_the_packages_as_loaded(entry_points):
-    package = FakeEntryPoint("package", lambda: None)
-    entry_points(package)
-    registry.restore({})
-    registry.sources()
-    assert package.loads == 0
+def test_a_package_that_queries_the_registry_while_it_loads_sees_the_table_so_far_and_loading_goes_on(entry_points):
+    seen = []
+
+    def first():
+        @source(params=Nothing)
+        def early(params: Nothing) -> Signal:
+            return Constant(0.0)
+
+        seen.append(sorted(registry.all_registered()))  # a query during loading must not start loading again
+
+    def second():
+        @source(params=Nothing)
+        def late(params: Nothing) -> Signal:
+            return Constant(0.0)
+
+    one, two = FakeEntryPoint("a", first), FakeEntryPoint("b", second)
+    entry_points(one, two)
+    assert {"early", "late"} <= set(registry.sources())
+    assert seen == [["early"]]
+    assert (one.loads, two.loads) == (1, 1)
+
+
+def test_a_package_that_fails_after_registering_leaves_nothing_of_itself_behind(entry_points):
+    def half_done():
+        @source(params=Nothing)
+        def half(params: Nothing) -> Signal:
+            return Constant(0.0)
+
+        raise RuntimeError("not today")
+
+    entry_points(FakeEntryPoint("broken", half_done))
+    for _ in range(2):  # it fails again the second time: nothing it registered survived the first failure
+        with pytest.raises(BullterrierControlError, match="broken"):
+            registry.sources()
+    with pytest.raises(BullterrierControlError, match="broken"):
+        registry.get("half")
+
+
+def test_a_package_loaded_before_a_failing_one_is_not_loaded_again_or_blamed(entry_points):
+    def good():
+        @source(params=Nothing)
+        def kept(params: Nothing) -> Signal:
+            return Constant(0.0)
+
+    def bad():
+        raise RuntimeError("no")
+
+    entry_points(FakeEntryPoint("a_good", good), FakeEntryPoint("b_bad", bad))
+    for _ in range(2):  # every query names the package that fails, never the one that loaded fine
+        with pytest.raises(BullterrierControlError, match="b_bad"):
+            registry.sources()
+
+
+def test_an_isolated_registry_starts_empty_and_gives_back_what_it_took(throwaway_registry):
+    before = dict(registry.all_registered())
+    assert before  # the installed package registered its own
+    with registry.isolated():
+        assert registry.all_registered() == {}  # an already imported package does not register again
+
+        @source(params=Nothing)
+        def inside(params: Nothing) -> Signal:
+            return Constant(0.0)
+
+        assert list(registry.all_registered()) == ["inside"]
+    assert dict(registry.all_registered()) == before

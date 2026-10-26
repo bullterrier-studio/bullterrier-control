@@ -26,8 +26,9 @@ classifiers = [
     "Topic :: Scientific/Engineering",
     "Typing :: Typed",
 ]
-# None yet: deptry fails on a dependency nothing imports. numpy (>=1.26.4, the first series with Python 3.12 wheels; no
-# upper bound) is added with the first signal, and it stays the only one (docs/design-decisions.md).
+# Each is declared with the first code that imports it (deptry fails on one nothing imports). numpy 1.26.4 is the first
+# series with Python 3.12 wheels; no upper bounds: nothing is known to break on a newer release. These two stay the only
+# runtime dependencies (docs/design-decisions.md).
 dependencies = [
     "numpy>=1.26.4",
     "pydantic>=2.7.1",
@@ -302,6 +303,23 @@ name = "Sources never import each other"
 type = "independence"
 # shared numeric code goes to a module named for its concept, below `sources`, not from one source into another
 modules = ["bullterrier_control.sources.*"]
+
+[[tool.importlinter.contracts]]
+name = "Sources use only the author API"
+type = "forbidden"
+source_modules = ["bullterrier_control.sources"]
+forbidden_modules = [
+    "bullterrier_control.cli",
+    "bullterrier_control.errors",
+    "bullterrier_control.formats",
+    "bullterrier_control.params",
+    "bullterrier_control.registry",
+    "bullterrier_control.rendered",
+    "bullterrier_control.signal",
+]
+# `bullterrier_control.plugin` is the one door: it re-exports what a source needs, so a source reaches the rest only
+# through it (the import of plugin itself reaches them indirectly, which is the point)
+allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "Formats: bundle > series | event | grid > model | units"

@@ -7,18 +7,19 @@ covered the moment it is registered and no test names it.
 import numpy as np
 import pytest
 
-from bullterrier_control import FormatError, Series, Signal, Unit, registry
+from bullterrier_control import FormatError, Series, Signal, SignalError, Unit, registry
 from bullterrier_control.signal import from_series
 
 ALL = sorted(registry.all_registered())
 SHAPERS = sorted(registry.shapers())
 # a signal with every kind of movement: a rise, a plateau, a fall, a jump, a drop below zero
 HISTORY = (0.0, 0.2, 1.0, 1.0, 0.4, 2.0, -1.0, 0.5, 0.5, 3.0)
+CHANGE_AT = 3.0  # seconds: from here on the input differs between the two inputs the causality test compares
 
 
 def input_signal(tail: float = 0.0) -> Signal:
-    """The same series for its first 6 seconds, and `tail` added to the rest (to tell what depends on the future)."""
-    values = tuple(value if index / 10.0 <= 6.0 else value + tail for index, value in enumerate(HISTORY * 2))
+    """A 10 s series at 10 Hz; `tail` is added to every sample from CHANGE_AT on, to tell what depends on the future."""
+    values = tuple(HISTORY[index % len(HISTORY)] + (tail if index / 10.0 >= CHANGE_AT else 0.0) for index in range(100))
     return from_series(Series(rate=10.0, values=values, unit=Unit.RATIO), interpolation="hold")
 
 
@@ -70,12 +71,29 @@ def test_every_one_gives_the_same_values_whatever_the_order_and_size_of_the_read
     assert np.concatenate(parts[::-1]).tolist() == expected.tolist()
 
 
+# up to a millionth of a second short of the change: closer than that is inside the float rounding every read allows
+BEFORE_THE_CHANGE = np.concatenate([np.linspace(0, 2.9, 30), [2.99, 2.9995, 2.999999]])
+
+
 @pytest.mark.parametrize("name", SHAPERS)
 def test_every_shaper_is_causal_what_comes_later_in_its_input_never_changes_an_earlier_output(name):
     thing = registry.get(name)
-    unchanged = thing(input_signal(0.0)).sample(TIMES[TIMES <= 5.0])
-    changed = thing(input_signal(7.0)).sample(TIMES[TIMES <= 5.0])
+    unchanged = thing(input_signal(0.0)).sample(BEFORE_THE_CHANGE)
+    changed = thing(input_signal(7.0)).sample(BEFORE_THE_CHANGE)
     assert changed.tolist() == unchanged.tolist()
+    # the test can fail: after the change the two outputs do differ
+    later = np.array([CHANGE_AT + 1.0, 8.0])
+    assert thing(input_signal(7.0)).sample(later).tolist() != thing(input_signal(0.0)).sample(later).tolist()
+
+
+@pytest.mark.parametrize("name", ALL)
+@pytest.mark.parametrize("time", [1e12, 1e19, 1.7e306, 1.797e308, -1e300], ids=str)
+def test_every_one_gives_a_finite_value_or_a_signal_error_at_any_time_never_a_warning_or_a_crash(name, time):
+    try:
+        values = build(name).sample([time])
+    except SignalError:
+        return
+    assert np.isfinite(values).all()
 
 
 def numeric_fields(name):

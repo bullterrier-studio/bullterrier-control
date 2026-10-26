@@ -39,8 +39,9 @@ copyable by audio for its conformance test.
   its ends). `+ - *`, negation, `minimum`, `maximum` combine signals.
 - Grid conversions (`seconds_at(beat)`, `beat_at(seconds)`) as specified in `docs/formats.md`; numpy joins here.
 - Evaluation: analytic signals are exact at any time; stateful shapers (slew, followers) render on an internal grid at a
-  declared rate and are read by interpolation. Reading at t never depends on earlier reads.
-- Signal from a Series (interpolation: linear, hold); `Rendered` for causal stateful shapers read by interpolation.
+  declared rate and a read holds the latest sample at or before the time. Reading at t never depends on earlier reads
+  or on input after t.
+- Signal from a Series (interpolation: linear, hold); `Rendered` for causal stateful shapers (a read holds the latest sample).
 - Built-ins that give the contract tests every kind of subject: source `constant`; shapers `clip` (stateless) and `slew`
   (stateful), moved here from C3.
 - Parameters declared once with pydantic (as bullterrier-image): unit, range, description, default. Unit `beats` is

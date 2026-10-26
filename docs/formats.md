@@ -68,7 +68,7 @@ The musical clock, stored as the beat times themselves.
 Downbeats are `beats[first_downbeat::meter]`. Tempo is not stored: it is `60 / (beats[i+1] - beats[i])`, so a tempo and its
 beats cannot disagree. A beat position *p* (fractional; 0 is `beats[0]`) maps to seconds by linear interpolation between
 neighbouring beats, and beyond either end by extrapolating the first or last interval; seconds map back by the inverse. The
-conversion itself ships with the code that reads signals (roadmap C1); the meaning is fixed here.
+conversion is `Grid.seconds_at` and `Grid.beat_at`.
 
 ## Versioning
 

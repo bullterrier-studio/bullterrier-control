@@ -47,20 +47,35 @@ class Grid(FormatModel):
         Position 0 is the first beat, 1 the second, and so on; a fraction is linear between two beats. Before the first
         beat and after the last, the first or last beat length continues, so every position has a time.
         """
-        position = np.asarray(beats, dtype=np.float64)
+        position = _finite_numbers(beats)
         times = np.asarray(self.beats, dtype=np.float64)
         last = len(times) - 1
-        inside = np.interp(position, np.arange(last + 1), times)
-        before = times[0] + position * (times[1] - times[0])
-        after = times[-1] + (position - last) * (times[-1] - times[-2])
-        return np.asarray(np.where(position < 0, before, np.where(position > last, after, inside)))
+        with np.errstate(all="ignore"):  # an overflow is refused below, not warned about
+            inside = np.interp(position, np.arange(last + 1), times)
+            before = times[0] + position * (times[1] - times[0])
+            after = times[-1] + (position - last) * (times[-1] - times[-2])
+            return _finite_result(np.where(position < 0, before, np.where(position > last, after, inside)))
 
     def beat_at(self, seconds: ArrayLike) -> NDArray[np.float64]:
         """The beat position of each time in `seconds`: the inverse of `seconds_at`, with the same shape."""
-        moment = np.asarray(seconds, dtype=np.float64)
+        moment = _finite_numbers(seconds)
         times = np.asarray(self.beats, dtype=np.float64)
         last = len(times) - 1
-        inside = np.interp(moment, times, np.arange(last + 1))
-        before = (moment - times[0]) / (times[1] - times[0])
-        after = last + (moment - times[-1]) / (times[-1] - times[-2])
-        return np.asarray(np.where(moment < times[0], before, np.where(moment > times[-1], after, inside)))
+        with np.errstate(all="ignore"):
+            inside = np.interp(moment, times, np.arange(last + 1))
+            before = (moment - times[0]) / (times[1] - times[0])
+            after = last + (moment - times[-1]) / (times[-1] - times[-2])
+            return _finite_result(np.where(moment < times[0], before, np.where(moment > times[-1], after, inside)))
+
+
+def _finite_numbers(values: ArrayLike) -> NDArray[np.float64]:
+    raw = np.asarray(values)
+    if raw.dtype.kind not in "iuf" or not np.isfinite(raw.astype(np.float64)).all():
+        raise FormatError(f"a position or time must be a finite number (got {values!r})")
+    return raw.astype(np.float64)
+
+
+def _finite_result(values: NDArray[np.float64]) -> NDArray[np.float64]:
+    if not np.isfinite(values).all():
+        raise FormatError("the result is not a finite number: the position or time is too far from the beats")
+    return np.asarray(values)

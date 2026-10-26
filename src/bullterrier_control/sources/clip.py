@@ -2,9 +2,7 @@
 
 from pydantic import model_validator
 
-from ..errors import FormatError
-from ..plugin import Finite, Params, Signal, param, shaper
-from ..signal import maximum, minimum
+from ..plugin import Finite, FormatError, Params, Signal, maximum, minimum, param, shaper
 
 
 class ClipParams(Params):

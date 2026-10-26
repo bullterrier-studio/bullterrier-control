@@ -42,7 +42,8 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
 - **One Event type with an optional duration.** Onsets, beats, notes, sections and risers are all Events; a moment has no
   duration. *Reason:* one type is a smaller format than Event plus Span, and every consumer handles both the same way.
 - **Analytic where possible, rendered where stateful.** Keyframes, LFOs and envelopes on events are exact at any time; slew,
-  followers and other stateful shapers render on an internal grid at a declared rate and are read by interpolation.
+  followers and other stateful shapers render on an internal grid at a declared rate and are read by holding the latest
+  sample at or before the time (C1: interpolating would let a read depend on input after the time read).
   *Reason:* random access in seconds with no hidden history, without forbidding the shapers every DAW has.
 - **Parameters are pydantic models, as in bullterrier-image.**
 - **Offline only in v1.** Real-time output (a live clock to MIDI or OSC) is later, as an optional extra.
@@ -66,10 +67,28 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
   with `SignalError`); a signal implements `compute`. *Reason:* the check at the boundary is written once, not in every signal.
 - **Combining is arithmetic, not a registered shaper.** `+`, `-`, `*`, negation, `minimum` and `maximum` on signals (floats
   allowed). *Reason:* they have no parameters to declare, and a crossfade is `a * (1 - m) + b * m`.
-- **Stateful shapers render once and are read by interpolation** (`Rendered`): the shaper's `run` is a causal function from the
-  input sampled on a grid at a declared `rate` (an advanced parameter) to an output of equal length. *Reason:* causality makes
-  a read independent of what was read before, whatever the order or chunking; a limit on the number of samples keeps a read
-  at an absurd time from filling memory.
+- **Stateful shapers render once and a read holds the latest sample at or before the time** (`Rendered`): the shaper's `run`
+  is a causal function from the input sampled on a grid at a declared `rate` (an advanced parameter) to an output of equal
+  length. *Reason:* causality makes a read independent of what was read before, whatever the order or chunking; holding
+  rather than interpolating keeps a read at time t from depending on input after t (interpolation did leak up to one
+  internal sample: a review caught it); a limit on the number of samples keeps a read at an absurd time from filling
+  memory. *Cost:* the output is a staircase of one internal step (1 ms by default).
+- **A signal never returns a value that is not finite, and `sample` cannot be overridden.** `sample` is `@final`; an
+  overflow or a bug in `compute` is a `SignalError` naming the time, not an infinity that travels on. Times that are text,
+  a bool or too large for a float are refused too.
+- **Parameter declarations are closed.** A field is a number, a `bool`, a `str` or a `Literal` of strings; the model is
+  strict whatever the annotation; defaults are validated; no aliases, no names that are discouraged or are units; ranges are
+  finite. *Reason:* each hole a review found (an `Optional` number with no range, a plain `float` that accepted `true`, a
+  default nothing checked) would have reached every patch.
+- **Parameter units say `hertz`, not `hz`**, as a Series' `Unit` does; the two vocabularies differ on purpose (what a
+  measured series holds, what a parameter's number is in) and share names where they meet.
+- **Sources reach the library only through `plugin`.** A forbidden-import contract enforces it, so what an author sees is
+  what the built-ins use.
+- **Test hooks are `registry.isolated()` and `registry.unregister`.** A registration is re-registerable only if it is a
+  top-level function of a module (reloading); two functions made by one factory are different things.
+- **Programming errors are plain `ValueError` and `TypeError`.** A wrong registration, a wrong argument to `Rendered` or a
+  wrong call shape is a bug in the calling code, not something a caller, a file or a patch can get wrong; those are
+  `BullterrierControlError`s.
 - **Parameters are declared with `param(default, doc=, unit=, min=, max=)`** on a `Params` model; the rules are checked when the
   class is made. *Reason:* a broken declaration fails at import, naming the field, not in some patch much later.
 - **One entry-point group, `bullterrier_control.sources`, for sources and shapers.** *Reason:* naming.md names the group; a shaper

@@ -17,7 +17,7 @@ class Wave(Params):
     shape: Literal["sine", "saw"] = param("sine", doc="The wave: 'sine' or 'saw'.")
     smooth: Switch = param(True, doc="Whether the corners are rounded.")
     rate: Finite = param(
-        1.0, doc="Cycles per second; raising it speeds the wave up.", unit="hz", min=0.001, max=100, advanced=True
+        1.0, doc="Cycles per second; raising it speeds the wave up.", unit="hertz", min=0.001, max=100, advanced=True
     )
 
 
@@ -114,12 +114,26 @@ DECLARATIONS = {
     "a choice with a range": (Literal["a", "b"], param("a", doc="A choice.", min=0, max=1), "min"),
     "a number not declared with param": (Finite, 1.0, "unit"),
     "a discouraged name": (Finite, param(1.0, doc="Some number.", unit="ratio", min=0, max=2), "strength"),
+    "a name that is a unit": (Finite, param(1.0, doc="Some number.", unit="ratio", min=0, max=2), "seconds"),
+    "an optional number": (Finite | None, param(None, doc="Maybe a number."), "supported"),
+    "a list of numbers": (list[Finite], param([1.0], doc="Some numbers."), "supported"),
+    "a choice of numbers": (Literal[1, 2], param(1, doc="A choice."), "supported"),
+    "a range with no top": (Finite, param(1.0, doc="Some number.", unit="ratio", min=0, max=float("inf")), "finite"),
+    "a range with a nan end": (Finite, param(1.0, doc="Some number.", unit="ratio", min=float("nan"), max=2), "finite"),
+    "a choice whose default is not offered": (Literal["a", "b"], param("zzz", doc="A choice."), "default"),
+    "a switch whose default is 1": (Switch, param(1, doc="A switch."), "default"),
+    "a whole number whose default is 1.5": (Whole, param(1.5, doc="A count.", unit="count", min=0, max=9), "default"),
+    "a field with an alias": (
+        Finite,
+        param(1.0, doc="Some number.", unit="ratio", min=0, max=2, alias="other"),
+        "alias",
+    ),
 }
 
 
 @pytest.mark.parametrize(("annotation", "spec", "named"), DECLARATIONS.values(), ids=DECLARATIONS.keys())
 def test_a_broken_declaration_fails_when_the_class_is_made_naming_the_field_or_rule(annotation, spec, named):
-    field = "strength" if named == "strength" else "amount"
+    field = named if named in ("strength", "seconds") else "amount"
     with pytest.raises(ValueError, match=named):
         declared(annotation, spec, field)
 
@@ -132,3 +146,27 @@ def test_every_declared_unit_can_be_used(unit):
 @pytest.mark.parametrize("default", [0.0, 2.0], ids=["the lowest value", "the highest value"])
 def test_a_default_may_sit_at_either_end_of_its_range(default):
     declared(Finite, param(default, doc="Some number.", unit="ratio", min=0, max=2))
+
+
+PLAIN = {
+    "a plain float": (float, 1.0, True),
+    "a plain float given text": (float, 1.0, "0.5"),
+    "a plain int": (int, 3, True),
+    "a plain int given a float": (int, 3, 3.0),
+    "a plain int given text": (int, 3, "3"),
+}
+
+
+@pytest.mark.parametrize(("annotation", "default", "wrong"), PLAIN.values(), ids=PLAIN.keys())
+def test_a_number_declared_with_a_plain_float_or_int_is_as_strict_as_the_shared_types(
+    annotation, default, wrong, reports
+):
+    model = declared(annotation, param(default, doc="Some number.", unit="count", min=0, max=9))
+    with pytest.raises(FormatError) as refused:
+        model.parse({"amount": wrong})
+    reports(refused.value, "amount")
+
+
+def test_a_field_without_a_default_is_refused_when_the_class_is_made():
+    with pytest.raises(ValueError, match="default"):
+        type("NoDefault", (Params,), {"__annotations__": {"amount": Finite}, "__doc__": "No default."})
