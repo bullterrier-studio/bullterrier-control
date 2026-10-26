@@ -110,6 +110,10 @@ test; `docs/ecosystem.md` so the repository stands on its own.
 - Patch file (TOML): a named graph of sources and shapers with their values, the way an image recipe is a list of steps.
 - `bt-control sample PATCH --from --to --rate` (JSON/CSV Series out), `bt-control list` (sources, shapers, parameters),
   `bt-control plot` (PNG, matplotlib as an optional extra).
+- For consumers: `bt-control list --json` gives every source and shaper with its inputs and parameters (unit, range,
+  default, doc), so another tool can check a pipeline before it runs. The patch file carries a `format` number and
+  has a published JSON Schema, like the bundle. Unit names stay stable: a consumer maps a signal onto its own units
+  (pixels, degrees, ...), and control's names (`seconds`, `beats`, `fraction`, ...) are its side of that mapping.
 - A gallery: one plot per source and shaper, generated, in `docs/`.
 - README example that runs.
 
