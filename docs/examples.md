@@ -158,3 +158,35 @@ Sustain 1 holds a section's strength; each section rises linearly over 1 s and f
 | 17.0 | 0 | after the last release |
 
 The consumer (video): `look_opacity = value`.
+
+## 7. Strong kicks only
+
+Audio found kicks of every strength. Only the strong ones should flare, and none within a quarter second of the last one
+kept. **Needs:** `select`, `thin` (batch C3b).
+
+```python
+from bullterrier_control import lib
+
+kicks = [
+    {"t": 0.5, "strength": 0.9},
+    {"t": 0.7, "strength": 0.45},
+    {"t": 1.0, "strength": 0.8},
+    {"t": 1.05, "strength": 0.95},
+    {"t": 2.0, "strength": 0.7},
+]
+strong = lib.thin(events=lib.select(events=kicks, threshold=0.5), gap=0.25)
+signal = lib.envelope(events=strong, decay=0.25)
+```
+
+`select` drops the kick of strength 0.45; `thin` drops the one at 1.05, only 0.05 s after the kick at 1.0. What is left:
+0.5 s (0.9), 1.0 s (0.8) and 2.0 s (0.7), each decaying with a time constant of 0.25 s.
+
+| t (s) | value | by hand |
+|---|---|---|
+| 0.5 | 0.9 | the first kick |
+| 0.75 | 0.33109149705429813 | 0.9 · e⁻¹; the dropped 0.45 kick would have made it 0.45 · e⁻⁰·² = 0.3684 |
+| 1.0 | 0.8 | the second kick, above the first one's 0.9 · e⁻² = 0.12 |
+| 1.1 | 0.5362560368285115 | 0.8 · e⁻⁰·⁴; the thinned 0.95 kick would have made it 0.95 · e⁻⁰·² = 0.7778 |
+| 2.0 | 0.7 | the last kick, above the second one's 0.8 · e⁻⁴ = 0.015 |
+
+The consumer (video): `flash_gain = 1 + 2 * value`.

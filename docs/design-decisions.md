@@ -252,3 +252,37 @@ separate ramp. Changed:
   a shaper with a required input, `hold`, cannot be), and the sample events gain one after the time the two inputs
   differ at. *Reason:* a shaper that reads the input only at events would otherwise show no difference after the
   change, and the test's own "it can fail" check would refuse it.
+
+## Decided in C3b
+
+- **Operations are registered, a third kind beside sources and shapers.** An operation is data in, data out
+  (`def name(params, *, events) -> tuple[Event, ...]`, or `-> Series`), registered with `@operation` and called through
+  `lib` with keyword inputs. *Reason:* parameters are declared once (CLAUDE.md, rule 3), which holds only through the
+  registry; plain functions would declare each default twice, and `help()`, `dir(lib)` and C4's patches and `list --json`
+  get operations for nothing. The return annotation is the declaration of what comes back and is checked at registration;
+  an operation takes no signal. *Cost:* the contract tests split: the signal rules run over sources and shapers, the
+  parameter rules over all three, and `test_operation_contract.py` holds what is specific to data.
+- **No `merge`, no `downbeats`, no signal `quantize`, no Series lead or lag.** Merging is `events=[*kicks, *snares]`, since the
+  `events` input sorts; downbeats are `select(events=beats(grid=g), label="downbeat")`; a signal on the grid is
+  `hold(signal, events=beats(grid=g))`; a lead for a series waits for a consumer (build the Series with another `start`).
+  *Reason:* each would be a second name for something that composes.
+- **`matching(events, label)` is the one rule for a `label` parameter**, in `inputs`, used by `envelope`, `latch` and
+  `select`. *Reason:* C2b planned this extraction for the third consumer.
+- **`quantize` rounds half up, to the later position, and never moves an event below time 0; `shift` trims.** The position is
+  `floor(beat * division + 0.5) / division` in beats, so it follows tempo changes; an event whose nearest position is before
+  0 goes one position up. `shift` drops a moment before 0 and a span ending at or before 0, and starts a span that crosses 0
+  at 0 with the rest of its duration. *Reason:* an Event has `t >= 0`, and a cue must not be lost to rounding that the grid
+  alone caused. The snap never decreases, so sorted events stay sorted and `quantize` does not sort again; events that land
+  on one time keep their order.
+- **A time too far from the beats to snap is a `ParameterError` naming `events`.** *Reason:* the Grid reports it as a
+  `FormatError` about no input in particular; for an operation it is a value of its `events` input.
+- **`thin` and `every` count in the order of the sorted input.** `thin` keeps the first of events at one time (a gap above
+  0), `every` counts them one by one. *Reason:* the `events` input sorts stably, so the result never depends on the order
+  given.
+- **`normalise`: `lower` runs 0 to 0.99 and `upper` 0.01 to 1.** *Reason:* `upper` must exceed `lower`, so a range of 0 to 1
+  for both has no valid corner (both at 0, or both at 1), and the contract test sets every number at one end of its range.
+  The values are first scaled by a power of two (exact) into -1 to 1, so a series reaching the largest floats does not
+  overflow, and a value far above a tiny span divides to beyond the floats and is clipped to 1 without a warning.
+  Percentiles are numpy's `linear` (Hyndman and Fan, type 7). Equal percentiles give zeros, an outlier included.
+- **`beats` marks a downbeat by `(beat - first_downbeat) % meter == 0`.** *Reason:* `first_downbeat` is below `meter`
+  (the Grid checks it), so no beat before it can satisfy the rule and a second test for it would be dead code.

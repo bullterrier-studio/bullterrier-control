@@ -15,7 +15,7 @@ working session, **M** two or three. Decisions behind the batches: [design-decis
 | C2c | `lfo`, `steps` (example 4) | S | done |
 | C2d | `noise` (seeded, read at any time) | S | done |
 | C3a | Causal shapers; the scenes example | M | done |
-| C3b | Operations on events and series | M | |
+| C3b | Operations on events and series | M | done |
 | C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | |
 | C5 | First release | S | |
 
@@ -109,7 +109,7 @@ it becomes a signal. (`slew` and `clip` shipped in C1.)
 - `follow` (attack/release follower; equal times are one-pole smoothing), `gate` (hysteresis), `hold` (sample and hold at
   events), `remap` (0..1 onto `low`..`high` through an ease), `delay` (a lag).
 
-### C3b Operations on events and series
+### C3b Operations on events and series (done)
 
 - A third registered kind, the operation: data in, data out, parameters declared like a source's, in `lib`.
 - Events: `select` (label, strength threshold), `every` (every Nth), `thin` (minimum gap), `shift` (lead or lag),

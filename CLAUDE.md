@@ -19,7 +19,7 @@ uv run poe check                     # the whole gate, before you report or merg
 | To ... | Look at |
 |---|---|
 | use a source or shaper | `lib` (`lib.slew(signal, rise=0.2)`; `dir(lib)`, `help(lib.slew)`) |
-| add a source or shaper | "Adding a source or shaper" below; one module in `src/bullterrier_control/builtin/`, one test file in `tests/builtin/` |
+| add a source, shaper or operation | "Adding a source or shaper" below; one module in `src/bullterrier_control/builtin/`, one test file in `tests/builtin/` |
 | see what every source and shaper promises | "The signal contract" below; `tests/builtin/test_contract.py` checks it over all of them |
 | declare parameters | `params.py` (`Params`, `param`); the rules in "Parameters" below |
 | write a signal that needs history | `rendered.py` (`Rendered`) |
@@ -27,9 +27,10 @@ uv run poe check                     # the whole gate, before you report or merg
 | see a worked example with numbers | `docs/examples.md` and `examples/` |
 | find what is planned | `docs/roadmap.md`: work goes in small batches, each planned before it starts |
 
-**State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`), inputs (`points`, `events`, `grid`, `values`), easing, cadence, hashing and scaling, and
-the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `noise` and the shapers `clip`, `slew`, `follow`,
-`gate`, `hold`, `remap` and `delay` exist. Next: batch C3b (`docs/roadmap.md`).
+**State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`), inputs (`points`, `events`, `grid`, `values`, `series`), easing, cadence, hashing and scaling, and
+the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `noise`, the shapers `clip`, `slew`, `follow`,
+`gate`, `hold`, `remap` and `delay`, and the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`
+exist. Next: batch C4 (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.
@@ -77,10 +78,10 @@ Layers, imports flow **downward only** (import-linter: contracts in `pyproject.t
 
 ```
 app        __main__, cli
-builtin    the built-in sources and shapers: one module each, never importing each other, using only `plugin`
-lib        every registered source and shaper by name (`lib.slew`), with `help()` built from its parameters
+builtin    the built-in sources, shapers and operations: one module each, never importing each other, using only `plugin`
+lib        every registered source, shaper and operation by name (`lib.slew`), with `help()` built from its parameters
 plugin     the author API: everything a source needs (built-ins use it too); the one door, enforced by a contract
-registry   the table of sources and shapers; `@source`, `@shaper`; entry-point loading
+registry   the table of sources, shapers and operations; `@source`, `@shaper`, `@operation`; entry-point loading
 rendered   Rendered: a signal that needs history, rendered once and read by holding the latest sample  |  inputs   `INPUTS`, Keyframe
 signal     Signal, Constant, from_series, arithmetic  |  params   Params, param, UNITS  |  easing   `curve`: named and Bezier eases  |  cadence   `counter`: a read's position in cycles or steps, per second or beat  |  hashing   `uniform`: seeded random numbers by index  |  scaling   `between`: 0..1 onto `low`..`high`, exactly inside
 formats    Bundle > Series | Event | Grid > the format base and Unit
@@ -90,7 +91,9 @@ errors     BullterrierControlError > InvalidError > FormatError | ParameterError
 
 A source is `def name(params) -> Signal`, a shaper `def name(signal, params) -> Signal`, each registered with `@source` or
 `@shaper` and its `Params` model; packages are entry points of the group `bullterrier_control.sources`. Pipes-and-filters: a
-shaper maps a signal to a signal. Each thing arrives with its first consumer (`vulture` fails on unused code).
+shaper maps a signal to a signal. An **operation** is data in, data out: `def name(params, *, events) -> tuple[Event, ...]` or
+`-> Series`, taking its data as inputs (`events`, `series`, `grid`), registered with `@operation`; it may use the whole data (percentiles, a lead, the nearest
+beat), which a signal may not. Each thing arrives with its first consumer (`vulture` fails on unused code).
 
 ## The signal contract
 
@@ -108,7 +111,9 @@ Every signal, and so every source and shaper, promises this (`tests/builtin/test
   comes later in a shaper's input never changes an earlier output.
 - **Parameters declared** with `param` (unit, range, description): every number works at both ends of its range and is refused
   beyond it, `true` or a string is not a number, an unknown name is refused, and the refusal names the field.
-A new source or shaper meets all of this by registering: the contract tests find it and no test names it.
+A new source or shaper meets all of this by registering: the contract tests find it and no test names it. An operation makes
+data, not a signal: it is covered by the parameter rules above, by `tests/builtin/test_operation_contract.py` (the same data
+when called again, with events reversed or as dicts; valid, time-ordered events or a valid Series) and by its own tests.
 
 ## The rules
 
@@ -175,14 +180,15 @@ load, naming source, field, constraint and value. Not parameters: the fields of 
 
 ## Adding a source or shaper
 
-1. **Scaffold:** `uv run poe new-source <name> --kind source|shaper` writes `src/bullterrier_control/builtin/<name>.py` and
+1. **Scaffold:** `uv run poe new-source <name> --kind source|shaper|operation` writes `src/bullterrier_control/builtin/<name>.py` and
    `tests/builtin/test_<name>.py`, working as written (the package imports every module it holds: no list to edit).
 2. **Fill in:** the `Params` model (the field's own terms, unit, range, description: "Parameters"), the body (analytic where it
    can be; a causal recurrence through `Rendered` where it needs history), the docstring's first sentence (what
    `help(lib.<name>)` shows). Data that is not a parameter (keyframes, events, a grid) is a keyword-only argument after
    `params`, named in `inputs.INPUTS` (`def name(params, *, points)`; `= None` makes it optional); the registry checks it and
-   passes it on. A new kind of input is one `INPUTS` entry and one row in each of `SAMPLE_INPUTS` and `SMALLEST_INPUTS` in
-   `tests/builtin/test_contract.py`.
+   passes it on. An operation takes its data this way and declares its result by its return annotation
+   (`tuple[Event, ...]` or `Series`). A new kind of input is one `INPUTS` entry and one row in each of `SAMPLE_INPUTS` and
+   `SMALLEST_INPUTS` in `tests/builtin/test_contract.py` (and in `INPUTS` of `test_operation_contract.py`, if an operation takes it).
 3. **Test:** what it promises, each expected number worked out by hand; the contract tests already cover shapes, ranges,
    determinism, read order and causality for every registered one. If `docs/examples.md` names it under **Needs**, that
    example must now pass.

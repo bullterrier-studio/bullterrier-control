@@ -31,7 +31,7 @@ synthesizers modulation.
 <table>
   <tr>
     <td width="33%" valign="top"><b>Read at any moment</b><br>A signal has a value at every time. <code>sample(times)</code> takes a number or an array of seconds, in any order, and returns values in the same shape. No clock, no frames.</td>
-    <td width="33%" valign="top"><b>Sources and shapers</b><br>Keyframes, LFOs, envelopes, steps, noise and latches make signals; slew, follow, gate, hold, remap, delay and clip shape them. Signals combine with <code>+</code>, <code>-</code>, <code>*</code>, <code>minimum</code> and <code>maximum</code>.</td>
+    <td width="33%" valign="top"><b>Sources, shapers and operations</b><br>Keyframes, LFOs, envelopes, steps, noise and latches make signals; slew, follow, gate, hold, remap, delay and clip shape them; select, thin, quantize and more prepare events and series. Signals combine with <code>+</code>, <code>-</code>, <code>*</code>, <code>minimum</code> and <code>maximum</code>.</td>
     <td width="33%" valign="top"><b>Deterministic</b><br>The same inputs and seed give the same values, whatever the order or number of earlier reads. Noise is the same on every machine.</td>
   </tr>
   <tr>
@@ -43,7 +43,7 @@ synthesizers modulation.
 
 ## Contents
 
-[Install](#install) | [Quick start](#quick-start) | [Sources and shapers](#sources-and-shapers) | [Concepts](#concepts) |
+[Install](#install) | [Quick start](#quick-start) | [Sources, shapers and operations](#sources-shapers-and-operations) | [Concepts](#concepts) |
 [Formats](#formats) | [Status](#status) | [Development](#development) | [Works with](#works-with) | [License](#license)
 
 ## Install
@@ -100,11 +100,11 @@ flare.sample([0.25, 0.5, 0.75, 1.0])  # 0 before the kick, 1 at it, then e^-1 an
 # array([0.    , 1.    , 0.3679, 0.1353])
 ```
 
-## Sources and shapers
+## Sources, shapers and operations
 
 **Sources** make a signal from their parameters and, for some, from data such as keyframes, events or a beat grid.
-**Shapers** make a signal from a signal. Both are in `btc.lib`: `dir(btc.lib)` lists them, `help(btc.lib.slew)` shows every
-parameter with its unit and range.
+**Shapers** make a signal from a signal. All three kinds are in `btc.lib`: `dir(btc.lib)` lists them, `help(btc.lib.slew)`
+shows every parameter with its unit and range.
 
 | Name | Kind | What it makes |
 |---|---|---|
@@ -123,14 +123,28 @@ parameter with its unit and range.
 | `delay` | shaper | Shows its input a fixed time late |
 | `clip` | shaper | Follows its input but never leaves a range |
 
-Operations on events and series come next ([docs/roadmap.md](docs/roadmap.md)). A package of your own imports `bullterrier_control.plugin` and
-names its module as an entry point of the group `bullterrier_control.sources`; its sources then appear in `btc.lib`.
+**Operations** make data from data: they prepare events and series before they become signals. They are in `btc.lib` too,
+called with keyword inputs (`btc.lib.thin(events=kicks, gap=0.25)`), and give events or a series back.
+
+| Name | Takes | What it gives |
+|---|---|---|
+| `select` | events | The events with a label and at least a strength |
+| `every` | events | Every Nth event |
+| `thin` | events | The events that come at least a gap after the last one kept |
+| `shift` | events | The events moved earlier or later, cut off at time 0 |
+| `beats` | a grid | An event on each beat (downbeats marked), and on subdivisions |
+| `quantize` | events, a grid | The events snapped to the nearest beat or subdivision |
+| `normalise` | a series | The series scaled between two of its percentiles, to 0 to 1 |
+
+A package of your own imports `bullterrier_control.plugin` and names its module as an entry point of the group
+`bullterrier_control.sources`; its sources, shapers and operations then appear in `btc.lib`.
 
 ## Concepts
 
 - **Signal**: a value at every time. `signal.sample(times)` takes a number or an array of times in seconds and returns the
   values in the same shape.
 - **Event**: a moment in seconds with a strength, and optionally a duration, label and pitch: a beat, an onset, a cue.
+- **Operation**: data in, data out (events or a series): select, thin or snap events to a grid before they drive a signal.
 - **Time is in seconds** everywhere. A value in beats is turned into seconds through a grid.
 - **Parameters** are declared once, with a unit, a range and a description, and drive validation, defaults and `help()`.
 
@@ -152,7 +166,8 @@ bt-control schema                    # the JSON Schema of a bundle, for tools in
 ## Status
 
 Pre-alpha, not yet on PyPI. The formats and the core exist, with the sources `constant`, `keyframes`, `envelope`, `latch`,
-`lfo`, `steps` and `noise` and the shapers `clip`, `delay`, `follow`, `gate`, `hold`, `remap` and `slew`.
+`lfo`, `steps` and `noise`, the shapers `clip`, `delay`, `follow`, `gate`, `hold`, `remap` and `slew`, and the operations
+`beats`, `every`, `normalise`, `quantize`, `select`, `shift` and `thin`.
 
 ## Development
 
