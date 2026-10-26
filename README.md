@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Control signals for Python.</b><br>
-  Keyframes with easing, LFOs, envelopes, step sequences and seeded noise, shaped by slew and clip,<br>
+  Keyframes with easing, LFOs, envelopes, step sequences and seeded noise, shaped by slew, clip, follow, gate and more,<br>
   read at any moment in seconds. The same inputs and seed always give the same values.
 </p>
 

@@ -131,7 +131,7 @@ The consumer (video): `saturation = 0.3 + 0.7 * value`.
 ## 6. Scenes: build, drop, outro
 
 Audio found three sections, each an event with a duration. A scene should be as strong as the section it is in, rising into
-it over a second and fading out over half a second, with the strongest section winning where they overlap.
+it over a second and fading out over half a second; where one section fades as the next rises, the larger value wins.
 
 ```python
 from pathlib import Path
