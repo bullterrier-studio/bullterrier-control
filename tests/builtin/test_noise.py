@@ -102,10 +102,12 @@ def test_the_noise_stays_in_range_at_any_time_up_to_a_billion_seconds_at_the_end
     assert values.max() <= 3.0
 
 
-def test_a_position_beyond_a_whole_machine_integer_still_reads_the_noise():
-    # 1e300 at 4 a second: a whole position, so the value is the lattice point's, in range
-    value = lib.noise(shape="smooth", seed=3).sample([1e300]).item()
-    assert 0.0 <= value <= 1.0
+@pytest.mark.parametrize("position", [1e19, 1e300], ids=str)
+def test_a_position_beyond_a_whole_machine_integer_reads_the_lattice_point_its_integer_wraps_to(position):
+    # a float this size is a whole number; Python integers are exact, so its remainder after 2^64 is the oracle
+    wrapped = np.array([int(position) % 2**64], dtype=np.uint64)
+    signal = lib.noise(shape="hold", rate=1, seed=3, low=-1, high=3)
+    assert signal.sample([position]).tolist() == pytest.approx(lattice(3, wrapped, -1, 3), abs=1e-12)
 
 
 def test_a_time_too_far_for_the_position_to_be_a_number_is_a_signal_error():
