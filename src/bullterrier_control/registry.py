@@ -115,6 +115,24 @@ class Registered[P: Params, R]:
         parameters = self.validate({name: value for name, value in values.items() if name not in INPUTS})
         return self.function(*signals, parameters, **given)
 
+    def description(self) -> dict[str, Any]:
+        """This thing as plain data, for a tool that checks a pipeline before it runs (`bt-control list --json`).
+
+        `kind` is source, shaper or operation; `summary` its first sentence; `returns` what a call gives (`signal`,
+        `events` or `series`); `inputs` maps each input to `{required, doc}`; `parameters` is the JSON Schema of the
+        parameter model, in the shape bullterrier-image gives its parameters: per property `type` or `enum`, `default`,
+        `description`, `minimum` and `maximum`, and the extras `unit`, `advanced` and `cyclic`. A cyclic property
+        accepts any number (the model wraps it) although its schema keeps the one-cycle range, so a consumer that
+        validates a value of one wraps it first. The unit names (`seconds`, `beats`, `fraction`, ...) are stable: a
+        consumer maps a signal onto its own units from them."""
+        return {
+            "kind": self.kind,
+            "summary": self.summary,
+            "returns": self.returns,
+            "inputs": {name: {"required": required, "doc": INPUTS[name].doc} for name, required in self.inputs.items()},
+            "parameters": self.params_model.model_json_schema(),
+        }
+
     def validate(self, values: Mapping[str, object]) -> P:
         """The parameters for `values` (name to value), or a `ParameterError` naming this thing and each problem."""
         return self._named(self.params_model.parse, values)

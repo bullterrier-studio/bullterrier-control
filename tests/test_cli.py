@@ -6,7 +6,7 @@ from pathlib import Path
 import jsonschema
 import pytest
 
-from bullterrier_control import Bundle, Series, Unit, save
+from bullterrier_control import Bundle, Series, Unit, registry, save
 from bullterrier_control.cli import main
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +33,7 @@ def test_help_names_the_program_and_lists_the_exit_codes(capsys):
     assert re.search(r"\n\s+1\s+a file is not a valid bundle", out)
     assert "validate" in out
     assert "schema" in out
+    assert "list" in out
 
 
 def test_no_arguments_print_the_help_and_succeed(capsys):
@@ -108,3 +109,53 @@ def test_the_committed_schema_accepts_a_valid_bundle_and_rejects_a_misshapen_one
     ):
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(misshapen, schema)
+
+
+def test_list_gives_a_line_per_registered_thing_with_its_kind_and_summary(capsys):
+    assert main(["list"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert [line.split()[0] for line in lines] == sorted(registry.all_registered())
+    by_name = {line.split()[0]: line for line in lines}
+    assert by_name["slew"].split()[1] == "shaper"
+    assert by_name["select"].split()[1] == "operation"
+    assert by_name["lfo"].split()[1] == "source"
+    assert registry.get("slew").summary in by_name["slew"]
+
+
+def test_list_with_names_shows_the_help_of_each(capsys):
+    assert main(["list", "slew", "select"]) == 0
+    out = capsys.readouterr().out
+    assert "shaper slew(signal, **values) -> signal" in out
+    assert "operation select(*, events, **values) -> events" in out
+    assert "rise (seconds" in out
+
+
+def test_list_of_an_unknown_name_is_an_error_naming_it_and_what_exists(capsys):
+    assert main(["list", "slew", "nosuch"]) == 1
+    captured = capsys.readouterr()
+    assert captured.err.startswith("error: ")
+    assert "nosuch" in captured.err
+    assert "slew" in captured.err  # the available names are listed
+    assert "Traceback" not in captured.err
+
+
+def test_list_json_describes_every_registered_thing_for_another_tool(capsys):
+    assert main(["list", "--json"]) == 0
+    listing = json.loads(capsys.readouterr().out)
+    assert list(listing) == sorted(registry.all_registered())
+    assert listing["envelope"]["inputs"]["events"]["required"] is True
+    assert listing["select"]["returns"] == "events"
+    assert listing["lfo"]["parameters"]["properties"]["phase"]["cyclic"] is True
+    assert listing["slew"] == registry.get("slew").description()
+
+
+def test_list_json_with_names_describes_only_those(capsys):
+    assert main(["list", "--json", "lfo", "clip"]) == 0
+    assert sorted(json.loads(capsys.readouterr().out)) == ["clip", "lfo"]
+
+
+def test_list_json_of_an_unknown_name_prints_nothing_on_stdout_and_fails(capsys):
+    assert main(["list", "--json", "nosuch"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "nosuch" in captured.err

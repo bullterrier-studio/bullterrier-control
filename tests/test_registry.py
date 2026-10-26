@@ -758,3 +758,32 @@ def test_leaving_an_isolated_block_gives_back_whether_the_packages_were_loaded(e
         pass
     registry.sources()
     assert package.loads == 1  # not loaded again: the registry was loaded before the block, and is after it
+
+
+def test_a_source_describes_itself_as_data_for_a_consumer():
+    description = lib.envelope.description()
+    assert (description["kind"], description["returns"], description["summary"]) == (
+        "source",
+        "signal",
+        lib.envelope.summary,
+    )
+    assert description["inputs"]["events"]["required"] is True
+    assert "Events" in description["inputs"]["events"]["doc"]
+    assert description["parameters"]["properties"]["decay"]["unit"] == "seconds"
+
+
+def test_a_shaper_without_inputs_and_an_operation_describe_what_they_take_and_give():
+    assert lib.slew.description()["inputs"] == {}
+    assert lib.slew.description()["kind"] == "shaper"
+    select = lib.select.description()
+    assert (select["kind"], select["returns"]) == ("operation", "events")
+    assert select["inputs"].keys() == {"events"}
+
+
+def test_an_optional_input_is_described_as_not_required(throwaway_registry):
+    @shaper(params=Nothing)
+    def chase(signal: Signal, params: Nothing, *, points: tuple[Keyframe, ...] | None = None) -> Signal:
+        """Follows keyframes if given."""
+        return signal
+
+    assert chase.description()["inputs"]["points"]["required"] is False

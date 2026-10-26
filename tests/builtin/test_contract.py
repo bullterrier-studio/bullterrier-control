@@ -7,6 +7,7 @@ not a signal); the parameter and input tests run over every kind.
 
 from typing import Any
 
+import jsonschema
 import numpy as np
 import pytest
 
@@ -279,3 +280,22 @@ def test_a_cyclic_number_a_whole_number_of_cycles_away_gives_the_same_signal(nam
     # the test can fail: a quarter of a cycle on is a different signal
     other = build(name, **{field: inside + 0.25}).sample(TIMES)
     assert other.tolist() != pytest.approx(here.tolist(), abs=1e-9)
+
+
+@pytest.mark.parametrize("name", ALL)
+def test_every_description_is_a_json_schema_that_accepts_the_defaults(name):
+    """A consumer checks a pipeline against `description()["parameters"]` before running it."""
+    schema = registry.get(name).description()["parameters"]
+    jsonschema.Draft202012Validator.check_schema(schema)
+    defaults = {field.name: field.default for field in registry.get(name).params_model.fields_doc()}
+    jsonschema.validate(defaults, schema)
+
+
+@pytest.mark.parametrize(("name", "field", "side"), LIMITS)
+def test_every_description_refuses_a_number_beyond_its_range_as_the_registry_does(name, field, side):
+    doc = next(f for f in numeric_fields(name) if f.name == field)
+    schema = registry.get(name).description()["parameters"]
+    beyond = getattr(doc, side) + (1 if side == "maximum" else -1)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({field: value_at(doc, beyond)}, schema)
+    jsonschema.validate({field: value_at(doc, getattr(doc, side))}, schema)  # the end itself is inside
