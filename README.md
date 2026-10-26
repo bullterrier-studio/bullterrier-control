@@ -8,14 +8,26 @@ business: an image effect, a synthesizer, a light.
 
 ## Status
 
-Pre-alpha. The project is scaffolded and gated; no signal exists yet. The work is planned in batches
-([docs/roadmap.md](docs/roadmap.md)); the first is the specification of the three plain-data formats this package owns:
+Pre-alpha. The three plain-data formats and the core exist: a signal read at any time in seconds, shapers that limit and
+clip it, and a registry other packages add to. More sources and shapers follow in batches ([docs/roadmap.md](docs/roadmap.md)).
+
+```python
+from bullterrier_control import Series, Unit, from_series, registry
+
+energy = from_series(Series(rate=10, values=(0.0, 1.0, 0.2, 0.0), unit=Unit.RATIO))  # a measured curve
+smooth = registry.get("slew")(energy, rise=0.2, fall=0.5)  # climbs and falls no faster than this
+clipped = registry.get("clip")(smooth, low=0.1, high=0.8)  # and stays between 0.1 and 0.8
+clipped.sample([0.0, 0.1, 0.2, 0.3, 1.0])  # values at those times, in seconds
+# array([0.1  , 0.5  , 0.566, 0.366, 0.1  ])
+```
+
+The formats this package owns:
 
 | Format | Meaning |
 |---|---|
 | Series | Values at a fixed rate, from a start time, with a unit |
 | Event | A moment in seconds with a strength, and optionally a duration, label and pitch |
-| Grid | Tempo map, beat and downbeat times; converts beats and seconds |
+| Grid | Beat times, meter and first downbeat; converts beat positions and seconds |
 
 ```bash
 uv sync

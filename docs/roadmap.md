@@ -8,8 +8,8 @@ Prior experiments with reusable code: `.local/prior-work.md` (git-ignored; machi
 |---|---|---|---|
 | — | Scaffold: gate, hooks, CI, release tooling, CLAUDE.md | S | done |
 | C0 | Formats: Series, Event, Grid | M | done (merged) |
-| C1 | Core: Signal, evaluation, parameters, registry | M | in progress (`.superpowers/plans/2026-10-26-c1-core.md`) |
-| C2 | Sources | M–L | |
+| C1 | Core: Signal, evaluation, parameters, registry | M | done (merged) |
+| C2 | Sources | M–L | next |
 | C3 | Shapers and event operations | M | |
 | C4 | Patch files, CLI, curve gallery | M | |
 | C5 | First release | S | |

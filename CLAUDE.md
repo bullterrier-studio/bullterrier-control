@@ -7,9 +7,10 @@ what DAWs call automation, animation tools keyframes and synthesizers modulation
 **Write docs tersely.** This file, the README, `docs/`, docstrings, reports and briefs: state the rule or fact, drop preamble,
 repetition and justification a reader does not need to act. Reasons go in `docs/design-decisions.md`, once.
 
-**State: scaffold only.** The project shell and gates exist; no signal, source or shaper is written yet. Work goes in batches,
-each planned before it starts: `docs/roadmap.md` (next: C0, the formats). Earlier experiments with code worth reusing are listed
-in `.local/prior-work.md` (git-ignored, this machine only; read it before writing a source, shaper or format).
+**State: formats and core.** The formats (batch C0) and the core (C1: signals, `Rendered`, `Params`, the registry, `constant`,
+`clip`, `slew`) exist. Next: the sources (C2) and the shapers (C3). Work goes in batches, each planned before it starts:
+`docs/roadmap.md`. Earlier experiments with code worth reusing are listed in `.local/prior-work.md` (git-ignored, this machine
+only; read it before writing a source, shaper or format).
 
 ## Responsibility
 
@@ -43,8 +44,8 @@ the schema is a file here, audio checks its output against a copy. A format is n
 ## Names
 
 `bullterrier-control` (PyPI, repository), `bullterrier_control` (import; docs alias `btc`), `bt-control` (command, `bt-control.toml`,
-cache folder), `BT_CONTROL_*` (env vars), `BullterrierControlError` (base exception), `bullterrier_control.sources` (plugin group,
-declared with the first source). Full name for identity, `bt-` for what a person types. Names inside the package (`Series`,
+cache folder), `BT_CONTROL_*` (env vars), `BullterrierControlError` (base exception), `bullterrier_control.sources` (plugin group:
+the entry point for sources and shapers). Full name for identity, `bt-` for what a person types. Names inside the package (`Series`,
 `Event`, `Grid`, sources, shapers) carry no prefix.
 
 ## Architecture
@@ -54,14 +55,33 @@ Layers, imports flow **downward only** (import-linter: contracts in `pyproject.t
 
 ```
 app        __main__, cli
+sources    bullterrier-control's own sources and shapers: one module each, never importing each other
+plugin     the author API: the names a package of sources and shapers uses (built-ins use it too)
+registry   the table of sources and shapers; entry-point loading
+rendered   Rendered: a signal that needs history, rendered once
+signal     Signal, from_series, arithmetic            |  params   Params, param, UNITS
+formats    Bundle > Series | Event | Grid > the shared model base and Unit
 errors     BullterrierControlError and its subclasses     (imports nothing from bullterrier_control)
 ```
 
-Planned, each arriving with its first consumer (`vulture` fails on unused code): formats (Series, Event, Grid) at the bottom, then
-modulation sources and shapers as **plugins registered by name** (one vertical slice per source, joined by its name; `tests/`
-mirrors `src/`), a registry, and the app layer on top. Pipes-and-filters: a shaper is a pure function `signal -> signal`.
-**Evaluation:** a signal is read with `sample(times)` in seconds. Analytic sources (keyframes, LFOs, envelopes on events) are exact
-at any time; stateful shapers (slew, followers) render on an internal grid at a declared rate and are read by interpolation.
+A source is `def name(params) -> Signal`, a shaper `def name(signal, params) -> Signal`, each registered with `@source` or
+`@shaper` and its `Params` model; packages are entry points of the group `bullterrier_control.sources`. Pipes-and-filters: a
+shaper maps a signal to a signal. Each thing arrives with its first consumer (`vulture` fails on unused code).
+
+## The signal contract
+
+Every signal, and so every source and shaper, promises this (`tests/sources/test_contract.py` checks every registered one):
+- **Total:** a value at every time. A time before 0 reads as time 0; a Series-backed signal holds its first and last value.
+- **`sample(times)`** takes a number or an array of any shape, refuses NaN and infinity with `SignalError`, and returns float64
+  in the same shape. A signal implements `compute(times)`, which only ever sees finite times from 0 up.
+- **Deterministic and read-independent:** the same times give the same values, whatever the order, size or number of earlier
+  reads. A stateful shaper is a causal recurrence run through `Rendered` (output *i* depends on inputs 0 to *i*): never a
+  field that remembers the last read.
+- **Causal:** what comes later in a shaper's input never changes an earlier output.
+- **Parameters declared** with `param` (unit, range, description): every number works at both ends of its range and is refused
+  beyond it, `true` or a string is not a number, an unknown name is refused, and the refusal names the field.
+- **Finite output** for every finite input.
+A new source or shaper meets all of this by registering: the contract tests find it and no test names it.
 
 ## The rules
 
@@ -84,10 +104,10 @@ at any time; stateful shapers (slew, followers) render on an internal grid at a 
 ## Standards
 
 - `src/` holds only code and the data it runs on. Tests, examples and docs live outside it.
-- Public API has `__all__`: `bullterrier_control` and the modules named there. Everything else is internal.
-- Runtime dependencies: none yet; numpy and pydantic, each declared with the first code that imports it (`deptry` fails on a
-  dependency nothing imports). Adding another needs a reason in `docs/design-decisions.md`: control must install without
-  librosa, torch, Pillow or any media library.
+- Public API has `__all__`: `bullterrier_control`, `bullterrier_control.plugin` (for authors) and `bullterrier_control.registry`
+  (queries). Everything else is internal.
+- Runtime dependencies: numpy and pydantic. Adding another needs a reason in `docs/design-decisions.md`: control must
+  install without librosa, torch, Pillow or any media library.
 - Offline only in v1: no live clock, MIDI or OSC output.
 - No backwards-compatibility shims, aliases or re-exports before 1.0 unless the owner asks: change the callers.
 - The CLI catches `BullterrierControlError` and never prints a traceback for a user's mistake (added with the first command that can

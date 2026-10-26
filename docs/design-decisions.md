@@ -54,8 +54,6 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
   pre-commit hooks, Conventional Commits, CI workflows, release command). *Reason:* five repositories that are gated the same way
   need no relearning. *Cost:* each repository owns its copy of the tooling scripts and tests; a fix to one is made in the
   others by hand. Image-specific parts (effects, gallery, subject finding) were left out.
-- **The entry-point group `bullterrier_control.sources` is not declared yet.** It arrives with the first source and its registry;
-  declaring it now would be configuration nothing reads.
 - **The version is 0.0.0 until the first release.** `poe release` accepts only a version above the one in `pyproject.toml`, so
   the first release (0.1.0rc1, then 0.1.0) needs a lower starting point.
 
