@@ -19,9 +19,10 @@ the group `bullterrier_control.sources` in its `pyproject.toml`:
     my_package = "my_package.sources"
 """
 
+from .cadence import Positions, counter
 from .easing import EASES, curve
 from .errors import InvalidError, ParameterError
-from .formats import Event
+from .formats import Event, Grid
 from .inputs import Keyframe
 from .params import Params, param
 from .registry import shaper, source
@@ -34,15 +35,18 @@ __all__ = [
     "Constant",
     "Event",
     "Finite",
+    "Grid",
     "InvalidError",
     "Keyframe",
     "ParameterError",
     "Params",
+    "Positions",
     "Rendered",
     "Signal",
     "Switch",
     "Text",
     "Whole",
+    "counter",
     "curve",
     "maximum",
     "minimum",
