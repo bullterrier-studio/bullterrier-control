@@ -24,9 +24,11 @@
   <img src="docs/images/banner.svg" alt="Six signals drawn by bullterrier-control: keyframes, lfo, envelope, steps, noise and slew, each with the value read at one moment">
 </p>
 
-It answers "what is this value at 12.4 s?". It never touches pixels or sound, and what the value drives is up to you: an
-image effect, a synthesizer, a light, a MIDI controller. DAWs call this automation, animation tools keyframes and
-synthesizers modulation.
+**Things that happened at certain moments in, a value for every moment out.** You tell it when things happen (an
+explosion at 4.2 s, a drum hit, a scene change) and how you want the world to react (shake, then settle; drift slowly;
+change once the boss appears). It answers "what is the value at 12.4 s?" for any time you ask, in any order. It never
+touches pixels or sound: what the value drives (an image effect, a camera, a light, a synthesizer, a MIDI controller)
+is up to you. Music software calls this automation or modulation, animation tools keyframes.
 
 <table>
   <tr>
@@ -43,9 +45,92 @@ synthesizers modulation.
 
 ## Contents
 
-[Install](#install) | [Quick start](#quick-start) | [Sources, shapers and operations](#sources-shapers-and-operations) |
+[What is it for?](#what-is-it-for) | [What gap does it fill?](#what-gap-does-it-fill) | [Install](#install) |
+[Quick start](#quick-start) | [Sources, shapers and operations](#sources-shapers-and-operations) |
 [Patch files](#patch-files) | [Concepts](#concepts) | [Formats](#formats) | [Status](#status) | [Development](#development) |
 [Works with](#works-with) | [License](#license)
+
+## What is it for?
+
+Say you are cutting a trailer for a game. Three explosions happen at 4.2 s, 9.8 s and 31.0 s, and the boss appears at
+60 s. You want the screen to shake on every explosion and settle within half a second, the camera to wander slowly the
+whole time, and the corners of the screen to darken once the boss is on screen.
+
+Your video tool needs a number for each of these at every moment it draws. You describe the behaviour once, as a patch
+(a small text file), and bullterrier-control produces the numbers:
+
+```toml
+# examples/trailer.toml
+format = "bullterrier-control/patch"
+version = 1
+
+# a jolt on each explosion that fades within about half a second
+[shake]
+use = "envelope"
+events = "events.explosion"   # the moments come from a file of the song's or footage's events
+decay = 0.15
+
+# a slow wander, always on
+[drift]
+use = "noise"
+shape = "smooth"
+rate = 0.5
+low = -0.3
+high = 0.3
+seed = 3
+
+# darker corners from the moment the boss appears
+[vignette]
+use = "latch"
+events = "events.boss"
+before = 0.1
+after = 0.7
+```
+
+```python
+import bullterrier_control as btc
+from pathlib import Path
+
+look = btc.load_patch(Path("examples/trailer.toml")).build(btc.load(Path("examples/trailer.json")))
+shake = look["shake"]
+shake.sample([4.2, 4.35, 10.1, 20.0])  # full jolt on the explosion, then e^-1 and e^-2 of it, then calm
+# array([1.    , 0.3679, 0.1353, 0.    ])
+```
+
+`look["vignette"]` is 0.1 until 60 s and 0.7 from then on, and `look["drift"]` wanders between -0.3 and 0.3, the same way
+every time. The same from a shell, 30 values a second:
+`bt-control sample examples/trailer.toml --bundle examples/trailer.json --to 62 --rate 30 --csv`.
+
+What the numbers do (move the camera, darken the corners) is your video tool's business. The library only answers
+"how hard is the shake at 4.35 s?". The same patch serves another trailer: give it that trailer's events. The same idea
+drives music visuals: swap the explosions for drum hits.
+
+## What gap does it fill?
+
+The pieces exist separately; we found no single Python library that puts them together for offline use. A search in
+October 2026 turned up:
+
+- **Easing and keyframe libraries**, such as [easing-lab](https://pypi.org/project/easing-lab/),
+  [easings](https://pypi.org/project/easings/) and [keyframed](https://pypi.org/project/keyframed/): curves between
+  values, read at a time. They are about the curve; we did not find events, oscillators, noise or tempo in them.
+- **Synthesizer, DAW and 3D-app tools** (LFOs, envelopes, automation; Blender's keyframes, Unreal's sound modulation):
+  the same ideas, but running live inside that application.
+- **Audio-reactive visual tools**, such as [Animusic](https://github.com/wardzin/animusic): they connect an audio
+  analysis straight to an effect, so the shaping in between is fixed inside the tool.
+
+bullterrier-control is the part in the middle, on its own, for anything that happens at moments in time. It takes
+moments and measurements from any source (music analysis, a game log, a script) and gives back values to drive anything.
+What it offers, each backed by tests:
+
+- **Any time, any order, the same answer.** Read 12.4 s first or last, once or in one call for the whole clip: the same
+  values. Noise is seeded and is the same on every machine.
+- **Events become shapes.** A flare on each event, a gate, a held value, with defined rules where they overlap.
+- **Tempo that changes.** A rate "per beat" follows a beat grid that speeds up or slows down.
+- **A look is a file.** A patch is plain text a person can read and a program can check before it runs
+  (`bt-control list --json` describes every parameter: unit, range, whether it wraps).
+- **Small.** Two dependencies (numpy and pydantic), offline, nothing to run in the background.
+
+If you know a library that already does all of this, we would like to hear of it.
 
 ## Install
 

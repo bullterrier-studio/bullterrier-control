@@ -1,0 +1,24 @@
+format = "bullterrier-control/patch"
+version = 1
+
+# a jolt on each explosion that fades within about half a second
+[shake]
+use = "envelope"
+events = "events.explosion"
+decay = 0.15
+
+# a slow wander, always on
+[drift]
+use = "noise"
+shape = "smooth"
+rate = 0.5
+low = -0.3
+high = 0.3
+seed = 3
+
+# darker corners from the moment the boss appears
+[vignette]
+use = "latch"
+events = "events.boss"
+before = 0.1
+after = 0.7

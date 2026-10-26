@@ -61,3 +61,20 @@ def test_every_example_file_is_a_valid_bundle(path):
 @pytest.mark.parametrize("path", sorted((ROOT / "examples").glob("*.toml")), ids=lambda path: path.name)
 def test_every_example_patch_is_valid(path):
     load_patch(path)
+
+
+def test_the_trailer_scenario_of_the_readme_gives_the_numbers_it_describes():
+    look = load_patch(ROOT / "examples" / "trailer.toml").build(load(ROOT / "examples" / "trailer.json"))
+    # a jolt of 1 on each explosion, fading with a time constant of 0.15 s: e^-1 after 0.15 s, e^-2 after 0.3 s
+    shake = look["shake"].sample([4.2, 4.35, 10.1, 20.0])
+    assert shake.tolist() == pytest.approx([1.0, 0.36787944117144233, 0.1353352832366127, 0.0], abs=1e-9)
+    # dark corners from the boss at 60 s: 0.1 before, 0.7 from then on
+    assert look["vignette"].sample([0.0, 59.9, 60.0, 61.5]).tolist() == [0.1, 0.1, 0.7, 0.7]
+    # a wander that stays within its range, is not flat, and is the same every time it is built
+    times = np.linspace(0, 62, 621)
+    drift = look["drift"].sample(times)
+    assert drift.min() >= -0.3
+    assert drift.max() <= 0.3
+    assert drift.max() - drift.min() > 0.2
+    again = load_patch(ROOT / "examples" / "trailer.toml").build(load(ROOT / "examples" / "trailer.json"))["drift"]
+    assert again.sample(times).tolist() == drift.tolist()

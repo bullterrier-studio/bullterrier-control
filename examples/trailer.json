@@ -1,0 +1,2 @@
+{"format": "bullterrier-control/bundle", "version": 1, "source": "hand-written example: a game trailer", "duration": 62.0,
+ "events": {"explosion": [{"t": 4.2}, {"t": 9.8}, {"t": 31.0}], "boss": [{"t": 60.0}]}}
