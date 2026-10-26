@@ -21,7 +21,7 @@ point of the group `bullterrier_control.sources` in its `pyproject.toml`:
 
 from .cadence import Positions, counter
 from .easing import EASES, curve
-from .errors import InvalidError, ParameterError
+from .errors import FormatError, InvalidError, ParameterError
 from .formats import Event, Grid, Series, Unit
 from .hashing import uniform
 from .inputs import Keyframe, matching
@@ -37,6 +37,7 @@ __all__ = [
     "Constant",
     "Event",
     "Finite",
+    "FormatError",
     "Grid",
     "InvalidError",
     "Keyframe",
