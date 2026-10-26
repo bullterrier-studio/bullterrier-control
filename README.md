@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/logo.svg" alt="bullterrier-control logo: a bull terrier head drawn in sine lines with one orange sine wave across it" height="160">
+  <img src="https://raw.githubusercontent.com/bullterrier-studio/bullterrier-control/main/docs/images/logo.svg" alt="bullterrier-control logo: a bull terrier head drawn in sine lines with one orange sine wave across it" height="160">
 </p>
 
 <h1 align="center">bullterrier-control</h1>
@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/banner.svg" alt="Six signals drawn by bullterrier-control: keyframes, lfo, envelope, steps, noise and slew, each with the value read at one moment">
+  <img src="https://raw.githubusercontent.com/bullterrier-studio/bullterrier-control/main/docs/images/banner.svg" alt="Six signals drawn by bullterrier-control: keyframes, lfo, envelope, steps, noise and slew, each with the value read at one moment">
 </p>
 
 **Things that happened at certain moments in, a value for every moment out.** You tell it when things happen (an
@@ -172,7 +172,7 @@ clipped.sample([0.0, 0.1, 0.2, 0.3, 1.0])  # values at those times, in seconds
 A consumer can read a whole timeline in one call, since `sample` takes an array; reading one time per call gives the
 same values.
 
-Keyframes: values at chosen times, eased between ([docs/examples.md](docs/examples.md) works this one out by hand):
+Keyframes: values at chosen times, eased between ([docs/examples.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/examples.md) works this one out by hand):
 
 ```python
 import bullterrier_control as btc
@@ -229,7 +229,7 @@ called with keyword inputs (`btc.lib.thin(events=kicks, gap=0.25)`), and give ev
 | `normalise` | a series | The series scaled between two of its percentiles, to 0 to 1 |
 
 A package of your own imports `bullterrier_control.plugin` and names its module as an entry point of the group
-`bullterrier_control.sources`; its sources, shapers and operations then appear in `btc.lib`. [docs/gallery.md](docs/gallery.md)
+`bullterrier_control.sources`; its sources, shapers and operations then appear in `btc.lib`. [docs/gallery.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/gallery.md)
 draws every source and shaper.
 
 ## Patch files
@@ -272,7 +272,7 @@ bt-control list --json               # the same as data for another tool: inputs
 
 `bt-control list --json` describes each parameter as JSON Schema (`minimum`, `maximum`, `unit`, `cyclic` for a phase that
 wraps), the shape `bullterrier-image` gives its parameters, so a tool can check a pipeline before it runs. The patch format
-is in [docs/formats.md](docs/formats.md), its schema in [schemas/patch-1.schema.json](schemas/patch-1.schema.json).
+is in [docs/formats.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/formats.md), its schema in [schemas/patch-1.schema.json](https://github.com/bullterrier-studio/bullterrier-control/blob/main/schemas/patch-1.schema.json).
 
 ## Concepts
 
@@ -285,7 +285,7 @@ is in [docs/formats.md](docs/formats.md), its schema in [schemas/patch-1.schema.
 
 ## Formats
 
-Measurements come in, and curves go out, as one JSON file, a *bundle* ([docs/formats.md](docs/formats.md)):
+Measurements come in, and curves go out, as one JSON file, a *bundle* ([docs/formats.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/formats.md)):
 
 | Format | Meaning |
 |---|---|
@@ -312,17 +312,17 @@ uv sync
 uv run poe check    # every gate: format, lint, dead code, types, tests
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Every rule is in [CLAUDE.md](CLAUDE.md); the reasons are in
-[docs/design-decisions.md](docs/design-decisions.md). The banner is drawn from the library itself:
+See [CONTRIBUTING.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/CONTRIBUTING.md). Every rule is in [CLAUDE.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/CLAUDE.md); the reasons are in
+[docs/design-decisions.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/design-decisions.md). The banner is drawn from the library itself:
 `uv run python tools/make_banner.py`.
 
 ## Works with
 
 bullterrier-control is one of five independent packages of [Bullterrier Studio](https://github.com/bullterrier-studio)
-([docs/ecosystem.md](docs/ecosystem.md)). It depends on none of them. `bullterrier-audio` writes its measurements in this
+([docs/ecosystem.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/ecosystem.md)). It depends on none of them. `bullterrier-audio` writes its measurements in this
 package's formats without importing it; `bullterrier-video` reads signals from here and maps them onto the parameters of
 `bullterrier-image` and `bullterrier-vector`.
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](https://github.com/bullterrier-studio/bullterrier-control/blob/main/LICENSE).
