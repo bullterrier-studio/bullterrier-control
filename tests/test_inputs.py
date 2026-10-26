@@ -1,6 +1,6 @@
 import pytest
 
-from bullterrier_control import Event, ParameterError, registry
+from bullterrier_control import Event, Grid, ParameterError, registry
 from bullterrier_control.inputs import INPUTS
 from bullterrier_control.plugin import EASES, Constant, Keyframe, Params, Signal, source
 
@@ -219,3 +219,90 @@ def test_a_refused_event_is_reported_under_the_source_not_under_a_private_model(
 def test_help_lists_events_as_an_input(listen):
     text = registry.get("listener").__doc__ or ""
     assert "events (required)" in text
+
+
+STEADY = {"beats": [0.0, 0.5, 1.0, 1.5], "meter": 4, "first_downbeat": 0}
+
+
+def check_grid(value):
+    return INPUTS["grid"].check(value)
+
+
+def test_a_grid_given_as_a_mapping_becomes_a_grid():
+    checked = check_grid({"beats": [0.0, 0.5, 1.1], "meter": 3, "first_downbeat": 1})
+    assert checked == Grid(beats=(0.0, 0.5, 1.1), meter=3, first_downbeat=1)
+
+
+def test_a_grid_may_be_given_as_a_grid():
+    grid = Grid(beats=(0.25, 0.75), meter=2, first_downbeat=0)
+    assert check_grid(grid) == grid
+
+
+BAD_GRIDS = {
+    "a number": (5, ["grid"]),
+    "a string": ("0.5, 1.0", ["grid"]),
+    "nothing": (None, ["grid"]),
+    "a list of beats, not a grid": ([0.0, 0.5, 1.0], ["grid"]),
+    "meter missing": ({"beats": [0.0, 0.5], "first_downbeat": 0}, ["grid.meter"]),
+    "a single beat": ({"beats": [0.0], "meter": 4, "first_downbeat": 0}, ["grid.beats"]),
+    "beats not increasing": ({**STEADY, "beats": [0.0, 1.0, 0.5]}, ["grid.beats[2]"]),
+    "a negative beat": ({**STEADY, "beats": [-0.5, 0.5, 1.0]}, ["grid.beats[0]"]),
+    "a downbeat outside the bar": ({**STEADY, "first_downbeat": 4}, ["grid.first_downbeat"]),
+    "an unknown field": ({**STEADY, "tempo": 120}, ["grid.tempo"]),
+}
+
+
+@pytest.mark.parametrize(("given", "named"), BAD_GRIDS.values(), ids=BAD_GRIDS.keys())
+def test_a_bad_grid_is_refused_as_a_parameter_error_naming_each_path(given, named, reports):
+    with pytest.raises(ParameterError) as refused:
+        check_grid(given)
+    for path in named:
+        reports(refused.value, path)
+    assert [path for path, _ in refused.value.problems] == named
+
+
+def check_values(value):
+    return INPUTS["values"].check(value)
+
+
+GOOD_VALUES = {
+    "floats in a list": ([0.25, -1.5, 3.0], (0.25, -1.5, 3.0)),
+    "floats in a tuple": ((0.25, -1.5), (0.25, -1.5)),
+    "whole numbers become floats": ([1, 2, -3], (1.0, 2.0, -3.0)),
+    "a single value": ([0.5], (0.5,)),
+    "large and small": ([1e300, -1e-300], (1e300, -1e-300)),
+}
+
+
+@pytest.mark.parametrize(("given", "expected"), GOOD_VALUES.values(), ids=GOOD_VALUES.keys())
+def test_values_arrive_as_a_tuple_of_floats(given, expected):
+    checked = check_values(given)
+    assert type(checked) is tuple
+    assert checked == expected
+    assert all(type(value) is float for value in checked)
+
+
+BAD_VALUES = {
+    "an empty list": ([], ["values"]),
+    "an empty tuple": ((), ["values"]),
+    "a number": (5, ["values"]),
+    "a string": ("1, 2, 3", ["values"]),
+    "nothing": (None, ["values"]),
+    "a set (no order)": ({1.0, 2.0}, ["values"]),
+    "a mapping": ({"a": 1.0}, ["values"]),
+    "a bool item": ([0.5, True], ["values[1]"]),
+    "a string item": ([0.5, "high"], ["values[1]"]),
+    "a NaN item": ([0.0, 1.0, float("nan")], ["values[2]"]),
+    "an infinite item": ([float("-inf"), 1.0], ["values[0]"]),
+    "an item that is a list": ([[1.0], 2.0], ["values[0]"]),
+    "every bad item is listed": ([True, 1.0, "x"], ["values[0]", "values[2]"]),
+}
+
+
+@pytest.mark.parametrize(("given", "named"), BAD_VALUES.values(), ids=BAD_VALUES.keys())
+def test_bad_values_are_refused_naming_each_path(given, named, reports):
+    with pytest.raises(ParameterError) as refused:
+        check_values(given)
+    for path in named:
+        reports(refused.value, path)
+    assert [path for path, _ in refused.value.problems] == named

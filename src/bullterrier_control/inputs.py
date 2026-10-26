@@ -16,6 +16,9 @@ Promises:
   `tuple[Keyframe, ...]`.
 - `events`: a list or tuple of `Event` or mappings, possibly empty, in any order. Checked, it is a `tuple[Event, ...]`
   sorted by `t`; events at the same time keep the order they were given in.
+- `grid`: a `Grid` or a mapping parsed into one; a bad grid is a `ParameterError` (not a `FormatError`) naming
+  `grid.<field>`.
+- `values`: a non-empty list or tuple of finite numbers (no bool, no text). Checked, it is a `tuple[float, ...]`.
 """
 
 from collections.abc import Callable, Mapping
@@ -28,7 +31,7 @@ from pydantic import AfterValidator, BeforeValidator, Field, field_validator, mo
 
 from .easing import EASES, curve
 from .errors import InvalidError, ParameterError
-from .formats import Event
+from .formats import Event, Grid
 from .validated import Finite, Text, ValidatedModel
 
 __all__ = ["INPUTS", "Input", "Keyframe"]
@@ -85,6 +88,26 @@ class _Events(ValidatedModel):
         return tuple(sorted(events, key=lambda event: event.t))  # stable: equal times keep the order given
 
 
+class _Grid(ValidatedModel):
+    """The `grid` input as a model, so that a bad grid is a `ParameterError` with its problems at `grid.beats[1]`."""
+
+    error: ClassVar[type[InvalidError]] = ParameterError
+    grid: Grid
+
+
+class _Values(ValidatedModel):
+    """The `values` input as a model, for the same reason as `_Points`."""
+
+    error: ClassVar[type[InvalidError]] = ParameterError
+    values: Annotated[tuple[Finite, ...], BeforeValidator(_list_or_tuple)]
+
+    @model_validator(mode="after")
+    def _non_empty(self) -> "_Values":
+        if not self.values:
+            raise InvalidError.at("values", "needs at least one value")
+        return self
+
+
 def _checked(holder: type[ValidatedModel], field: str, value: object) -> Any:
     """`value` as the holder model's `field`, or a `ParameterError` listing each broken rule as `path: rule`."""
     try:
@@ -117,6 +140,17 @@ INPUTS: Mapping[str, Input] = MappingProxyType(
                 " time order)."
             ),
             check=partial(_checked, _Events, "events"),
+        ),
+        "grid": Input(
+            doc=(
+                "A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly increasing,"
+                " at least two). Converts seconds to beats, so a source can follow tempo changes."
+            ),
+            check=partial(_checked, _Grid, "grid"),
+        ),
+        "values": Input(
+            doc="Values: a non-empty list of numbers, in the order a source cycles through them.",
+            check=partial(_checked, _Values, "values"),
         ),
     }
 )
