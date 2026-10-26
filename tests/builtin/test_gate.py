@@ -50,9 +50,12 @@ def test_it_starts_open_if_the_input_is_at_open_at_time_zero():
     assert lib.gate(held((0.49, 0.45, 0.45))).sample([0.0, 0.15, 0.25]).tolist() == [0.0, 0.0, 0.0]
 
 
-def test_a_jump_is_seen_in_its_own_sample_at_another_internal_rate_too():
-    level = held((0.0,) * 5 + (1.0,) * 5, rate=10.0)  # up at 0.5 s: a sample of an internal rate of 100
-    assert lib.gate(level, rate=100.0).sample([0.49, 0.5]).tolist() == [0.0, 1.0]
+def test_the_gate_changes_on_an_internal_sample_so_a_lower_rate_sees_a_jump_later():
+    level = held((0.0,) * 5 + (1.0,) * 20, rate=100.0)  # up at 0.05 s, between the samples of 10 Hz (0, 0.1, 0.2, ...)
+    # at 10 Hz the first sample at or after the jump is at 0.1 s; a read at 0.05 still holds the sample at 0
+    assert lib.gate(level, rate=10.0).sample([0.05, 0.1]).tolist() == [0.0, 1.0]
+    # at 1000 Hz 0.05 s is a sample itself
+    assert lib.gate(level, rate=1000.0).sample([0.049, 0.05]).tolist() == [0.0, 1.0]
 
 
 @settings(max_examples=50)
