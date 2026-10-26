@@ -4,5 +4,5 @@ from bullterrier_control import lib
 def test_${name}_keeps_the_events_at_or_above_its_level():
     # Replace with what $name promises, each expected number worked out by hand (CLAUDE.md, "Testing").
     # The contract tests (tests/builtin/test_contract.py, test_operation_contract.py) already cover ranges and ordering.
-    events = [{"t": 0.5, "strength": 0.25}, {"t": 1.0, "strength": 0.75}]
-    assert [event.t for event in lib.$name(events=events, level=0.5)] == [1.0]
+    events = [{"t": 0.5, "strength": 0.25}, {"t": 1.0, "strength": 0.5}, {"t": 1.5, "strength": 0.75}]
+    assert [event.t for event in lib.$name(events=events, level=0.5)] == [1.0, 1.5]

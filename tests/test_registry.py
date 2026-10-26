@@ -323,7 +323,7 @@ def one_argument(params: Nothing) -> Signal:
 BROKEN = {
     "parameters that are not a Params model": lambda: source(params=dict)(_named("fine")),  # type: ignore[type-var]
     "a source taking a signal": lambda: source(params=Nothing)(not_params),  # type: ignore[arg-type]
-    "a shaper taking none": lambda: shaper(params=Nothing)(one_argument),  # type: ignore[arg-type]
+    "a shaper taking none": lambda: shaper(params=Nothing)(one_argument),  # type: ignore[arg-type]  # the wrong shape is the case  # type: ignore[arg-type]
     "a name that is not lower case": lambda: source(params=Nothing)(_named("Loud")),
     "a name with a space": lambda: source(params=Nothing)(_named("a b")),
     "a name with a trailing newline": lambda: source(params=Nothing)(_named("level\n")),
@@ -413,6 +413,10 @@ def test_an_operation_that_does_not_declare_events_or_a_series_as_its_result_is_
     assert dict(registry.all_registered()) == before
 
 
+def operation_taking_a_signal(signal: Signal, params: Nothing, *, events: tuple[Event, ...]) -> tuple[Event, ...]:
+    return events
+
+
 BROKEN_INPUTS = {
     "a keyword-only argument that is no input": (lambda: source(params=Nothing)(unknown_input), "'colour'"),
     "an input with a default other than None": (lambda: source(params=Nothing)(odd_default), "'points'"),
@@ -424,6 +428,14 @@ BROKEN_INPUTS = {
         "'points'",
     ),
     "a parameter named like an input": (lambda: source(params=Pointed)(_named("pointy")), "'points'"),
+    "a shaper written without a signal": (
+        lambda: shaper(params=Nothing)(one_argument),  # type: ignore[arg-type]  # the wrong shape is the case
+        r"one_argument\(signal, params\)",
+    ),
+    "an operation written with a signal": (
+        lambda: operation(params=Nothing)(operation_taking_a_signal),  # type: ignore[arg-type]  # the wrong shape is the case
+        r"operation_taking_a_signal\(params\)",
+    ),
 }
 
 

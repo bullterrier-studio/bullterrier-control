@@ -55,3 +55,23 @@ def test_an_offset_that_is_not_below_n_is_refused_at_offset(reports):
 
 def test_an_offset_just_below_n_is_accepted():
     assert indices(lib.every(events=SEVEN, n=3, offset=2)) == [2, 5]
+
+
+def test_n_and_offset_are_accepted_up_to_1000_and_999():
+    assert lib.every(events=SEVEN, n=1000, offset=999) == ()
+    assert lib.every(events=SEVEN, n=1000) == (SEVEN[0],)
+
+
+@pytest.mark.parametrize(
+    ("values", "named"),
+    [
+        pytest.param({"n": 1001}, "n", id="n above 1000"),
+        pytest.param({"n": 0}, "n", id="n below 1"),
+        pytest.param({"n": 1000, "offset": 1000}, "offset", id="offset above 999"),
+        pytest.param({"offset": -1}, "offset", id="offset below 0"),
+    ],
+)
+def test_n_and_offset_beyond_their_ranges_are_refused_naming_the_field(values, named, reports):
+    with pytest.raises(ParameterError) as refused:
+        lib.every(events=SEVEN, **values)
+    reports(refused.value, named)
