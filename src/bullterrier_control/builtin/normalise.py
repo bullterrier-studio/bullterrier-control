@@ -64,5 +64,7 @@ def normalise(params: NormaliseParams, *, series: Series) -> Series:
         rate=series.rate,
         values=tuple(normalised.tolist()),
         unit=Unit.FRACTION,
-        scaling=f"percentile {params.lower * 100:g} to {params.upper * 100:g} of the series, clipped to 0..1",
+        # 12 digits keep any percentage typed and drop the noise of multiplying by 100
+        # (0.29 * 100 is 28.999999999999996)
+        scaling=f"percentile {params.lower * 100:.12g} to {params.upper * 100:.12g} of the series, clipped to 0..1",
     )

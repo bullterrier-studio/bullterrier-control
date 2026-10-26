@@ -30,6 +30,46 @@ def test_normalise_says_how_it_scaled_and_keeps_the_start_and_rate():
     assert (out.unit, out.start, out.rate) == (Unit.FRACTION, 2.5, 4.0)
 
 
+@pytest.mark.parametrize(
+    ("lower", "upper", "said"),
+    [
+        pytest.param(0.1, 0.9, "percentile 10 to 90", id="whole percentages"),
+        pytest.param(0.1234567, 0.9, "percentile 12.34567 to 90", id="a seven digit fraction is not rounded"),
+        pytest.param(0.29, 0.5, "percentile 29 to 50", id="0.29 * 100 is 28.999999999999996, which reads 29"),
+        pytest.param(0.001, 0.999, "percentile 0.1 to 99.9", id="tenths of a percent"),
+        pytest.param(0.5, 0.9876543, "percentile 50 to 98.76543", id="a seven digit upper fraction"),
+    ],
+)
+def test_normalise_says_the_percentiles_as_they_were_given(lower, upper, said):
+    scaling = lib.normalise(series=ramp(0.0, 1.0, 2.0), lower=lower, upper=upper).scaling
+    assert scaling == f"{said} of the series, clipped to 0..1"
+
+
+@pytest.mark.parametrize(
+    ("values", "named"),
+    [
+        pytest.param({"lower": 0.995, "upper": 1.0}, "lower", id="a lower percentile just above 0.99"),
+        pytest.param({"lower": 0.0, "upper": 0.005}, "upper", id="an upper percentile just below 0.01"),
+    ],
+)
+def test_normalise_refuses_percentiles_in_the_last_hundredth_at_either_end(values, named, reports):
+    with pytest.raises(ParameterError) as refused:
+        lib.normalise(series=ramp(0.0, 1.0), **values)
+    reports(refused.value, named)
+    assert [path for path, _ in refused.value.problems] == [named]  # the range, not the order of the two
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        pytest.param({"lower": 0.99, "upper": 1.0}, id="lower at 0.99"),
+        pytest.param({"lower": 0.0, "upper": 0.01}, id="upper at 0.01"),
+    ],
+)
+def test_normalise_accepts_the_percentiles_0_99_and_0_01(values):
+    assert lib.normalise(series=ramp(0.0, 1.0), **values).unit is Unit.FRACTION
+
+
 def test_normalise_by_the_defaults_reads_the_5th_and_98th_percentiles():
     # 101 values 0..100: the 5th percentile is value 5 (index 5) and the 98th value 98: (v - 5) / 93
     out = lib.normalise(series=ramp(*range(101)))
