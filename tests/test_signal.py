@@ -1,0 +1,182 @@
+import numpy as np
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+
+from bullterrier_control import Series, SignalError, Unit
+from bullterrier_control.signal import Constant, Signal, from_series, maximum, minimum
+
+
+def a_series(values, *, start=0.0, rate=1.0, unit=Unit.RATIO) -> Series:
+    return Series(start=start, rate=rate, values=tuple(values), unit=unit)
+
+
+class Echo(Signal):
+    """A signal that is its own time, written as a plugin author would write one."""
+
+    def compute(self, times):
+        return times
+
+
+RAMP = from_series(a_series([0.0, 1.0, 0.0], start=1.0, rate=2.0))  # up from 1 s to 1.5 s, down by 2 s
+STEPS = from_series(a_series([0.0, 1.0, 0.0], start=1.0, rate=2.0), interpolation="hold")
+
+
+@pytest.mark.parametrize(
+    ("given", "shape"),
+    [
+        (3.0, ()),
+        ([], (0,)),
+        ([0.0, 1.0, 2.0], (3,)),
+        ([[0.0, 1.0], [2.0, 3.0]], (2, 2)),
+        (np.arange(6.0).reshape(1, 2, 3), (1, 2, 3)),
+    ],
+    ids=["a scalar", "an empty list", "a list", "a matrix", "a 3-d array"],
+)
+def test_sampling_keeps_the_shape_of_the_times_and_returns_floats(given, shape):
+    values = Echo().sample(given)
+    assert values.shape == shape
+    assert values.dtype == np.float64
+
+
+def test_a_time_before_zero_reads_as_time_zero():
+    assert Echo().sample([-5.0, -0.001, 0.0, 2.0]).tolist() == [0.0, 0.0, 0.0, 2.0]
+
+
+def test_whole_numbers_as_times_are_fine():
+    assert Echo().sample([1, 2, 3]).tolist() == [1.0, 2.0, 3.0]
+
+
+BAD_TIMES = {
+    "nan": ([0.0, float("nan")], "finite"),
+    "infinity": ([float("inf")], "finite"),
+    "minus infinity": (float("-inf"), "finite"),
+    "text": (["soon"], "numbers"),
+    "nothing, which reads as not a number": (None, "finite"),
+}
+
+
+@pytest.mark.parametrize(("times", "named"), BAD_TIMES.values(), ids=BAD_TIMES.keys())
+def test_times_that_are_not_finite_numbers_are_refused(times, named):
+    with pytest.raises(SignalError, match=named):
+        Echo().sample(times)
+
+
+def test_the_same_times_give_the_same_values():
+    times = np.linspace(0, 3, 17)
+    assert RAMP.sample(times).tolist() == RAMP.sample(times).tolist()
+
+
+LINEAR = {
+    "before the series, which holds its first value": ([0.0, 0.5], [0.0, 0.0]),
+    "on the samples": ([1.0, 1.5, 2.0], [0.0, 1.0, 0.0]),
+    "between the samples": ([1.25, 1.75], [0.5, 0.5]),
+    "after the series, which holds its last value": ([2.5, 9.0], [0.0, 0.0]),
+}
+
+
+@pytest.mark.parametrize(("times", "expected"), LINEAR.values(), ids=LINEAR.keys())
+def test_a_linear_series_signal_interpolates_and_holds_its_ends(times, expected):
+    assert RAMP.sample(times).tolist() == pytest.approx(expected)
+
+
+HOLD = {
+    "before the series": ([0.0, 0.9], [0.0, 0.0]),
+    "on a sample": ([1.0, 1.5, 2.0], [0.0, 1.0, 0.0]),
+    "just before a sample the previous value holds": ([1.4, 1.9], [0.0, 1.0]),
+    "after the series": ([2.4, 100.0], [0.0, 0.0]),
+}
+
+
+@pytest.mark.parametrize(("times", "expected"), HOLD.values(), ids=HOLD.keys())
+def test_a_held_series_signal_keeps_each_value_until_the_next_sample(times, expected):
+    assert STEPS.sample(times).tolist() == pytest.approx(expected)
+
+
+def test_a_series_of_one_sample_is_that_value_at_every_time():
+    for interpolation in ("linear", "hold"):
+        signal = from_series(a_series([0.7], start=3.0, rate=10.0), interpolation=interpolation)
+        assert signal.sample([0.0, 3.0, 3.05, 1000.0]).tolist() == [0.7, 0.7, 0.7, 0.7]
+
+
+@given(
+    start=st.floats(min_value=0, max_value=10),
+    rate=st.floats(min_value=0.5, max_value=1000),
+    values=st.lists(st.floats(min_value=-1e3, max_value=1e3), min_size=1, max_size=40),
+)
+def test_a_series_signal_gives_back_each_sample_at_its_own_time(start, rate, values):
+    times = [start + index / rate for index in range(len(values))]
+    for interpolation in ("linear", "hold"):
+        signal = from_series(a_series(values, start=start, rate=rate), interpolation=interpolation)
+        assert signal.sample(times).tolist() == pytest.approx(values, abs=1e-6)
+
+
+def test_an_interpolation_that_is_not_offered_is_refused():
+    with pytest.raises(ValueError, match="cubic"):
+        from_series(a_series([0.0, 1.0]), interpolation="cubic")  # type: ignore[arg-type]
+
+
+TIMES = [0.0, 1.25, 1.5, 2.0, 9.0]
+RAMP_AT_TIMES = [0.0, 0.5, 1.0, 0.0, 0.0]
+
+
+def values_of(signal: Signal) -> list[float]:
+    return signal.sample(TIMES).tolist()
+
+
+ARITHMETIC = {
+    "a signal plus a number": (RAMP + 1, [1.0, 1.5, 2.0, 1.0, 1.0]),
+    "a number plus a signal": (1 + RAMP, [1.0, 1.5, 2.0, 1.0, 1.0]),
+    "a signal minus a number": (RAMP - 0.5, [-0.5, 0.0, 0.5, -0.5, -0.5]),
+    "a number minus a signal": (2 - RAMP, [2.0, 1.5, 1.0, 2.0, 2.0]),
+    "a signal times a number": (RAMP * 3, [0.0, 1.5, 3.0, 0.0, 0.0]),
+    "a number times a signal": (3 * RAMP, [0.0, 1.5, 3.0, 0.0, 0.0]),
+    "a negated signal": (-RAMP, [-0.0, -0.5, -1.0, -0.0, -0.0]),
+    "two signals added": (RAMP + RAMP, [0.0, 1.0, 2.0, 0.0, 0.0]),
+    "two signals multiplied": (RAMP * RAMP, [0.0, 0.25, 1.0, 0.0, 0.0]),
+    "two signals subtracted": (RAMP - STEPS, [0.0, 0.5, 0.0, 0.0, 0.0]),
+    "the smaller of two": (minimum(RAMP, 0.4), [0.0, 0.4, 0.4, 0.0, 0.0]),
+    "the larger of a signal and a number": (maximum(0.4, RAMP), [0.4, 0.5, 1.0, 0.4, 0.4]),
+    "a crossfade built from arithmetic": (
+        RAMP * (1 - Constant(0.25)) + STEPS * Constant(0.25),
+        [0.0, 0.375, 1.0, 0.0, 0.0],
+    ),
+}
+
+
+@pytest.mark.parametrize(("signal", "expected"), ARITHMETIC.values(), ids=ARITHMETIC.keys())
+def test_signals_combine_with_arithmetic_pointwise(signal, expected):
+    assert values_of(signal) == pytest.approx(expected)
+
+
+def test_a_combination_of_signals_is_a_signal_that_can_be_combined_again():
+    combined = (RAMP + 1) * 2 - RAMP
+    assert isinstance(combined, Signal)
+    assert values_of(combined) == pytest.approx([2.0, 2.5, 3.0, 2.0, 2.0])
+
+
+def test_a_combination_reads_times_before_zero_as_zero_like_its_parts():
+    assert (RAMP + Echo()).sample([-3.0]).tolist() == [0.0]
+
+
+@pytest.mark.parametrize("operand", [True, "1", None, [1.0]], ids=["a bool", "a string", "nothing", "a list"])
+def test_a_signal_cannot_be_combined_with_something_that_is_not_a_signal_or_a_number(operand):
+    with pytest.raises(TypeError):
+        RAMP + operand
+
+
+def test_a_number_that_is_not_finite_is_refused_when_it_is_combined():
+    with pytest.raises(SignalError, match="finite"):
+        RAMP + float("nan")
+
+
+@given(
+    first=st.lists(st.floats(min_value=-100, max_value=100), min_size=1, max_size=10),
+    second=st.lists(st.floats(min_value=-100, max_value=100), min_size=1, max_size=10),
+    times=st.lists(st.floats(min_value=0, max_value=20), max_size=10),
+)
+def test_arithmetic_on_signals_equals_arithmetic_on_their_values(first, second, times):
+    a = from_series(a_series(first, rate=2.0))
+    b = from_series(a_series(second, rate=3.0))
+    expected = a.sample(times) * b.sample(times) - a.sample(times)
+    assert (a * b - a).sample(times).tolist() == pytest.approx(expected.tolist())

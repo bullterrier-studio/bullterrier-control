@@ -231,6 +231,7 @@ ignore_names = [
     "fields_doc",  # `Params.fields_doc` and the `FieldDoc` parts: read by listings and tests, not inside the package yet
     "minimum",
     "maximum",
+    "sample",  # `Signal.sample`: the public way to read a signal, called by users and other packages, not in the package yet
     "downbeats",  # `Grid`: the public conversions of a format, called by users and other packages' readers, not in the package yet
     "seconds_at",
     "beat_at",
@@ -270,14 +271,14 @@ DEP004 = ["packaging"]
 root_package = "bullterrier_control"
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > params > formats > errors"
+name = "Layers: app > signal | params > formats > errors"
 type = "layers"
 containers = ["bullterrier_control"]
 exhaustive = true  # a new top-level module must be placed in a layer here
 layers = [
     "__main__",  # `python -m bullterrier_control`: runs the command line
     "cli",  # app: the command line
-    "params",  # how a source or shaper declares its parameters
+    "signal | params",  # what a signal is and how it is read | how a source or shaper declares its parameters
     "formats",  # the plain-data formats
     "errors",  # the exceptions: they import nothing, so every layer may raise them
 ]
