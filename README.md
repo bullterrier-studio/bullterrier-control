@@ -31,7 +31,8 @@ ramp.sample([1.0, 2.5, 7.0])  # the ease belongs to the segment that starts at i
 - **Signal**: a value at every time. `signal.sample(times)` takes a number or an array of times in seconds and returns the
   values in the same shape. Signals combine with `+`, `-`, `*`, `minimum` and `maximum`.
 - **Sources** make a signal from their parameters (and, for some, from data such as keyframes, events or a beat grid);
-  **shapers** make a signal from a signal. Both are in `lib`: `dir(lib)` lists them, `help(lib.slew)` shows every parameter with its unit and range.
+  **shapers** make a signal from a signal. Both are in `lib`: `dir(lib)` lists them, `help(lib.slew)` shows every
+  parameter with its unit and range.
 - **Formats**: measurements come in, and curves go out, as one JSON file, a *bundle* ([docs/formats.md](docs/formats.md)):
 
 | Format | Meaning |

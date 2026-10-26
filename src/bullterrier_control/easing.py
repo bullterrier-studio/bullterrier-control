@@ -11,7 +11,8 @@ Promises:
   and y2 any finite numbers) and returns a function of progress. Anything else raises `InvalidError`, listing the valid
   forms. The name is parsed once, when the curve is made.
 - The function is vectorised and keeps the shape of its input: a number or an array of any shape in, float64 out.
-- Progress is clipped to 0..1, and the ends are exact for every curve: 0 gives 0.0 and 1 gives 1.0.
+- Progress is clipped to 0..1 (a number or an infinity; NaN is undefined). The ends are exact for every curve: 0 gives
+  0.0 and 1 gives 1.0.
 """
 
 import re
@@ -84,7 +85,8 @@ def curve(name: str) -> Callable[[ArrayLike], NDArray[np.float64]]:
 
     def ease(progress: ArrayLike) -> NDArray[np.float64]:
         p = np.clip(np.asarray(progress, dtype=np.float64), 0.0, 1.0)
-        # a bezier's bisection stops about 1e-16 short of the ends, so the ends are forced for every curve
+        # a bezier's bisection and overshoot's constant miss the ends by about 1e-16, so the ends are forced
+        # for every curve
         return np.where(p == 0.0, 0.0, np.where(p == 1.0, 1.0, shape(p)))
 
     return ease

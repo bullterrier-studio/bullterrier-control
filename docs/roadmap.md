@@ -18,7 +18,8 @@ working session, **M** two or three. Decisions behind the batches: [design-decis
 | C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | |
 | C5 | First release | S | |
 
-C2a went first: it added the inputs mechanism every later source uses. C2b, C2c and C2d then depend only on C2a and can run in any order. `bullterrier-audio` can run in parallel: the two share only the formats.
+C2a went first: it added the inputs mechanism every later source uses. C2b, C2c and C2d then depend only on C2a and can
+run in any order. `bullterrier-audio` can run in parallel: the two share only the formats.
 
 ## C0 Formats
 
