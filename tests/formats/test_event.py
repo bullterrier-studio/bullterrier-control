@@ -24,6 +24,7 @@ EDGES = {
     "lowest pitch": {"t": 1, "pitch": 0},
     "highest pitch": {"t": 1, "pitch": 127},
     "a very short span": {"t": 1, "duration": 1e-9},
+    "optional fields written as null": {"t": 1, "duration": None, "label": None, "pitch": None},
 }
 
 

@@ -22,7 +22,7 @@ from .grid import Grid
 from .model import Finite, FormatModel
 from .series import Series
 
-__all__ = ["Bundle", "load", "save"]
+__all__ = ["Bundle", "bundle_schema", "load", "save"]
 
 # the name of a series or an event list: `bass`, `stem.drums`, `kick`
 Name = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_.-]*$")]
@@ -105,3 +105,9 @@ def save(bundle: Bundle, path: Path) -> None:
     """Write `bundle` to `path` as UTF-8 JSON, replacing the file; absent optional fields are left out."""
     data = bundle.model_dump(mode="json", exclude_none=True)
     path.write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def bundle_schema() -> dict[str, object]:
+    """The JSON Schema of a Bundle file, for tools in other languages. It states shapes, types and ranges; the rules a
+    schema cannot state (sorted events, duration bounds, increasing beats, repeated keys) are enforced by `load`."""
+    return Bundle.model_json_schema()

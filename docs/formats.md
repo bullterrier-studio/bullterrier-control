@@ -6,7 +6,8 @@ and `schemas/bundle-1.schema.json` are the contract. Changing a rule is a new `v
 
 Conventions: JSON, UTF-8, one object per file. Times are **seconds** from the start of the material, never frames. Every
 number is finite (`NaN`, `Infinity`, `-Infinity` are rejected). A number is a JSON number: a whole number is fine where a
-decimal is expected, `true` and a string are not.
+decimal is expected, `true` and a string are not. An optional field is absent when unset; a reader also accepts it
+written as `null`.
 
 ## Bundle
 

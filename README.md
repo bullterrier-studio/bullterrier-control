@@ -19,8 +19,17 @@ Pre-alpha. The project is scaffolded and gated; no signal exists yet. The work i
 
 ```bash
 uv sync
-uv run bt-control --version
-uv run poe check    # every gate: format, lint, dead code, types, tests
+uv run bt-control validate analysis.json    # is this file a valid bundle? (docs/formats.md)
+uv run bt-control schema                    # the JSON Schema of a bundle, for other languages
+uv run poe check                            # every gate: format, lint, dead code, types, tests
+```
+
+A bundle is one JSON file; the smallest valid one:
+
+```json
+{"format": "bullterrier-control/bundle", "version": 1,
+ "series": {"bass": {"rate": 100, "values": [0.0, 0.4, 0.9], "unit": "fraction", "scaling": "peak of the song"}},
+ "events": {"kick": [{"t": 0.5}, {"t": 1.0, "strength": 0.8}]}}
 ```
 
 ## Development

@@ -1,0 +1,237 @@
+{
+  "$defs": {
+    "Event": {
+      "additionalProperties": false,
+      "description": "Something at `t` seconds: an onset, a beat, a note (with `duration` and `pitch`), or a section start.",
+      "properties": {
+        "duration": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "pitch": {
+          "anyOf": [
+            {
+              "maximum": 127,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pitch"
+        },
+        "strength": {
+          "default": 1.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Strength",
+          "type": "number"
+        },
+        "t": {
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t"
+      ],
+      "title": "Event",
+      "type": "object"
+    },
+    "Grid": {
+      "additionalProperties": false,
+      "description": "Beat times in seconds, strictly increasing. Tempo is derived from them, never stored beside them.",
+      "properties": {
+        "beats": {
+          "items": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "minItems": 2,
+          "title": "Beats",
+          "type": "array"
+        },
+        "first_downbeat": {
+          "minimum": 0,
+          "title": "First Downbeat",
+          "type": "integer"
+        },
+        "meter": {
+          "minimum": 1,
+          "title": "Meter",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "beats",
+        "meter",
+        "first_downbeat"
+      ],
+      "title": "Grid",
+      "type": "object"
+    },
+    "Series": {
+      "additionalProperties": false,
+      "description": "Sample *i* is at `start + i / rate` seconds. A `fraction` series states its `scaling` and stays within 0..1.",
+      "properties": {
+        "rate": {
+          "exclusiveMinimum": 0,
+          "title": "Rate",
+          "type": "number"
+        },
+        "scaling": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scaling"
+        },
+        "start": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Start",
+          "type": "number"
+        },
+        "unit": {
+          "$ref": "#/$defs/Unit"
+        },
+        "values": {
+          "items": {
+            "type": "number"
+          },
+          "minItems": 1,
+          "title": "Values",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rate",
+        "values",
+        "unit"
+      ],
+      "title": "Series",
+      "type": "object"
+    },
+    "Unit": {
+      "description": "What a Series' values measure. `FRACTION` values lie in 0..1 and the Series says how that was reached.",
+      "enum": [
+        "fraction",
+        "decibels",
+        "hertz",
+        "midi",
+        "ratio",
+        "seconds",
+        "beats"
+      ],
+      "title": "Unit",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Everything one producer measured of one piece of material: named Series, named Event lists, a Grid.",
+  "properties": {
+    "duration": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Duration"
+    },
+    "events": {
+      "patternProperties": {
+        "^[a-z0-9][a-z0-9_.-]*$": {
+          "items": {
+            "$ref": "#/$defs/Event"
+          },
+          "type": "array"
+        }
+      },
+      "title": "Events",
+      "type": "object"
+    },
+    "format": {
+      "const": "bullterrier-control/bundle",
+      "title": "Format",
+      "type": "string"
+    },
+    "grid": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Grid"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "series": {
+      "patternProperties": {
+        "^[a-z0-9][a-z0-9_.-]*$": {
+          "$ref": "#/$defs/Series"
+        }
+      },
+      "title": "Series",
+      "type": "object"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source"
+    },
+    "version": {
+      "const": 1,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "format",
+    "version"
+  ],
+  "title": "Bundle",
+  "type": "object"
+}
