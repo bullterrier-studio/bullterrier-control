@@ -108,3 +108,9 @@ def test_a_read_exactly_at_a_point_gives_exactly_its_value(steps):
     point_times = np.cumsum([gap for gap, _, _ in steps])
     points = [Keyframe(t=t, value=value, ease=ease) for t, (_, value, ease) in zip(point_times, steps, strict=True)]
     assert lib.keyframes(points=points).sample(point_times).tolist() == [value for _, value, _ in steps]
+
+
+def test_values_near_the_float_limit_are_read_exactly_at_the_points_and_half_way_between():
+    # b - a would overflow to infinity here; half way between -1e308 and 1e308 is 0, and the points give their values
+    signal = lib.keyframes(points=[Keyframe(t=0, value=-1e308), Keyframe(t=2, value=1e308)])
+    assert signal.sample([0.0, 1.0, 2.0]).tolist() == [-1e308, 0.0, 1e308]

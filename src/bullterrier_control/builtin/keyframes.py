@@ -38,7 +38,8 @@ class _Keyframed(Signal):
         for code, ease in enumerate(self._curves):
             chosen = ease_of_read == code
             eased[chosen] = ease(progress[chosen])
-        return self._from[segment] + (self._to[segment] - self._from[segment]) * eased
+        # not a + (b - a) * e: b - a overflows for values near the float limit, and this is exact at e = 0 and e = 1
+        return (1 - eased) * self._from[segment] + eased * self._to[segment]
 
 
 @source(params=KeyframesParams)
