@@ -12,18 +12,25 @@ Promises:
   number has a unit from `UNITS` and a finite range (min and max) that holds its default; any other field takes no
   unit or range; no field has a discouraged name (`DISCOURAGED`) or is named after a unit. A broken declaration
   raises `ValueError` naming the model and the field, so it never reaches a patch.
+- A number is *cyclic* (`cyclic=True`) when the value one cycle further is the same position (a phase): it is a decimal
+  in `cycles` whose range is exactly one cycle (`max == min + 1`), and any finite real is accepted and wrapped into the
+  range (1.25 on 0..1 is 0.25); a value inside the range, either end included, is kept as given. This is the meaning
+  `cyclic` has in bullterrier-image, so a consumer mapping a signal onto a parameter reads one description everywhere.
 - Values are checked when a model is built (`parse`, or the constructor), strictly whatever the annotation: unknown
   fields, `true` or a string for a number, a float for a whole number, 1 for a switch and values out of range are
   refused with a `ParameterError` naming each field, the rule and the value. A validator a subclass adds that changes
   values is the subclass's own business and is not checked.
 - `fields_doc` describes the fields for docs, listings and tests: basic fields first, then the advanced ones
   (`advanced=True`: they tune the technique rather than choose the shape; settable and validated like the rest).
+- `model_json_schema()` is the description a consumer reads, in the shape bullterrier-image gives its parameters: per
+  field `type` or `enum`, `default`, `description`, `minimum` and `maximum`, and the extras `unit`, `advanced` and
+  `cyclic`. A range is stated once.
 """
 
 import math
 from typing import Any, ClassVar, Literal, NamedTuple, get_args, get_origin
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from .errors import InvalidError, ParameterError
 from .validated import ValidatedModel
@@ -52,6 +59,7 @@ def param(
     min: float | None = None,  # noqa: A002  (the documented name of the range's lower bound)
     max: float | None = None,  # noqa: A002  (the documented name of the range's upper bound)
     advanced: bool = False,
+    cyclic: bool = False,
     **field_kwargs: Any,
 ) -> Any:
     """Declare one field of a `Params` model.
@@ -59,9 +67,10 @@ def param(
     default: the value used when none is given; for a number it lies in the range. doc: what the field does, its unit
     and range in words, and what raising it does. unit: one of `UNITS`, required for a number, not allowed otherwise.
     min, max: the inclusive range, both required for a number, not allowed otherwise. advanced: the field tunes the
-    technique rather than the shape; it is listed after the basic ones. Other keywords go to pydantic's `Field`.
+    technique rather than the shape; it is listed after the basic ones. cyclic: a decimal in `cycles` whose range is one
+    cycle wide and which wraps into it (a phase). Other keywords go to pydantic's `Field`.
     """
-    extra: dict[str, Any] = {"unit": unit, "min": min, "max": max, "advanced": advanced}
+    extra: dict[str, Any] = {"unit": unit, "advanced": advanced, "cyclic": cyclic}
     limits: dict[str, Any] = {key: value for key, value in (("ge", min), ("le", max)) if value is not None}
     return Field(default, description=doc, json_schema_extra=extra, **limits, **field_kwargs)
 
@@ -76,6 +85,7 @@ class FieldDoc(NamedTuple):
     default: Any
     doc: str
     advanced: bool
+    cyclic: bool
 
 
 class Params(ValidatedModel):
@@ -90,7 +100,7 @@ class Params(ValidatedModel):
         """Check the declaration of every field as the class is made."""
         super().__pydantic_init_subclass__(**kwargs)
         for name, info in cls.model_fields.items():
-            _check(f"{cls.__name__}.{name}", name, info, _extra(info.json_schema_extra))
+            _check(f"{cls.__name__}.{name}", name, info, _extra(info))
         try:
             cls.parse({})
         except ParameterError as error:
@@ -101,18 +111,58 @@ class Params(ValidatedModel):
         """Every field described, basic ones first, then the advanced ones, each group in declaration order."""
         docs = [
             FieldDoc(
-                name, extra["unit"], extra["min"], extra["max"], info.default, info.description or "", extra["advanced"]
+                name,
+                extra["unit"],
+                extra["min"],
+                extra["max"],
+                info.default,
+                info.description or "",
+                extra["advanced"],
+                extra["cyclic"],
             )
             for name, info in cls.model_fields.items()
-            for extra in [_extra(info.json_schema_extra)]
+            for extra in [_extra(info)]
         ]
         return tuple(sorted(docs, key=lambda field: field.advanced))
 
+    @model_validator(mode="before")
+    @classmethod
+    def _wrap_cyclic_numbers(cls, data: Any) -> Any:
+        """A real outside the range of a cyclic field becomes the same position inside it; anything else is left for
+        the strict field types to accept or refuse."""
+        if not isinstance(data, dict):
+            return data
+        wrapped = dict(data)
+        for name, info in cls.model_fields.items():
+            extra = _extra(info)
+            if not extra["cyclic"] or name not in data:
+                continue
+            value, low, high = data[name], extra["min"], extra["max"]
+            is_real = isinstance(value, int | float) and not isinstance(value, bool)
+            if is_real and math.isfinite(value) and not low <= value <= high:
+                wrapped[name] = low + (value - low) % 1
+        return wrapped
 
-def _extra(declared: object) -> dict[str, Any]:
+
+def _bounds(info: Any) -> tuple[Any, Any]:
+    """The inclusive range `param` declared, which pydantic holds as `ge` and `le` constraints (None for an end not
+    declared)."""
+    low = high = None
+    for constraint in info.metadata:
+        match constraint:
+            case object(ge=value):
+                low = value
+            case object(le=value):
+                high = value
+    return low, high
+
+
+def _extra(info: Any) -> dict[str, Any]:
     """What `param` recorded for a field; a field not declared with `param` has nothing recorded."""
-    nothing: dict[str, Any] = {"unit": None, "min": None, "max": None, "advanced": False}
-    return {**nothing, **declared} if isinstance(declared, dict) else nothing
+    declared = info.json_schema_extra
+    nothing: dict[str, Any] = {"unit": None, "advanced": False, "cyclic": False}
+    low, high = _bounds(info)
+    return {**nothing, **(declared if isinstance(declared, dict) else {}), "min": low, "max": high}
 
 
 def _check(where: str, name: str, info: Any, extra: dict[str, Any]) -> None:
@@ -143,6 +193,11 @@ def _check(where: str, name: str, info: Any, extra: dict[str, Any]) -> None:
             raise ValueError(f"{where}: the default {default!r} must lie in the range {low} to {high}")
     elif unit is not None or low is not None or high is not None:
         raise ValueError(f"{where}: a field that is not a number takes no unit, min or max")
+    if extra["cyclic"] and (annotation is not float or unit != "cycles" or high != low + 1):
+        raise ValueError(
+            f"{where}: cyclic is for a decimal in cycles whose range is exactly one cycle (max = min + 1);"
+            f" got unit {unit!r}, min {low!r}, max {high!r}"
+        )
     doc = info.description
     if not doc or not doc.strip():
         raise ValueError(f"{where}: needs a description (param(..., doc=...))")

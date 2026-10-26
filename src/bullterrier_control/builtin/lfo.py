@@ -37,10 +37,14 @@ class LfoParams(Params):
     )
     phase: Finite = param(
         0.0,
-        doc="Where in the cycle time 0 falls, as a share of a cycle, 0 to 1: 0.25 starts a quarter of the way in.",
+        doc=(
+            "Where in the cycle time 0 falls, as a share of a cycle, 0 to 1: 0.25 starts a quarter of the way in. Any"
+            " number is accepted and wraps into 0 to 1 (1.25 is 0.25), so a phase that keeps turning needs no wrap."
+        ),
         unit="cycles",
         min=0,
         max=1,
+        cyclic=True,
     )
     low: Finite = param(
         0.0,

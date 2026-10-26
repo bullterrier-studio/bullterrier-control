@@ -182,7 +182,15 @@ def value_at(field, bound):
     return int(bound) if isinstance(field.default, int) else float(bound)
 
 
-LIMITS = [(name, field.name, side) for name in ALL for field in numeric_fields(name) for side in ("minimum", "maximum")]
+NUMBERS = sorted({(name, field.name) for name in ALL for field in numeric_fields(name)})
+# a cyclic number takes any real (it wraps), so it has no "beyond its range"
+LIMITS = [
+    (name, field.name, side)
+    for name in ALL
+    for field in numeric_fields(name)
+    if not field.cyclic
+    for side in ("minimum", "maximum")
+]
 
 
 def limits_at(name, side):
@@ -231,7 +239,7 @@ def test_every_number_beyond_its_range_is_refused(name, field, side):
         build(name, **{field: value_at(doc, beyond)})
 
 
-@pytest.mark.parametrize(("name", "field"), sorted({(name, field) for name, field, _ in LIMITS}))
+@pytest.mark.parametrize(("name", "field"), NUMBERS)
 @pytest.mark.parametrize("wrong", [True, "0.5", None], ids=["a bool", "a string", "nothing"])
 def test_every_number_refuses_what_is_not_a_number(name, field, wrong):
     with pytest.raises(ParameterError, match=field):
@@ -242,3 +250,32 @@ def test_every_number_refuses_what_is_not_a_number(name, field, wrong):
 def test_every_one_refuses_an_unknown_parameter(name):
     with pytest.raises(ParameterError, match="speed"):
         build(name, speed=1)
+
+
+# Only signals are checked: no operation has a cyclic number yet, and one that gets it adds its own comparison here.
+CYCLIC = [(name, field.name) for name in SIGNALS for field in numeric_fields(name) if field.cyclic]
+
+
+def test_a_cyclic_number_exists_for_the_tests_below_to_run_over():
+    assert ("lfo", "phase") in CYCLIC
+
+
+@pytest.mark.parametrize(("name", "field"), CYCLIC)
+def test_a_cyclic_number_at_the_top_of_its_range_gives_what_the_bottom_gives(name, field):
+    doc = next(f for f in numeric_fields(name) if f.name == field)
+    bottom = build(name, **{field: doc.minimum}).sample(TIMES)
+    top = build(name, **{field: doc.maximum}).sample(TIMES)
+    assert top.tolist() == pytest.approx(bottom.tolist(), abs=1e-9)
+
+
+@pytest.mark.parametrize(("name", "field"), CYCLIC)
+@pytest.mark.parametrize("cycles", [-3, -1, 1, 7])
+def test_a_cyclic_number_a_whole_number_of_cycles_away_gives_the_same_signal(name, field, cycles):
+    doc = next(f for f in numeric_fields(name) if f.name == field)
+    inside = doc.minimum + 0.25
+    here = build(name, **{field: inside}).sample(TIMES)
+    away = build(name, **{field: inside + cycles}).sample(TIMES)
+    assert away.tolist() == pytest.approx(here.tolist(), abs=1e-9)
+    # the test can fail: a quarter of a cycle on is a different signal
+    other = build(name, **{field: inside + 0.25}).sample(TIMES)
+    assert other.tolist() != pytest.approx(here.tolist(), abs=1e-9)

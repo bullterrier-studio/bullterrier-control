@@ -123,6 +123,22 @@ DECLARATIONS = {
     "a choice whose default is not offered": (Literal["a", "b"], param("zzz", doc="A choice."), "default"),
     "a switch whose default is 1": (Switch, param(1, doc="A switch."), "default"),
     "a whole number whose default is 1.5": (Whole, param(1.5, doc="A count.", unit="count", min=0, max=9), "default"),
+    "a cyclic number in seconds": (
+        Finite,
+        param(0.5, doc="Some number.", unit="seconds", min=0, max=1, cyclic=True),
+        "cyclic",
+    ),
+    "a cyclic range of two cycles": (
+        Finite,
+        param(0.5, doc="Some number.", unit="cycles", min=0, max=2, cyclic=True),
+        "cyclic",
+    ),
+    "a cyclic range of half a cycle": (
+        Finite,
+        param(0.25, doc="Some number.", unit="cycles", min=0, max=0.5, cyclic=True),
+        "cyclic",
+    ),
+    "a cyclic switch": (Switch, param(True, doc="A switch.", cyclic=True), "cyclic"),
     "a field with an alias": (
         Finite,
         param(1.0, doc="Some number.", unit="ratio", min=0, max=2, alias="other"),
@@ -170,3 +186,79 @@ def test_a_number_declared_with_a_plain_float_or_int_is_as_strict_as_the_shared_
 def test_a_field_without_a_default_is_refused_when_the_class_is_made():
     with pytest.raises(ValueError, match="default"):
         type("NoDefault", (Params,), {"__annotations__": {"amount": Finite}, "__doc__": "No default."})
+
+
+class Turn(Params):
+    """A model with cyclic fields: one cycle wide, and not starting at 0 for the second."""
+
+    phase: Finite = param(0.0, doc="Where in the cycle to start.", unit="cycles", min=0, max=1, cyclic=True)
+    centred: Finite = param(0.0, doc="A position, centred on 0.", unit="cycles", min=-0.5, max=0.5, cyclic=True)
+
+
+WRAPPED = {
+    "inside the range: kept": ({"phase": 0.25}, {"phase": 0.25}),
+    "the lowest end: kept": ({"phase": 0.0}, {"phase": 0.0}),
+    "the highest end: kept, not wrapped to the lowest": ({"phase": 1.0}, {"phase": 1.0}),
+    "a quarter past the end": ({"phase": 1.25}, {"phase": 0.25}),
+    "a quarter before the start": ({"phase": -0.25}, {"phase": 0.75}),
+    "several cycles past": ({"phase": 3.5}, {"phase": 0.5}),
+    "a whole number of cycles below": ({"phase": -1}, {"phase": 0.0}),
+    "a whole number given for a decimal": ({"phase": 2}, {"phase": 0.0}),
+    "a range centred on 0, past its end": ({"centred": 0.75}, {"centred": -0.25}),
+    "a range centred on 0, before its start": ({"centred": -0.75}, {"centred": 0.25}),
+}
+
+
+@pytest.mark.parametrize(("given", "expected"), WRAPPED.values(), ids=WRAPPED.keys())
+def test_a_cyclic_number_outside_its_range_is_the_same_position_inside_it(given, expected):
+    turn = Turn.parse(given)
+    assert {name: getattr(turn, name) for name in expected} == expected
+
+
+NOT_A_POSITION = {
+    "a bool": True,
+    "a string": "0.5",
+    "nothing": None,
+    "NaN": float("nan"),
+    "an infinity": float("inf"),
+}
+
+
+@pytest.mark.parametrize("field", ["phase", "centred"])  # `true` is 1: outside the second range, where it could wrap
+@pytest.mark.parametrize("wrong", NOT_A_POSITION.values(), ids=NOT_A_POSITION.keys())
+def test_a_cyclic_number_still_refuses_what_is_not_a_number(field, wrong, reports):
+    with pytest.raises(ParameterError) as refused:
+        Turn.parse({field: wrong})
+    reports(refused.value, field)
+
+
+def test_a_cyclic_range_may_start_anywhere_a_cycle_wide():
+    declared(Finite, param(0.5, doc="Some number.", unit="cycles", min=-0.5, max=0.5, cyclic=True))
+
+
+def test_the_description_says_which_fields_are_cyclic():
+    fields = {field.name: field for field in Turn.fields_doc()}
+    assert [fields["phase"].cyclic, fields["centred"].cyclic] == [True, True]
+    assert not any(field.cyclic for field in Wave.fields_doc())
+
+
+def test_the_json_schema_keeps_the_turn_as_minimum_and_maximum_beside_cyclic():
+    cyclic = Turn.model_json_schema()["properties"]["phase"]
+    assert (cyclic["minimum"], cyclic["maximum"], cyclic["unit"], cyclic["cyclic"]) == (0, 1, "cycles", True)
+    plain = Wave.model_json_schema()["properties"]["depth"]
+    assert (plain["minimum"], plain["maximum"], plain["unit"], plain["cyclic"], plain["advanced"]) == (
+        0,
+        1,
+        "fraction",
+        False,
+        False,
+    )
+    assert plain["default"] == 0.5
+    assert plain["description"].startswith("How far the wave moves")
+
+
+def test_the_json_schema_states_a_range_once():
+    # `min` and `max` beside `minimum` and `maximum` would be two spellings of one fact for a consumer to reconcile
+    for field in Turn.model_json_schema()["properties"].values():
+        assert "min" not in field
+        assert "max" not in field

@@ -54,13 +54,13 @@ def test_help_lists_the_inputs_between_the_description_and_the_parameters(throwa
 
     text = track.__doc__
     assert text is not None
-    assert "source track(*, points, **values) -> Signal" in text
+    assert "source track(*, points, **values) -> signal" in text
     assert "points (required)" in text
     assert "strictly increasing" in text
     assert text.index("A track through keyframes.") < text.index("Inputs:") < text.index("Parameters:")
     optional = chase.__doc__
     assert optional is not None
-    assert "shaper chase(signal, *, points=None, **values) -> Signal" in optional
+    assert "shaper chase(signal, *, points=None, **values) -> signal" in optional
     assert "points (optional)" in optional
 
 
@@ -68,7 +68,7 @@ def test_help_of_a_thing_without_inputs_has_no_inputs_block():
     text = lib.slew.__doc__
     assert text is not None
     assert "Inputs:" not in text
-    assert "shaper slew(signal, **values) -> Signal" in text
+    assert "shaper slew(signal, **values) -> signal" in text
 
 
 def test_help_of_a_thing_without_parameters_has_no_parameters_heading(throwaway_registry):
@@ -107,3 +107,16 @@ def test_help_of_an_operation_shows_its_inputs_and_what_it_returns(throwaway_reg
     assert "operation flatten(*, series, **values) -> series" in other
     assert "series (required)" in other
     assert "Signal" not in text + other
+
+
+def test_help_names_what_a_thing_gives_in_lower_case_whatever_its_kind():
+    assert "-> signal" in (lib.lfo.__doc__ or "")
+    assert "-> events" in (lib.select.__doc__ or "")
+    assert "-> series" in (lib.normalise.__doc__ or "")
+
+
+def test_help_marks_a_parameter_that_wraps_as_cyclic():
+    text = lib.lfo.__doc__
+    assert text is not None
+    assert "phase (cycles, 0 to 1), default 0.0, cyclic" in text
+    assert "rate (cycles, 0 to 1000), default 1.0\n" in text  # a rate does not wrap: no `, cyclic`

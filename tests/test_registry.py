@@ -352,6 +352,18 @@ class Pointed(Params):
     points: Finite = param(0.5, doc="Clashes with the input of the same name.", unit="count", min=0, max=1)
 
 
+class Used(Params):
+    """Parameters with a field named like a key of a patch node."""
+
+    use: Finite = param(0.5, doc="Clashes with the key that names the thing.", unit="count", min=0, max=1)
+
+
+class Signalled(Params):
+    """Parameters with a field named like the other key of a patch node."""
+
+    signal: Finite = param(0.5, doc="Clashes with the key that names a shaper's input.", unit="count", min=0, max=1)
+
+
 def unknown_input(params: Nothing, *, colour: object) -> Signal:
     return Constant(0.0)
 
@@ -428,6 +440,11 @@ BROKEN_INPUTS = {
         "'points'",
     ),
     "a parameter named like an input": (lambda: source(params=Pointed)(_named("pointy")), "'points'"),
+    "a parameter named like the key that names the thing": (lambda: source(params=Used)(_named("usable")), "'use'"),
+    "a parameter named like the key of a shaper's input": (
+        lambda: source(params=Signalled)(_named("signalled")),
+        "'signal'",
+    ),
     "a shaper written without a signal": (
         lambda: shaper(params=Nothing)(one_argument),  # type: ignore[arg-type]  # the wrong shape is the case
         r"one_argument\(signal, params\)",

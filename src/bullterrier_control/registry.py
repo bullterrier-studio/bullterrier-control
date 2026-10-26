@@ -64,6 +64,9 @@ __all__ = [
 _GROUP = "bullterrier_control.sources"
 _NAME = re.compile(r"[a-z][a-z0-9_]*")
 _SIGNALS = {"source": 0, "shaper": 1, "operation": 0}  # how many signals each kind takes
+# the keys of a patch node besides the inputs' and the parameters' names (`bullterrier_control.patch`): a parameter
+# cannot be named like one, or the node `{use = "x", signal = "y", ...}` would be ambiguous
+NODE_KEYS = ("use", "signal")
 type _Kind = Literal["source", "shaper", "operation"]
 # what an operation may return, by its return annotation, and what `help()` calls it
 _OPERATION_RESULTS: Mapping[Any, str] = MappingProxyType({tuple[Event, ...]: "events", Series: "series"})
@@ -74,7 +77,7 @@ class Registered[P: Params, R]:
     values; a source and a shaper give a `Signal`, an operation gives its data.
 
     `inputs` maps each input the function declares to whether it is required, in declaration order. `returns` is what a
-    call gives, as `help()` names it: `Signal`, `events` or `series`."""
+    call gives, as `help()` names it: `signal`, `events` or `series`."""
 
     def __init__(
         self,
@@ -146,7 +149,8 @@ def _documentation(registered: "Registered[Any, Any]", described: str) -> str:
         lines.append("Parameters:")
     for one in fields:
         measure = f" ({one.unit}, {one.minimum:g} to {one.maximum:g})" if one.unit else ""
-        lines.append(f"  {one.name}{measure}, default {one.default!r}{', advanced' if one.advanced else ''}")
+        flags = "".join(f", {flag}" for flag, on in (("advanced", one.advanced), ("cyclic", one.cyclic)) if on)
+        lines.append(f"  {one.name}{measure}, default {one.default!r}{flags}")
         lines.append(f"      {one.doc}")
     return "\n".join(lines).rstrip()
 
@@ -197,11 +201,11 @@ def _register[P: Params, R](function: Callable[..., R], kind: _Kind, params: typ
         raise ValueError(
             f"{kind} {name!r}: a name is lower case letters, digits and underscores, starting with a letter"
         )
-    clashing = sorted(INPUTS.keys() & params.model_fields.keys())
+    clashing = sorted((INPUTS.keys() | NODE_KEYS) & params.model_fields.keys())
     if clashing:
-        raise ValueError(f"{kind} {name!r}: the parameter {clashing[0]!r} has the name of an input")
+        raise ValueError(f"{kind} {name!r}: the parameter {clashing[0]!r} has the name of an input or a patch key")
     inputs = _declared_inputs(function, kind)
-    returns = _operation_result(function) if kind == "operation" else "Signal"
+    returns = _operation_result(function) if kind == "operation" else "signal"
     existing = _TABLE.get(name)
     if existing is not None and not _same_function(existing, function, kind):
         raise ValueError(

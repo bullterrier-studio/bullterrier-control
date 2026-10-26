@@ -201,3 +201,14 @@ def test_the_output_never_leaves_low_and_high_whichever_way_round(shape, rate, p
     signal = lib.lfo(shape=shape, rate=rate, phase=phase, duty=duty, low=low, high=high)
     value = signal.sample(time).item()
     assert min(low, high) <= value <= max(low, high)
+
+
+def test_the_phase_wraps_so_a_rotating_phase_needs_none_of_its_own():
+    wrapped = lib.lfo(shape="saw", phase=2.75, low=-1, high=3)
+    inside = lib.lfo(shape="saw", phase=0.75, low=-1, high=3)
+    assert wrapped.sample(QUARTERS).tolist() == pytest.approx(inside.sample(QUARTERS).tolist(), abs=1e-9)
+
+
+def test_the_phase_is_described_as_cyclic_for_a_consumer_mapping_onto_it():
+    phase = lib.lfo.params_model.model_json_schema()["properties"]["phase"]
+    assert (phase["unit"], phase["minimum"], phase["maximum"], phase["cyclic"]) == ("cycles", 0, 1, True)
