@@ -1,7 +1,6 @@
 import pytest
 
 from bullterrier_control import Series, Unit, from_series, lib, registry
-from bullterrier_control.inputs import INPUTS
 from bullterrier_control.params import Params, param
 from bullterrier_control.plugin import Constant, Keyframe, Signal, shaper, source
 from bullterrier_control.validated import Finite
@@ -57,7 +56,7 @@ def test_help_lists_the_inputs_between_the_description_and_the_parameters(throwa
     assert text is not None
     assert "source track(*, points, **values) -> Signal" in text
     assert "points (required)" in text
-    assert INPUTS["points"].doc in text
+    assert "strictly increasing" in text
     assert text.index("A track through keyframes.") < text.index("Inputs:") < text.index("Parameters:")
     optional = follow.__doc__
     assert optional is not None

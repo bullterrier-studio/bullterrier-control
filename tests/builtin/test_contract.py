@@ -35,11 +35,22 @@ SAMPLE_INPUTS: dict[str, object] = {
 SMALLEST_INPUTS: dict[str, object] = {"points": (Keyframe(t=0, value=0.5),)}
 
 
-def make(name: str, inputs: dict[str, object], values: dict[str, object], leave_out: str | None = None) -> Signal:
-    """The thing `name` made from every input it declares, taken from the table `inputs` (a kind without a row is a
-    KeyError: the tables are complete), except `leave_out`, and parameter `values`."""
+def make(
+    name: str,
+    inputs: dict[str, object],
+    values: dict[str, object],
+    leave_out: str | None = None,
+    required_only: bool = False,
+) -> Signal:
+    """The thing `name` made from every input it declares (only the required ones if `required_only`), taken from the
+    table `inputs` (a kind without a row is a KeyError: the tables are complete), except `leave_out`, and parameter
+    `values`."""
     thing = registry.get(name)
-    given = {kind: inputs[kind] for kind in thing.inputs if kind != leave_out}
+    given = {
+        kind: inputs[kind]
+        for kind, required in thing.inputs.items()
+        if kind != leave_out and (required or not required_only)
+    }
     return thing(input_signal(), **given, **values) if thing.kind == "shaper" else thing(**given, **values)
 
 
@@ -74,7 +85,8 @@ def test_every_one_makes_a_signal_that_keeps_the_shape_of_the_times_and_is_finit
 
 @pytest.mark.parametrize("name", ALL)
 def test_every_one_gives_finite_values_from_the_smallest_inputs_it_accepts(name):
-    assert np.isfinite(make(name, SMALLEST_INPUTS, {}).sample(TIMES)).all()
+    # the least a call can give: optional inputs left out
+    assert np.isfinite(make(name, SMALLEST_INPUTS, {}, required_only=True).sample(TIMES)).all()
 
 
 DECLARED_KINDS = sorted({kind for name in ALL for kind in registry.get(name).inputs})
@@ -82,7 +94,7 @@ DECLARED_KINDS = sorted({kind for name in ALL for kind in registry.get(name).inp
 
 @pytest.mark.parametrize("kind", DECLARED_KINDS)
 def test_every_kind_of_input_a_registered_thing_declares_has_a_row_in_both_tables(kind):
-    # without a row an optional input would be left out and no contract test would exercise it
+    # a missing row would otherwise show as a bare KeyError in `make`; here the test names the kind
     assert kind in SAMPLE_INPUTS
     assert kind in SMALLEST_INPUTS
 
