@@ -77,6 +77,9 @@ clipped.sample([0.0, 0.1, 0.2, 0.3, 1.0])  # values at those times, in seconds
 # array([0.1  , 0.5  , 0.566, 0.366, 0.1  ])
 ```
 
+A consumer can read a whole timeline in one call, since `sample` takes an array; reading one time per call gives the
+same values.
+
 Keyframes: values at chosen times, eased between ([docs/examples.md](docs/examples.md) works this one out by hand):
 
 ```python

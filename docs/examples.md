@@ -127,3 +127,34 @@ signal = lib.latch(events=bundle.events["drop"])
 | 30.0 | 1 | it stays |
 
 The consumer (video): `saturation = 0.3 + 0.7 * value`.
+
+## 6. Scenes: build, drop, outro
+
+Audio found three sections, each an event with a duration. A scene should be as strong as the section it is in, rising into
+it over a second and fading out over half a second, with the strongest section winning where they overlap.
+
+```python
+from pathlib import Path
+
+from bullterrier_control import lib, load
+
+bundle = load(Path("examples/sections.json"))  # build 0-6.4 s, drop 6.4-12 s, outro 12-16 s
+signal = lib.envelope(events=bundle.events["sections"], attack=1.0, decay=0, sustain=1, release=0.5, curve="linear")
+```
+
+Sustain 1 holds a section's strength; each section rises linearly over 1 s and falls linearly over 0.5 s after it ends.
+
+| t (s) | value | by hand |
+|---|---|---|
+| 0.0 | 0 | the build starts rising |
+| 0.5 | 0.2 | the build, halfway up: 0.4 · 0.5 |
+| 3.0 | 0.4 | the build, held |
+| 6.65 | 0.25 | the drop rising, 1 · 0.25, beats the build releasing, 0.4 · 0.25 / 0.5 = 0.2 |
+| 7.4 | 1.0 | the drop, risen and held |
+| 12.25 | 0.5 | the drop releasing, 1 · 0.25 / 0.5, beats the outro rising, 0.3 · 0.25 = 0.075 |
+| 12.5 | 0.15 | the outro, halfway up: 0.3 · 0.5 |
+| 13.0 | 0.3 | the outro, held |
+| 16.25 | 0.15 | the outro releasing: 0.3 · 0.25 / 0.5 |
+| 17.0 | 0 | after the last release |
+
+The consumer (video): `look_opacity = value`.
