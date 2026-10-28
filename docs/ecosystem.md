@@ -28,6 +28,26 @@ page, so it can be read without the others.
 4. Time is in seconds everywhere. Frames exist only in video.
 5. Every package is extended the same way: plugins registered by name, parameters declared once with unit, range and
    description.
+6. Every package has a Python interface. The render path (image, vector, control, video) has a Rust core, published as a
+   Rust crate too, with the Python package a thin interface over it (as polars and pydantic-core do). Analysis built on
+   machine-learning models (audio, and video's footage analysis) is Python. Packages meet only through data formats (rule 2),
+   so no package depends on another's language.
+
+## Implementation languages
+
+Decided 2026-10-28. Rust is chosen for speed, true parallelism (threads without the GIL), small memory and a service that
+handles many requests at once; where Rust would need workarounds (running PyTorch models from Rust), the package stays Python.
+
+| Package | Core | Why |
+|---|---|---|
+| `bullterrier-image` | Rust | Measured on a five-effect prototype at 1080p: about 5x the throughput of Python for batch video, a fifth of the memory, a cold start under 10 ms. |
+| `bullterrier-vector` | Rust | Redrawn every frame; pure-Rust 2D libraries cover paths, rasterising and text outlines; builds for WebAssembly. |
+| `bullterrier-control` | Rust | Read every frame by video's core, which runs without Python; the stateful shapers are Python loops that hold the GIL; builds for WebAssembly, for editing curves in a browser. |
+| `bullterrier-video` | Rust | Decoding, compositing, multi-frame effects and encoding in one process; frame history in memory; live preview; uses the image, vector and control crates directly. |
+| `bullterrier-audio` | Python | Its time goes to models (stems, beats, drum hits, notes) that run on PyTorch, already native; it runs once per song and is cached. |
+
+Models in any package (image's subject and depth finders, video's matting and depth over footage) are pluggable adapters on
+their own runtime, in Python; a Rust core takes their maps as input.
 
 ## Names
 

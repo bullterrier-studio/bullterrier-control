@@ -17,8 +17,9 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | C3a | Causal shapers; the scenes example | M | done |
 | C3b | Operations on events and series | M | done |
 | C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | done |
-| R0 | Rust core: workspace, gates, `slew` and `follow` in Rust | M | |
+| R0 | Rust core: workspace, gates, `slew` and `follow` in Rust | M | done |
 | R0b | Rust core: CI and a wheel per platform | S | |
+| R0.5 | Code-first API: the spec in Python and Rust, then the Python improvements | M | |
 | R1 | Rust core: the formats | M | |
 | R2 | Rust core: parameters | M | |
 | R3 | Rust core: the signal graph | L | |
@@ -148,11 +149,13 @@ that builds for WebAssembly. Foundation first, then the engine, the built-ins la
 body deleted. Until a built-in is ported, the engine calls its Python body, the path third-party Python plugins keep.
 The Python suite runs unchanged against the Rust core throughout.
 
-- **R0 Foundation.** Cargo workspace (`crates/core`: pure Rust, no Python, builds for wasm32; `crates/python`: the
+- **R0 Foundation (done).** Cargo workspace (`crates/core`: pure Rust, no Python, builds for wasm32; `crates/python`: the
   bindings), maturin as build backend, Rust gates as strict as the Python ones (each proven by a known-bad input),
-  `slew` and `follow` rendered in Rust. Done when their tests pass unchanged and the gate is green.
+  `slew` and `follow` rendered in Rust through the transitional boundary `_core.render`. Done when their tests pass
+  unchanged and the gate is green.
 - **R0b CI and wheels.** Every workflow builds the core; a wheel per platform (Linux x86_64 and aarch64, macOS arm64
   and x86_64, Windows x86_64), each installed and run before release.
+- **R0.5 Code-first API.** The programmatic API is the product; see the section below.
 - **R1 Formats.** Series, Event, Grid, Bundle in Rust; the schema generated from Rust, its meaning unchanged.
 - **R2 Parameters.** Declared once in Rust (unit, range, doc, `advanced`, `cyclic`); Python models, `help()` and
   `list --json` built from that declaration.
@@ -163,6 +166,27 @@ The Python suite runs unchanged against the Rust core throughout.
   Python.
 - **R5 Built-ins.** Every other source, shaper and operation ported.
 - **R6 Cleanup.** No Python duplicate left, crate documentation, final speed and memory measured against R0's baseline.
+
+## R0.5 Code-first API
+
+The programmatic API, in Python and later in Rust, is the product; patch files are a serialisation of the same graph,
+built only through it ([design-decisions.md](design-decisions.md), "API first"). Weak spots in today's Python API: `lib`
+is dynamic (no stubs, so no completion of `rise=` and mypy sees `Any`); shapers nest (`clip(slew(x))`) and read
+inside-out, not as the pipeline; a measured curve needs three concepts (`from_series(Series(rate=..., values=...,
+unit=Unit.RATIO))`).
+- `docs/api.md`: the code-first API in Python and Rust side by side, one worked example per concept (a curve from values,
+  keyframes, an envelope on events, shaping a chain, combining, sampling a timeline, a seeded noise, a beat grid, a
+  plugin). The Rust column is the target R1 to R5 build to: Rust type and trait names, parameters as structs with
+  `Default`, `signal.sample(&times)`, errors as `Result`.
+- Python: a typed `lib` through a generated stub (`lib.pyi` from the parameter models: every source, shaper and operation
+  with its keyword parameters, defaults and docstring; a drift test: regenerated equals committed); chaining (built-in
+  shapers as typed methods on `Signal` from the same generator, `signal.pipe(shaper, **params)` for any shaper including
+  plugins); a one-call entry for a curve from values (for example `btc.series(values, rate=10)`), keeping `Series` and
+  `from_series` for data from files. The final shape is decided in the batch's plan, from the spec.
+- The README's quick start uses the code-first API first; patch files come later, as the extra.
+
+Done when: every example in `docs/api.md` runs as a test (Python now; the Rust column becomes doctests as R1 to R5 land);
+`lib` completes its keywords in an IDE and mypy checks them; the stub's drift test passes; the gate is green.
 
 ## C5 First release
 

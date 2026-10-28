@@ -356,3 +356,55 @@ separate ramp. Changed:
   tests check that every built-in has a patch that builds and moves, a picture exists, and the page's text is current.
   *Cost:* `docs/gallery.md` lists every source, so adding one modifies it (the exception to rule 4), and two branches that
   add sources conflict in it; regenerating it resolves that. Operations have no picture: they give no signal.
+
+## The Rust core (batch R0)
+
+- **The numeric work moves to Rust; Python stays the interface** (owner, 2026-10-28). Two crates in a Cargo workspace
+  beside `src/`: `crates/core` (pure Rust, no PyO3 or numpy, `#![forbid(unsafe_code)]`, builds for
+  `wasm32-unknown-unknown`) and `crates/python` (PyO3 bindings that build `bullterrier_control._native._core`, built by
+  maturin). A built-in is ported once and its Python body deleted; there is no second implementation. The core crate has
+  its public name, `bullterrier-control`, from the start; nothing is published but the Python package. *Reason:* a
+  video renderer reads signals every frame without Python; the stateful shapers are Python loops that hold the GIL
+  (ten of them over a four-minute song take about 2 s: fine offline, too slow for interactive editing); a core that builds
+  for WebAssembly can edit curves in a browser. *Consequence:* contributors need rustup (`rust-toolchain.toml` installs the
+  rest), wheels are per platform (abi3: one per platform for every Python from 3.12), runtime Python dependencies stay
+  numpy and pydantic.
+- **One generic boundary, `_core.render(name, inputs, params)`, and it is transitional.** It takes the shaper's input
+  sampled at its rate from time 0 and returns a series of the same length; it releases the GIL while it runs and the
+  bindings name no shaper, so porting one never changes them. It serves only shapers that need history, which is all R0
+  ports; it goes away in R3, when `Signal` and `Rendered` themselves live in Rust. A wrong name, parameter set, dtype or
+  shape is a programming error (`ValueError`): a user's values are validated before they get here.
+- **`Rendered` promises its `run` a 1-D, C-contiguous float64 array.** *Reason:* the core reads the input in place; if each
+  recurrence had to cope with a float32 or strided array, or the core copied it, the cost and the bug would be repeated per
+  shaper. `Rendered` makes the conversion once, in the one place a recurrence is called.
+- **A NaN in a shaper's input comes through the kernel.** A Rust kernel never panics on it; `sample` reports it as a
+  `SignalError`, as for a Python recurrence. *Reason:* the signal contract is kept in one place (`sample`), not in each
+  kernel.
+- **`builtin` may import `_native`; nothing else may.** `_native` is a package of its own at the bottom, beside `errors`,
+  which imports nothing from `bullterrier_control`: the import linter cannot read a compiled module but sees the package.
+  The contract "Built-in sources use only the author API" names `_native` as its one exception (it would otherwise reach
+  it only through `plugin`, which a third-party plugin must not need). *Reason:* a built-in runs its body in Rust; a plugin
+  author sees `plugin` only.
+- **Pydantic stays the one declaration of parameters until R2.** The Python shaper keeps its model, docstring and
+  `@shaper`; its body hands `params.model_dump()` to the core. The Rust `Params` has the same fields, no defaults, and
+  refuses unknown ones, so a struct that drifts from the model fails the first call naming the field. *Reason:* units,
+  ranges, `help()` and `list --json` already come from the model, and the core gets values already checked and trusts
+  them. Declaring parameters in Rust is R2. Vulture cannot see that the core reads a field by name, so `poe dead-code`
+  writes a whitelist of the fields of the shapers `_core.shapers()` names when it runs (porting edits no shared file),
+  and rustc's dead-code lint checks the Rust side.
+- **The Rust gates match the Python ones**, each in `poe check` with a known-bad test (`tests/tools/test_rust_gates.py`):
+  rustfmt; clippy (pedantic, no `unwrap`, `expect`, `panic` or printing; dead code, missing docs and unreachable `pub` as
+  errors); rustdoc; cargo-shear; cargo-deny (bans, licences, sources; advisories in `poe audit`); a `wasm32` build of the
+  core; stubtest of `_native/_core.pyi`; cargo test (proptest for laws such as slew's rate bound). Rust built-ins never
+  refer to each other (an architecture test, as for the Python ones). Warnings are errors only in the gate, so a newer
+  compiler never breaks a user's build. No `.cargo/config.toml` and no `target-cpu=native`: a wheel must run on every CPU
+  of its platform.
+
+## API first (owner, 2026-10-28)
+
+- **The programmatic API is the product, in Python now and in Rust once ported; patch files are a serialisation of the
+  same graph, built only through that API.** A patch is a nice extra, never a feature the API lacks. *Reason:* the API
+  should be extremely clear, typed and discoverable in an IDE, and a file format that can do more than the API says the
+  API is missing something. *Consequence:* batch R0.5 (`docs/roadmap.md`) specifies the API in Python and Rust side by
+  side and improves the Python one; every batch from R1 on meets it; R4 enforces "the patch uses only the public API" with
+  an import contract in Python and module privacy in Rust.

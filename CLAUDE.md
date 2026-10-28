@@ -11,7 +11,7 @@ public: no absolute paths, no references to folders outside the repository.
 ## Start here
 
 ```bash
-uv sync && uv run poe setup          # once per clone: environment, git hooks, commit template
+uv sync && uv run poe setup          # once per clone: environment (builds the Rust extension: needs rustup), git hooks, commit template, cargo tools
 uv run pytest tests/builtin -n 0     # the tests near your change, while you work
 uv run poe check                     # the whole gate, before you report or merge (then `uv run lint-imports`)
 ```
@@ -20,6 +20,7 @@ uv run poe check                     # the whole gate, before you report or merg
 |---|---|
 | use a source, shaper or operation | `lib` (`lib.slew(signal, rise=0.2)`; `dir(lib)`, `help(lib.slew)`) |
 | add a source, shaper or operation | "Adding a source or shaper" below; one module in `src/bullterrier_control/builtin/`, one test file in `tests/builtin/` |
+| write a shaper's recurrence in Rust | "Rust code" below; `crates/core/src/builtin/slew.rs` and `builtin/slew.py` |
 | see what every source and shaper promises | "The signal contract" below; `tests/builtin/test_contract.py` checks it over all of them |
 | declare parameters | `params.py` (`Params`, `param`); the rules in "Parameters" below |
 | write a signal that needs history | `rendered.py` (`Rendered`) |
@@ -32,8 +33,8 @@ uv run poe check                     # the whole gate, before you report or merg
 **State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`), inputs (`points`, `events`, `grid`, `values`, `series`), easing, cadence, hashing and scaling, and
 the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `noise`, the shapers `clip`, `slew`, `follow`,
 `gate`, `hold`, `remap` and `delay`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`,
-patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. Next: the Rust core,
-batches R0 to R6, then C5, the first release (`docs/roadmap.md`).
+patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. The Rust core's foundation
+(R0) exists: `slew` and `follow` run in Rust. Next: R0b to R6, then C5, the first release (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.
@@ -82,7 +83,7 @@ Layers, imports flow **downward only** (import-linter: contracts in `pyproject.t
 
 ```
 app        __main__, cli
-builtin    the built-in sources, shapers and operations: one module each, never importing each other, using only `plugin`
+builtin    the built-in sources, shapers and operations: one module each, never importing each other, using only `plugin` (and `_native`)
 lib        every registered source, shaper and operation by name (`lib.slew`), with `help()` built from its parameters
 patch      Patch, load_patch: a graph of them as data (TOML), built against a bundle; the patch schema
 plotting   plot: signals drawn as a PNG (matplotlib, an optional extra, imported when a picture is drawn)
@@ -93,13 +94,24 @@ signal     Signal, Constant, from_series, arithmetic  |  params   Params, param,
 formats    Bundle > Series | Event | Grid > the format base and Unit
 validated  ValidatedModel and the strict value types (Finite, Whole, Switch, Text)
 errors     BullterrierControlError > InvalidError > FormatError | ParameterError; SignalError; UnknownNameError
+_native    home of the Rust extension `_native._core`, beside errors      (imports nothing from bullterrier_control)
 ```
+
+**Rust core:** `crates/core` (pure Rust: no PyO3, no numpy, safe code, builds for `wasm32-unknown-unknown`; one
+`src/builtin/<name>.rs` per shaper, found by `build.rs`) and `crates/python` (PyO3 bindings building
+`bullterrier_control._native._core`; generic, names no shaper). A ported shaper keeps its Python model, docstring and
+`@shaper`; its body is a `Rendered` whose `run` is `partial(_core.render, "<name>", params=params.model_dump())`
+(`from bullterrier_control._native import _core`). `_core.render(name, inputs, params)` is the one boundary: it takes the
+input sampled at the shaper's rate (1-D, C-contiguous float64, read in place), releases the GIL, and returns a new float64
+array of the same length. A wrong name, parameter set, dtype or shape is a `ValueError`. Only `builtin` imports
+`_native` (an exception in the "Built-in sources use only the author API" contract). Rust built-ins never refer to each
+other.
 
 A source is `def name(params) -> Signal`, a shaper `def name(signal, params) -> Signal`, each registered with `@source` or
 `@shaper` and its `Params` model; packages are entry points of the group `bullterrier_control.sources`. Pipes-and-filters: a
 shaper maps a signal to a signal. An **operation** is data in, data out: `def name(params, *, events) -> tuple[Event, ...]` or
 `-> Series`, taking its data as inputs (`events`, `series`, `grid`), registered with `@operation`; it may use the whole data (percentiles, a lead, the nearest
-beat), which a signal may not. Each thing arrives with its first consumer (`vulture` fails on unused code).
+beat), which a signal may not. Each thing arrives with its first consumer (`poe dead-code` fails on unused code).
 
 ## The signal contract
 
@@ -127,7 +139,7 @@ when called again, with events reversed or as dicts; valid, time-ordered events 
    owned by one package, not code.
 2. **Sources, shapers and operations never import each other.** Shared numeric code goes to a module named for its concept (`interpolation`,
    `smoothing`, `noise`), never `utils`/`common`/`helpers`. Extract when a second consumer needs it.
-3. **Parameters are declared once** as a pydantic model (as in bullterrier-image), with unit, range and description, and drive
+3. **Parameters are declared once** as a pydantic model (as in bullterrier-image; Rust structs only read them until R2), with unit, range and description, and drive
    validation, defaults and generated docs. Units include `seconds`, `beats` (through a Grid), `hertz`, `cycles`, `fraction`.
 4. **Open/closed:** adding a source, shaper or operation creates files named for it and modifies none. The one exception
    is `docs/gallery.md`, which lists every source and shaper and is rewritten by `uv run poe gallery`.
@@ -141,12 +153,26 @@ when called again, with events reversed or as dicts; valid, time-ordered events 
    `ValueError`, for anything a caller or an input file can get wrong; each also inherits the matching builtin. A bug in the
    calling code (a wrong registration, a wrong argument to `Rendered`, a wrong call shape) is a plain `ValueError`/`TypeError`.
 
+## Rust code
+
+Rust follows the same rules. Built-ins never refer to each other; what two share goes in a module of the crate named for its
+concept, extracted when a second built-in needs it. Parameters are never declared in Rust (rule 3): a built-in's `Params` has the
+Python model's fields, `#[derive(Deserialize)]`, `#[serde(deny_unknown_fields)]` and no defaults, so a struct that drifts from
+the model fails the first call naming the field; the kernel trusts values already validated. Its file has `Params` and
+`fn run(inputs: &[f64], params: &Params) -> Vec<f64>`, a causal recurrence (output *i* depends on inputs 0 to *i*) whose
+behaviour is documented once, on the Python shaper. No hidden tunables (rule 5): a number is a `Params` field, trivial, or a
+cited constant. No `unwrap`, `expect`, `panic!`, `todo!` or printing (clippy fails them): return an `Error`; an
+error in the core is a bug in the caller, mapped to `ValueError`. `pub` only for what the bindings use, else `pub(crate)`.
+A NaN in the input comes through (`sample` reports it as `SignalError`); the kernel never panics on it. A Python body and
+its Rust twin do not coexist: port a shaper once and delete the Python body.
+
 ## Standards
 
 - `src/` holds only code and the data it runs on. Tests, examples and docs live outside it.
 - Public API has `__all__`: `bullterrier_control`, `bullterrier_control.plugin` (for authors) and `bullterrier_control.registry`
   (queries). Everything else is internal.
-- Runtime dependencies: numpy and pydantic. Adding another needs a reason in `docs/design-decisions.md`: control must
+- Runtime dependencies: numpy and pydantic, and the few Rust crates in `Cargo.toml` (`deny.toml` limits which; the core
+  never depends on PyO3 or numpy). Adding another needs a reason in `docs/design-decisions.md`: control must
   install without librosa, torch, Pillow or any media library. matplotlib is the one optional extra (`plot`), for
   `bt-control plot` and the gallery only; nothing else imports it.
 - Offline only in v1: no live clock, MIDI or OSC output.
@@ -156,7 +182,8 @@ when called again, with events reversed or as dicts; valid, time-ordered events 
 - The library never prints and never configures logging.
 - Text is UTF-8 (`encoding="utf-8"` on every open); paths are `pathlib.Path`.
 - Security: ruff `S`, `PGH`, `LOG` run in `poe check` (a subprocess call carries `# noqa: S603  <why its argv is safe>`).
-  `uv run poe audit` (pip-audit on `uv.lock`, needs network) runs before a release and in CI, which uses `uv run --locked poe check`.
+  `uv run poe audit` (pip-audit on `uv.lock`, cargo-deny advisories on `Cargo.lock`; needs network) runs before a release and
+  in CI, which uses `uv run --locked poe check`.
 - Versions are SemVer (a 0.x minor may break the API), changed only by `uv run poe release VERSION` (the owner picks it: checks,
   shows the plan, asks, bumps, writes CHANGELOG.md with git-cliff, commits, tags, pushes main and the tag; `docs/releasing.md`).
   Tests read the version from `pyproject.toml`, never write it.
@@ -191,7 +218,8 @@ load, naming source, field, constraint and value. Not parameters: the fields of 
 1. **Scaffold:** `uv run poe new-source <name> --kind source|shaper|operation` writes `src/bullterrier_control/builtin/<name>.py` and
    `tests/builtin/test_<name>.py`, working as written (the package imports every module it holds: no list to edit). A source
    or shaper also gets `examples/gallery/<name>.toml`, the patch its gallery picture is drawn from.
-2. **Fill in:** the `Params` model (the field's own terms, unit, range, description: "Parameters"), the body (analytic where it
+2. **Fill in** (a Rust kernel is optional until R3: `poe new-source` writes Python, and a shaper with history gets its
+   kernel by hand, as "Rust code" says): the `Params` model (the field's own terms, unit, range, description: "Parameters"), the body (analytic where it
    can be; a causal recurrence through `Rendered` where it needs history), the docstring's first sentence (what
    `help(lib.<name>)` shows). Data that is not a parameter (keyframes, events, a grid) is a keyword-only argument after
    `params`, named in `inputs.INPUTS` (`def name(params, *, points)`; `= None` makes it optional); the registry checks it and
@@ -231,10 +259,16 @@ A fix removes the cause, not the symptom.
 
 ## Lint, types and gates
 
-`uv run poe check` runs every gate, cheapest first, stopping at the first failure: `ruff format --check`; `ruff check` (plus
-`PLW1514` explicit encodings, `BLE` no blind `except`, `PTH` pathlib); `poe lint-workflows` (actionlint, zizmor); `vulture` (dead
-code in `src`; exemptions in `[tool.vulture]`); `deptry`; `poe build-check` (twine, check-wheel-contents); `mypy`; the tests, in
-random order (import contracts and the tooling's own tests). Each gate has a test proving it fails on a known-bad input.
+`uv run poe check` runs every gate, cheapest first, stopping at the first failure: `ruff format --check` and `rust-fmt`;
+`ruff check` (plus `PLW1514` explicit encodings, `BLE` no blind `except`, `PTH` pathlib, `PYI` stubs) and `rust-lint` (clippy
+pedantic; `unwrap`/`expect`/`panic`/print banned; dead code, missing docs, unreachable `pub`; `[workspace.lints]` in
+`Cargo.toml`); `poe lint-workflows` (actionlint, zizmor); `poe dead-code` (vulture on `src`; exemptions in `[tool.vulture]`,
+and a whitelist, written as it runs, of the fields the Rust core reads; plain `vulture` would report them); `rust-doc`;
+`deptry`; `rust-tools` (cargo-shear and cargo-deny installed at the versions `Cargo.toml` pins; `poe setup` installs them),
+`rust-shear` (unused crates), `rust-deny` (bans, licences, sources; `deny.toml`), `rust-wasm` (the core builds for
+`wasm32-unknown-unknown`); `poe build-check` (maturin sdist and wheel, twine, check-wheel-contents); `mypy` and `stubtest`
+(`_native/_core.pyi` against the extension); `rust-test`; the tests, in random order (import contracts and the tooling's own
+tests). Each gate has a test proving it fails on a known-bad input.
 
 `ruff` wants type hints and a docstring on every public function, class, method and module, and no `print` outside the CLI.
 `mypy` checks `src` and `tests`. Fix findings properly; for a false positive use a targeted `# noqa: CODE  (reason)` or
@@ -318,6 +352,8 @@ changes more than documentation.
   which rule failed. Merge, revert and fixup commits git writes pass unchanged.
 - **Never `--no-verify`, skip, silence or loosen a hook:** fix the cause. If a rule is wrong, change it in `pyproject.toml` in its
   own commit and say why.
-- All Python tooling is configured in `pyproject.toml` (ruff, mypy, pytest, import-linter, poe, commit-message). Do not add
-  `ruff.toml`, `mypy.ini`, `setup.cfg`, `pytest.ini`, `.coveragerc` or similar (a test fails). Other config files:
-  `.pre-commit-config.yaml` (hook wiring only), `.editorconfig`, `.gitmessage`.
+- All Python tooling is configured in `pyproject.toml` (ruff, mypy, pytest, import-linter, poe, commit-message, maturin), all
+  Rust tooling in `Cargo.toml` (lints, pinned cargo tools). Do not add `ruff.toml`, `mypy.ini`, `setup.cfg`, `pytest.ini`,
+  `.coveragerc`, `clippy.toml`, `.cargo/config.toml` or similar (a test fails). Other config files:
+  `.pre-commit-config.yaml` (hook wiring only), `.editorconfig`, `.gitmessage`, and, for Rust tools that cannot read
+  `Cargo.toml`, `rust-toolchain.toml`, `rustfmt.toml`, `deny.toml` (root only).
