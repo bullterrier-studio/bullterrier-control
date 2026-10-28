@@ -83,7 +83,7 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
 - **Parameter units say `hertz`, not `hz`**, as a Series' `Unit` does; the two vocabularies differ on purpose (what a
   measured series holds, what a parameter's number is in) and share names where they meet.
 - **Sources reach the library only through `plugin`.** A forbidden-import contract enforces it, so what an author sees is
-  what the built-ins use.
+  what the built-ins use. The one exception is the compiled `_native` package, the lowest layer (see "The Rust core").
 - **Test hooks are `registry.isolated()` and `registry.unregister`.** A registration is re-registerable only if it is a
   top-level function of a module (reloading); two functions made by one factory are different things.
 - **Programming errors are plain `ValueError` and `TypeError`.** A wrong registration, a wrong argument to `Rendered` or a
