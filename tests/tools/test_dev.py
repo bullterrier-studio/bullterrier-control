@@ -48,6 +48,9 @@ def test_a_new_source_shaper_or_operation_passes_its_tests_the_contract_and_the_
         "no:randomly",
         "-p",
         "no:cacheprovider",
+        # its temporary folders go under the copy: in the folder all pytest runs share, its cleanup races the other
+        # runs' (a leaked scandir iterator then raises a ResourceWarning, an error under the gate's settings)
+        f"--basetemp={checkout / 'basetemp'}",
         "tests/builtin/test_fresh_one.py",
         "tests/builtin/test_contract.py",
         "-k",

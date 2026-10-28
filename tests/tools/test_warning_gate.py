@@ -25,9 +25,12 @@ def poe_test(tmp_path: Path, probe: str, env: dict[str, str]) -> subprocess.Comp
     # the `simple` executor runs the task's command from this environment (the copy is no uv project of its own);
     # extra arguments go to pytest after the task's own: only the probe, in one process (`-n 0`), so it stays fast.
     # The child writes in its own console encoding (cp1252 on Windows, where the probe's `é` is one byte that is not
-    # UTF-8): undecodable bytes are replaced, so the output is always text; the verdicts are ASCII words
+    # UTF-8): undecodable bytes are replaced, so the output is always text; the verdicts are ASCII words. The probe's
+    # temporary folders go under tmp_path: in the folder all pytest runs share, its cleanup races the other runs'
+    # (pytest then leaks a scandir iterator, and the ResourceWarning, an error here, ends the run before its report)
+    probe_run = ["test_probe.py", "-n", "0", "-p", "no:randomly", f"--basetemp={tmp_path / 'basetemp'}"]
     return subprocess.run(
-        [sys.executable, "-m", "poethepoet", "-e", "simple", "test", "test_probe.py", "-n", "0", "-p", "no:randomly"],
+        [sys.executable, "-m", "poethepoet", "-e", "simple", "test", *probe_run],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -40,6 +43,7 @@ def poe_test(tmp_path: Path, probe: str, env: dict[str, str]) -> subprocess.Comp
 def test_a_clean_test_passes(tmp_path, uv_run_env):
     result = poe_test(tmp_path, CLEAN, uv_run_env)
     assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "basetemp").is_dir()  # the probe's temporary folders went under its own tmp_path
 
 
 @pytest.mark.parametrize(
@@ -50,4 +54,4 @@ def test_a_clean_test_passes(tmp_path, uv_run_env):
 def test_a_warning_fails_the_test_that_raised_it(tmp_path, uv_run_env, probe, warning):
     result = poe_test(tmp_path, probe, uv_run_env)
     assert result.returncode != 0
-    assert warning in result.stdout
+    assert warning in result.stdout, result.stdout + result.stderr
