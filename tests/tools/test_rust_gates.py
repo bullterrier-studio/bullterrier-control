@@ -240,11 +240,13 @@ STUB = "src/bullterrier_control/_native/_core.pyi"
 EXTENSION = "bullterrier_control._native._core"
 
 
+@pytest.mark.typecheck
 def test_the_stub_as_it_is_matches_the_extension(project_copy, copy_env):
     verdict = stubtest(project_copy("pyproject.toml"), copy_env)
     assert verdict.returncode == 0, verdict.report
 
 
+@pytest.mark.typecheck
 @pytest.mark.parametrize(
     ("old", "new", "named"),
     [
