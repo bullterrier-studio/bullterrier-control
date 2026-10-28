@@ -1,9 +1,8 @@
 """follow: smooth a signal with separate attack and release times: a level that swells on a hit and eases back."""
 
-import math
+from functools import partial
 
-import numpy as np
-from numpy.typing import NDArray
+from bullterrier_control._native import _core
 
 from ..plugin import Finite, Params, Rendered, Signal, param, shaper
 
@@ -52,22 +51,4 @@ def follow(signal: Signal, params: FollowParams) -> Signal:
     `slew` differs: it moves at a fixed speed, however far the input is, and arrives. The output stays between the
     lowest and highest value the input has had, to within float rounding.
     """
-    step = 1.0 / params.rate
-    # the share of the gap left after one step; a time of 0 leaves none, so the output is the input and nothing divides
-    left_up = math.exp(-step / params.attack) if params.attack > 0 else 0.0
-    left_down = math.exp(-step / params.release) if params.release > 0 else 0.0
-    # (kept, taken) per direction: the output is kept * output + taken * input, a mix that cannot overflow however far
-    # apart the two are, and with kept = 0 is the input exactly
-    rising = (left_up, 1.0 - left_up)
-    falling = (left_down, 1.0 - left_down)
-
-    def run(inputs: NDArray[np.float64]) -> NDArray[np.float64]:
-        outputs = np.empty_like(inputs)
-        level = float(inputs[0])
-        for index, target in enumerate(inputs.tolist()):
-            kept, taken = rising if target > level else falling
-            level = kept * level + taken * target
-            outputs[index] = level
-        return outputs
-
-    return Rendered(signal, rate=params.rate, run=run)
+    return Rendered(signal, rate=params.rate, run=partial(_core.render, "follow", params=params.model_dump()))
