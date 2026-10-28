@@ -134,7 +134,9 @@ If you know a library that already does all of this, we would like to hear of it
 
 ## Install
 
-Requires Python 3.12+. Pre-alpha, not yet on PyPI. From GitHub:
+Requires Python 3.12+. Pre-alpha, not yet on PyPI. The shapers are written in Rust, so installing from GitHub compiles
+the extension and needs a Rust toolchain from [rustup](https://rustup.rs/) (a distribution's `cargo` is too old); the
+first release will ship ready-built wheels. From GitHub:
 
 ```bash
 pip install git+https://github.com/bullterrier-studio/bullterrier-control.git
@@ -146,7 +148,7 @@ pip install git+https://github.com/bullterrier-studio/bullterrier-control.git
 pip install "bullterrier-control[plot] @ git+https://github.com/bullterrier-studio/bullterrier-control.git"
 ```
 
-From a checkout, with [uv](https://docs.astral.sh/uv/) (this installs matplotlib too):
+From a checkout, with [uv](https://docs.astral.sh/uv/) and rustup (this installs matplotlib too):
 
 ```bash
 git clone https://github.com/bullterrier-studio/bullterrier-control.git
@@ -308,7 +310,8 @@ and the core exist, with the sources `constant`, `keyframes`, `envelope`, `latch
 ## Development
 
 ```bash
-uv sync
+uv sync             # builds the Rust extension: needs rustup
+uv run poe setup    # once per clone: git hooks, commit template, cargo-shear and cargo-deny
 uv run poe check    # every gate: format, lint, dead code, types, tests
 ```
 
