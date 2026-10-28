@@ -115,6 +115,14 @@ def _two_extensions(dist: Path) -> None:
     wheel(dist, LINUX[0], {**TREE, LINUX[1]: b"one", "demo/_native/_core.cpython-312.so": b"two"})
 
 
+def _windows_wheel_with_a_linux_build(dist: Path) -> None:
+    wheel(dist, WINDOWS[0], {**TREE, LINUX[1]: b"built for Linux"})
+
+
+def _linux_wheel_with_a_windows_build(dist: Path) -> None:
+    wheel(dist, LINUX[0], {**TREE, WINDOWS[1]: b"built for Windows"})
+
+
 def _a_stray_file(dist: Path) -> None:
     wheel(dist, LINUX[0], {**TREE, LINUX[1]: b"built", "demo/notes.txt": "left behind\n"})
 
@@ -132,6 +140,11 @@ def _unrenderable_description(dist: Path) -> None:
 BAD = {  # fault -> what the report must name
     "a wheel without the extension": (_no_extension, ["holds 0 builds", "demo/_native/_core"]),
     "a wheel with two builds of it": (_two_extensions, ["holds 2 builds"]),
+    "a win_amd64 wheel holding a .so": (_windows_wheel_with_a_linux_build, ["win_amd64", "_core.abi3.so", ".pyd"]),
+    "a manylinux wheel holding a .pyd": (
+        _linux_wheel_with_a_windows_build,
+        ["manylinux_2_28_x86_64", "_core.pyd", ".so"],
+    ),
     "a file the package does not have (W102)": (_a_stray_file, ["W102", "demo/notes.txt"]),
     "code the wheel left out (W101)": (_code_left_out, ["W101", "demo/effects.py"]),
     "a description PyPI cannot render (twine)": (_unrenderable_description, ["long_description"]),

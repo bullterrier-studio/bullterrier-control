@@ -6,7 +6,9 @@ Run in the project (its pyproject.toml says where the package and its Rust exten
     python tools/check_dists.py FOLDER
 
 - twine (`check --strict`) on every file: the metadata, and the description as PyPI renders it.
-- Each wheel holds exactly one build of the extension (`[tool.maturin] module-name`), for its platform.
+- Each wheel holds exactly one build of the extension (`[tool.maturin] module-name`), and its file type fits the wheel's
+  platform tag (`.pyd` on Windows, `.so` elsewhere). A build for another CPU or OS of the same file type is not
+  detected: CI installs and runs each wheel on its own platform.
 - check-wheel-contents on each wheel against the package tree as an install from that wheel has it: the package
   (`[tool.check-wheel-contents] package`, its omissions applied) with that wheel's extension in place of any local
   build. A file in the wheel that the tree lacks (a template, a picture, a test) fails (W102), and so does code of the
@@ -54,6 +56,13 @@ def check(folder: Path) -> list[str]:
             ]
             if len(built) != 1:
                 problems.append(f"{wheel.name}: holds {len(built)} builds of the extension {extension}.*, not one")
+                continue
+            platform = wheel.stem.split("-")[-1]
+            suffix = ".pyd" if platform.startswith("win") else ".so"
+            if not built[0].endswith(suffix):
+                problems.append(
+                    f"{wheel.name}: the extension {built[0]} does not fit platform {platform} (a {suffix} file)"
+                )
                 continue
             library = archive.read(built[0])
         with tempfile.TemporaryDirectory() as scratch:
