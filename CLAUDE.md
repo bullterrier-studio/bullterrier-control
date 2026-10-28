@@ -34,7 +34,7 @@ uv run poe check                     # the whole gate, before you report or merg
 the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `noise`, the shapers `clip`, `slew`, `follow`,
 `gate`, `hold`, `remap` and `delay`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`,
 patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. The Rust core's foundation
-(R0) exists: `slew` and `follow` run in Rust. Next: R0b to R6, then C5, the first release (`docs/roadmap.md`).
+(R0) exists: `slew` and `follow` run in Rust. Next: R0b, R0.5, R1 to R6, then C5, the first release (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.
@@ -103,9 +103,9 @@ _native    home of the Rust extension `_native._core`, beside errors      (impor
 `@shaper`; its body is a `Rendered` whose `run` is `partial(_core.render, "<name>", params=params.model_dump())`
 (`from bullterrier_control._native import _core`). `_core.render(name, inputs, params)` is the one boundary: it takes the
 input sampled at the shaper's rate (1-D, C-contiguous float64, read in place), releases the GIL, and returns a new float64
-array of the same length. A wrong name, parameter set, dtype or shape is a `ValueError`. Only `builtin` imports
-`_native` (an exception in the "Built-in sources use only the author API" contract). Rust built-ins never refer to each
-other.
+array of the same length. A wrong name, parameter set, dtype or shape is a `ValueError`. `_native` is the lowest
+layer, so any layer may call it; built-ins may too, an explicit exception to the author-API door ("Built-in sources use
+only the author API" contract). Today only `slew` and `follow` call it. Rust built-ins never refer to each other.
 
 A source is `def name(params) -> Signal`, a shaper `def name(signal, params) -> Signal`, each registered with `@source` or
 `@shaper` and its `Params` model; packages are entry points of the group `bullterrier_control.sources`. Pipes-and-filters: a

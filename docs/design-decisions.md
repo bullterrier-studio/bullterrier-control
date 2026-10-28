@@ -380,11 +380,12 @@ separate ramp. Changed:
 - **A NaN in a shaper's input comes through the kernel.** A Rust kernel never panics on it; `sample` reports it as a
   `SignalError`, as for a Python recurrence. *Reason:* the signal contract is kept in one place (`sample`), not in each
   kernel.
-- **`builtin` may import `_native`; nothing else may.** `_native` is a package of its own at the bottom, beside `errors`,
-  which imports nothing from `bullterrier_control`: the import linter cannot read a compiled module but sees the package.
-  The contract "Built-in sources use only the author API" names `_native` as its one exception (it would otherwise reach
-  it only through `plugin`, which a third-party plugin must not need). *Reason:* a built-in runs its body in Rust; a plugin
-  author sees `plugin` only.
+- **`_native` is the lowest layer; built-ins may import it directly.** It is a package of its own at the bottom, beside
+  `errors`, and imports nothing from `bullterrier_control`: the import linter cannot read a compiled module but sees the
+  package. Any layer may therefore call it. The contract "Built-in sources use only the author API" leaves it out of its
+  forbidden list, an explicit exception to the author-API door (a built-in would otherwise reach it only through `plugin`).
+  *Reason:* a built-in runs its body in Rust, and `plugin` stays what a third-party author needs. Today only `slew` and
+  `follow` call it.
 - **Pydantic stays the one declaration of parameters until R2.** The Python shaper keeps its model, docstring and
   `@shaper`; its body hands `params.model_dump()` to the core. The Rust `Params` has the same fields, no defaults, and
   refuses unknown ones, so a struct that drifts from the model fails the first call naming the field. *Reason:* units,

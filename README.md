@@ -39,7 +39,7 @@ is up to you. Music software calls this automation or modulation, animation tool
   <tr>
     <td width="33%" valign="top"><b>Parameters declared once</b><br>Every parameter has a unit, a range and a description. <code>help(btc.lib.slew)</code> lists them, and a bad value fails with the field and the value.</td>
     <td width="33%" valign="top"><b>Plain data in and out</b><br>Measurements and curves travel as one JSON file, a bundle, and a look as a TOML patch, each with a JSON Schema for tools in other languages. <code>bt-control validate</code> checks both.</td>
-    <td width="33%" valign="top"><b>Small and extensible</b><br>Two dependencies, numpy and pydantic. Offline. A package of your own sources, shapers and operations plugs in as an entry point.</td>
+    <td width="33%" valign="top"><b>Small and extensible</b><br>Two Python dependencies, numpy and pydantic. Offline. A package of your own sources, shapers and operations plugs in as an entry point.</td>
   </tr>
 </table>
 
@@ -128,7 +128,7 @@ What it offers, each backed by tests:
 - **Tempo that changes.** A rate "per beat" follows a beat grid that speeds up or slows down.
 - **A look is a file.** A patch is plain text a person can read and a program can check before it runs
   (`bt-control list --json` describes every parameter: unit, range, whether it wraps).
-- **Small.** Two dependencies (numpy and pydantic), offline, nothing to run in the background.
+- **Small.** Two Python dependencies (numpy and pydantic), offline, nothing to run in the background.
 
 If you know a library that already does all of this, we would like to hear of it.
 
