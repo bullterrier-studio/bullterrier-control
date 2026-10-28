@@ -80,7 +80,8 @@ def main(argv: list[str] | None = None) -> int:
         if installed_version(tool) != version:
             command = install_command(tool, version)
             print(f"rust-tools: {' '.join(command)}")
-            if subprocess.run(command, check=False).returncode != 0:  # noqa: S603  cargo with a pinned tool name and version from Cargo.toml
+            program = shutil.which(command[0]) or command[0]  # the file found, so a Windows `cargo.cmd` launches too
+            if subprocess.run([program, *command[1:]], check=False).returncode != 0:  # noqa: S603  cargo with a pinned tool name and version from Cargo.toml
                 return 1
     return 0
 

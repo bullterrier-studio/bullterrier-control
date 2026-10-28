@@ -58,19 +58,30 @@ def poe(workspace: Path, task: str, env: dict[str, str]) -> Verdict:
     # the simple executor: the commands run in this environment, as under `uv run`, without making one for the copy
     command = [sys.executable, "-m", "poethepoet", "--executor", "simple", task]
     result = subprocess.run(command, cwd=workspace, env=env, capture_output=True, encoding="utf-8", check=False)
-    return Verdict(result.returncode, result.stdout + result.stderr)
+    # cargo prints paths with the platform's separator; the cases name them with `/`
+    return Verdict(result.returncode, (result.stdout + result.stderr).replace("\\", "/"))
+
+
+def read(path: Path) -> str:
+    """The text of `path` as its bytes spell it: no newline translation, so a write restores the file exactly."""
+    return path.read_bytes().decode("utf-8")
+
+
+def write(path: Path, text: str) -> None:
+    """`text` as UTF-8 with its newlines as they are: rustfmt wants Unix ones (`newline_style`) on every platform."""
+    path.write_bytes(text.encode("utf-8"))
 
 
 @pytest.fixture
 def edit(workspace, cargo_env) -> Iterator[Callable[[str, Callable[[str], str]], None]]:
     """`edit(relative, change)` rewrites one file of the copy with `change(text)` for one test; afterwards the copy is
     as it was, Cargo.lock included. A manifest edit updates the lock offline, as `cargo add` would."""
-    touched = {"Cargo.lock": (workspace / "Cargo.lock").read_text(encoding="utf-8")}
+    touched = {"Cargo.lock": read(workspace / "Cargo.lock")}
 
     def change(relative: str, rewrite: Callable[[str], str]) -> None:
         path = workspace / relative
-        touched.setdefault(relative, path.read_text(encoding="utf-8"))
-        path.write_text(rewrite(path.read_text(encoding="utf-8")), encoding="utf-8")
+        touched.setdefault(relative, read(path))
+        write(path, rewrite(read(path)))
         if relative.endswith("Cargo.toml"):
             subprocess.run(
                 ["cargo", "metadata", "--offline", "--format-version", "1"],
@@ -82,7 +93,7 @@ def edit(workspace, cargo_env) -> Iterator[Callable[[str, Callable[[str], str]],
 
     yield change
     for relative, text in touched.items():
-        (workspace / relative).write_text(text, encoding="utf-8")
+        write(workspace / relative, text)
 
 
 def appended(source: str) -> Callable[[str], str]:
