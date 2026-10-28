@@ -74,6 +74,7 @@ cache-keys = [
     { file = "pyproject.toml" },
     { file = "Cargo.toml" },
     { file = "Cargo.lock" },
+    { file = "rust-toolchain.toml" },
     { file = "crates/**/*.rs" },
     { file = "crates/**/Cargo.toml" },
 ]
