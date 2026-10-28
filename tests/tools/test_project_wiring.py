@@ -132,14 +132,35 @@ def test_every_stage_a_hook_runs_at_is_installed_by_a_bare_install(precommit):
 UV_RUN_OPTIONS = {"--no-sync"}
 
 
+@pytest.mark.parametrize(
+    ("entry", "refused"),
+    [
+        pytest.param("uv run ruff check", [], id="no option is fine"),
+        pytest.param("uv run --no-sync ruff check", [], id="--no-sync is allowed"),
+        pytest.param("uv run --frozen ruff check", ["--frozen"], id="--frozen is refused"),
+        pytest.param("uv run --no-sync --locked ruff check", ["--locked"], id="one refused option among allowed ones"),
+        pytest.param("uv run ruff check --frozen", [], id="an option after the program belongs to the program"),
+    ],
+)
+def test_a_hook_may_give_uv_run_only_the_allowed_options(entry, refused):
+    assert uv_run_options_refused(shlex.split(entry)) == refused
+
+
+def uv_run_options_refused(words: list[str]) -> list[str]:
+    """The options a hook's `uv run` gives that are not in `UV_RUN_OPTIONS`."""
+    options = itertools.takewhile(lambda word: word.startswith("-"), words[2:])
+    return [option for option in options if option not in UV_RUN_OPTIONS]
+
+
 def test_local_hooks_run_the_projects_pinned_tools_through_uv(precommit, pyproject):
     assert shutil.which("uv"), "uv must be installed to run the hooks"
     for hook_id, hook in hooks_by_id(precommit, "local").items():
         words = shlex.split(hook["entry"])
         assert hook["language"] == "system", hook_id
         assert words[:2] == ["uv", "run"], hook_id
+        refused = uv_run_options_refused(words)
+        assert not refused, f"{hook_id} gives uv run {refused}"
         options = list(itertools.takewhile(lambda word: word.startswith("-"), words[2:]))
-        assert set(options) <= UV_RUN_OPTIONS, f"{hook_id} gives uv run {options}"
         tokens = words[:2] + words[2 + len(options) :]  # uv run PROGRAM ARGS
         if tokens[2] == "python":  # the project's own script: it must exist
             assert (ROOT / tokens[3]).is_file(), f"{hook_id} runs {tokens[3]}, which does not exist"
