@@ -1,7 +1,7 @@
 """The build gate can fail: `poe build-check` builds the sdist and the wheel (maturin, with the Rust extension) and
 rejects a distribution PyPI would refuse to render (twine), and a wheel with a file that cannot be imported, with
-anything but the library's code (a picture, a test), or without the extension where the package has it
-(check-wheel-contents), and passes the project as it is.
+anything but the library's code (a picture, a test), or without its build of the extension where the package has it
+(tools/check_dists.py runs both tools), and passes the project as it is.
 
 An architecture test of the tooling: its subject is the `build-check` task in pyproject.toml, so it runs that task, the
 way `uv run poe check` does, in a copy of the project into which one fault at a time is written.
@@ -10,6 +10,7 @@ way `uv run poe check` does, in a copy of the project into which one fault at a 
 import shutil
 import subprocess
 import sys
+import tarfile
 import tomllib
 import zipfile
 from pathlib import Path
@@ -32,6 +33,8 @@ def rust_build_folder(tmp_path_factory) -> Path:
 @pytest.fixture
 def project(project_copy, uv_run_env, rust_build_folder) -> Path:
     copy = project_copy("pyproject.toml", "README.md", "LICENSE", *RUST_FILES)
+    (copy / "tools").mkdir()
+    shutil.copy(ROOT / "tools" / "check_dists.py", copy / "tools")
     shutil.copytree(ROOT / "crates", copy / "crates")
     uv_run_env["CARGO_TARGET_DIR"] = str(rust_build_folder)  # the copies share one build of the dependencies
     return copy
@@ -58,6 +61,9 @@ def test_the_project_as_it_is_builds_clean_distributions(project, uv_run_env):
     shipped = [entry for entry in zipfile.ZipFile(wheel).namelist() if entry.startswith(f"{native}_core.")]
     assert f"{native}_core.pyi" in shipped  # its types, for the package's own type checking
     assert len([entry for entry in shipped if entry.endswith((".so", ".pyd"))]) == 1, shipped
+    # built from the sdist with rustup, the extension is compiled by the toolchain CI tests, as the wheels are
+    with tarfile.open(sdist) as archive:
+        assert f"bullterrier_control-{version}/rust-toolchain.toml" in archive.getnames()
 
 
 def test_a_long_description_pypi_cannot_render_fails_the_gate(project, uv_run_env):

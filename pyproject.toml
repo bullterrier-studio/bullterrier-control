@@ -79,8 +79,9 @@ cache-keys = [
     { file = "crates/**/Cargo.toml" },
 ]
 
-# Read by `check-wheel-contents` in `poe build-check`: the wheel holds exactly src/bullterrier_control minus these, so a
-# shipped picture or test fails (W102), and so does library code left out of the wheel (W101).
+# Read by tools/check_dists.py (`poe build-check`, and CI's build of every platform's wheel): each wheel holds exactly
+# src/bullterrier_control minus these, plus its own build of the extension, so a shipped picture or test fails (W102),
+# and so does library code left out of the wheel (W101).
 [tool.check-wheel-contents]
 package = "src/bullterrier_control"
 package_omit = ["__pycache__", "*.pyc", ".*", "*.jpg", "*.jpeg", "*.png", "*.gif", "test_*.py"]
@@ -131,9 +132,9 @@ check-min-deps = { cmd = "uv run --isolated --python 3.12 --resolution lowest-di
 # The Rust crates in Cargo.lock are checked by cargo-deny against the RustSec advisory database, likewise online.
 audit = { sequence = ["uv export --frozen --all-extras --all-groups --no-emit-project --quiet --output-file dist/audit/requirements.txt", "pip-audit --requirement dist/audit/requirements.txt --disable-pip --require-hashes --progress-spinner off", "cargo deny --locked check advisories"], default_item_type = "cmd", help = "Check every locked dependency (Python and Rust) against known vulnerabilities (needs the network)" }
 fix = { sequence = ["ruff check --fix .", "ruff format .", "cargo fmt --all"], default_item_type = "cmd", help = "Apply every automatic lint and format fix" }
-# The sdist and wheel as PyPI would get them, built into dist/check (git-ignored, emptied first) and checked by twine
-# (metadata, rendered README; the quoted glob is twine's to expand) and check-wheel-contents (stray or unimportable files)
-build-check = { sequence = ["uv build --quiet --clear --no-create-gitignore --out-dir dist/check", "twine check --strict 'dist/check/*'", "check-wheel-contents dist/check"], default_item_type = "cmd", help = "Build the sdist and wheel and check what would be uploaded" }
+# The sdist and wheel as PyPI would get them, built into dist/check (git-ignored, emptied first) and checked as CI checks
+# every platform's: tools/check_dists.py (twine, one build of the extension, check-wheel-contents)
+build-check = { sequence = ["uv build --quiet --clear --no-create-gitignore --out-dir dist/check", "uv run python tools/check_dists.py dist/check"], default_item_type = "cmd", help = "Build the sdist and wheel and check what would be uploaded" }
 # The GitHub workflows and dependabot.yml: actionlint (syntax, expressions, job wiring; it also runs shellcheck on the
 # `run:` scripts when shellcheck is installed, as on GitHub's runners) and zizmor (unpinned actions, template
 # injection, persisted credentials, over-broad permissions). `uv run`, because the actionlint-py distribution names
