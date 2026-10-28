@@ -133,10 +133,12 @@ def _checked(holder: type[ValidatedModel], field: str, value: object) -> Any:
 
 
 class Input(NamedTuple):
-    """One kind of input: what `help()` says about it, and how a value is checked."""
+    """One kind of input: what `help()` says about it, how a value is checked, and the type text (`annotation`) a stub
+    writes for its keyword."""
 
     doc: str
     check: Callable[[object], object]
+    annotation: str
 
 
 INPUTS: Mapping[str, Input] = MappingProxyType(
@@ -148,6 +150,7 @@ INPUTS: Mapping[str, Input] = MappingProxyType(
                 f" {', '.join(EASES)}, or cubic-bezier(x1, y1, x2, y2)."
             ),
             check=partial(_checked, _Points, "points"),
+            annotation="Sequence[Keyframe | Mapping[str, object]]",
         ),
         "events": Input(
             doc=(
@@ -155,6 +158,7 @@ INPUTS: Mapping[str, Input] = MappingProxyType(
                 " time order)."
             ),
             check=partial(_checked, _Events, "events"),
+            annotation="Sequence[Event | Mapping[str, object]]",
         ),
         "grid": Input(
             doc=(
@@ -162,10 +166,12 @@ INPUTS: Mapping[str, Input] = MappingProxyType(
                 " at least two). Converts seconds to beats, so a source can follow tempo changes."
             ),
             check=partial(_checked, _Grid, "grid"),
+            annotation="Grid | Mapping[str, object]",
         ),
         "values": Input(
             doc="Values: a non-empty list of numbers, in the order a source cycles through them.",
             check=partial(_checked, _Values, "values"),
+            annotation="Sequence[float]",
         ),
         "series": Input(
             doc=(
@@ -173,6 +179,7 @@ INPUTS: Mapping[str, Input] = MappingProxyType(
                 " second from a start time in seconds)."
             ),
             check=partial(_checked, _Series, "series"),
+            annotation="Series | Mapping[str, object]",
         ),
     }
 )

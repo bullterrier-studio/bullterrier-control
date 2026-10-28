@@ -45,7 +45,7 @@ from .errors import BullterrierControlError, ParameterError, UnknownNameError
 from .formats import Event, Series
 from .inputs import INPUTS
 from .params import Params
-from .signal import Signal
+from .signal import Signal, connect_shapers
 
 __all__ = [
     "NAME_PATTERN",
@@ -325,6 +325,18 @@ def get(name: str) -> Registered[Any, Any]:
         raise UnknownNameError(
             f"unknown source, shaper or operation {name!r}; available: {', '.join(sorted(_TABLE))}"
         ) from None
+
+
+def _shaper_named(name: str) -> Registered[Any, Signal]:
+    """The shaper `name`, which `Signal` finds shapers by (`get`'s error for an unknown name; `TypeError` if it is not a
+    shaper)."""
+    found = get(name)
+    if found.kind != "shaper":
+        raise TypeError(f"{name!r} is a {found.kind}, not a shaper")
+    return found
+
+
+connect_shapers(_shaper_named)
 
 
 def all_registered() -> dict[str, Registered[Any, Any]]:

@@ -1,3 +1,5 @@
+import ast
+
 import pytest
 
 from bullterrier_control import Event, Grid, ParameterError, Series, Unit, registry
@@ -373,3 +375,10 @@ def test_matching_keeps_the_events_with_the_label_in_their_order(label, times):
 
 def test_matching_keeps_every_other_field_of_the_events():
     assert matching(LABELLED, "kick")[1] == Event(t=1.1, label="kick", strength=0.4)
+
+
+@pytest.mark.parametrize("name", INPUTS.keys())
+def test_every_input_has_an_annotation_that_is_a_type_expression(name):
+    annotation = INPUTS[name].annotation
+    assert annotation.strip()
+    ast.parse(annotation, mode="eval")

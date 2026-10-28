@@ -3,7 +3,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from bullterrier_control import FormatError, Series, SignalError, Unit
+from bullterrier_control import FormatError, Series, SignalError, Unit, lib
 from bullterrier_control.signal import Constant, Signal, from_series, from_values, maximum, minimum
 
 
@@ -290,3 +290,30 @@ def test_an_array_is_not_an_operand_and_never_makes_an_array_of_signals(combine)
 def test_a_number_too_large_to_be_a_float_is_refused_when_combined():
     with pytest.raises(SignalError, match="finite"):
         RAMP * 10**400
+
+
+def test_pipe_with_a_registered_shaper_gives_what_calling_it_gives():
+    piped = RAMP.pipe(lib.clip, low=0.25, high=0.75)
+    assert values_of(piped) == pytest.approx([0.25, 0.5, 0.75, 0.25, 0.25])
+    assert values_of(piped) == values_of(lib.clip(RAMP, low=0.25, high=0.75))
+
+
+def test_pipe_with_a_plain_function_hands_it_the_signal_and_the_keywords():
+    def doubled_plus(signal, *, offset):
+        return signal * 2 + offset
+
+    assert values_of(RAMP.pipe(doubled_plus, offset=1)) == pytest.approx([1.0, 2.0, 3.0, 1.0, 1.0])
+
+
+def test_pipe_results_can_be_piped_again():
+    assert values_of(RAMP.pipe(lib.clip, high=0.5).pipe(lib.clip, low=0.25)) == pytest.approx(
+        [0.25, 0.5, 0.5, 0.25, 0.25]
+    )
+
+
+def test_pipe_refuses_a_callable_that_does_not_return_a_signal_naming_it():
+    def gives_a_number(signal):
+        return 1.0
+
+    with pytest.raises(TypeError, match="gives_a_number"):
+        RAMP.pipe(gives_a_number)

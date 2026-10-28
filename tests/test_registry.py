@@ -787,3 +787,35 @@ def test_an_optional_input_is_described_as_not_required(throwaway_registry):
         return signal
 
     assert chase.description()["inputs"]["points"]["required"] is False
+
+
+def test_a_shaper_registered_in_isolation_can_be_piped_and_is_gone_after():
+    with registry.isolated():
+
+        @shaper(params=Level)
+        def scaled(signal: Signal, params: Level) -> Signal:
+            return signal * params.value
+
+        assert Constant(4.0).pipe(registry.get("scaled"), value=0.5).sample(0.0).tolist() == 2.0
+    with pytest.raises(UnknownNameError, match="scaled"):
+        registry.get("scaled")
+
+
+def test_the_chain_lookup_finds_shapers_in_the_live_registry_only():
+    """Architecture test: it uses `_apply`, the entry that generated chain methods call, because no public name
+    reaches a throwaway shaper by name."""
+    with registry.isolated():
+
+        @shaper(params=Level)
+        def scaled(signal: Signal, params: Level) -> Signal:
+            return signal * params.value
+
+        @source(params=Level)
+        def level(params: Level) -> Signal:
+            return Constant(params.value)
+
+        assert Constant(4.0)._apply("scaled", value=0.25).sample(0.0).tolist() == 1.0  # noqa: SLF001  (generated-code entry)
+        with pytest.raises(TypeError, match="not a shaper"):
+            Constant(4.0)._apply("level")  # noqa: SLF001  (generated-code entry)
+    with pytest.raises(UnknownNameError, match="scaled"):
+        Constant(4.0)._apply("scaled")  # noqa: SLF001  (generated-code entry)

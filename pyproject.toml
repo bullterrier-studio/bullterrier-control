@@ -298,6 +298,8 @@ ignore_decorators = [
 ]
 ignore_names = [
     "model_config",  # pydantic reads each model's settings from this class attribute
+    "pipe",  # `Signal.pipe`: the public way to shape a signal with any shaper, called by users, not in the package
+    "_apply",  # `Signal._apply`: called by the generated chain methods (`_chain.py`, next task)
     "sample",  # `Signal.sample`: the public way to read a signal, called by users and other packages, not in the package yet
     "summary",  # `Registered.summary`: the first sentence of a source's docstring, for listings; not read in the package yet
     "__getattr__",  # module-level hooks (PEP 562) of `lib`: Python calls them for `lib.<name>` and `dir(lib)`

@@ -12,6 +12,9 @@ Promises:
   same values, whatever was read before.
 - A signal is written by implementing `compute(times)`, which is only ever called with finite times from 0 up, as a
   float64 array, and returns values of the same shape.
+- `signal.pipe(shaper, **params)` is `shaper(signal, **params)` and must give a signal (`TypeError` naming the
+  callable if not): any registered shaper (`lib.clip`) or plain function shapes a signal, and the result can be piped
+  again.
 - Signals combine with `+`, `-`, `*` and negation (a number may stand for a constant signal) and with `minimum` and
   `maximum`; the result is a signal that can be combined again. A crossfade is `a * (1 - m) + b * m`.
 """
@@ -19,6 +22,7 @@ Promises:
 import numbers
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Literal, final
 
 import numpy as np
@@ -29,10 +33,26 @@ from .formats.series import Series
 from .formats.units import Unit
 from .validated import plain
 
-__all__ = ["Constant", "Signal", "from_series", "from_values", "maximum", "minimum"]
+__all__ = ["Constant", "Signal", "connect_shapers", "from_series", "from_values", "maximum", "minimum"]
 
 # float rounding of (time - start) * rate: a time that is a sample time to within this share of a sample is that sample
 _ROUNDING = 1e-9
+
+
+@dataclass
+class _Shapers:
+    """The lookup that finds a shaper by name, connected by the registry (this module cannot import it)."""
+
+    find: Callable[[str], Callable[..., "Signal"]] | None = None
+
+
+_SHAPERS = _Shapers()
+
+
+def connect_shapers(lookup: Callable[[str], Callable[..., "Signal"]]) -> None:
+    """Connect the function that returns the registered shaper called a name (raising for an unknown name or a name
+    that is not a shaper). Called once by `bullterrier_control.registry` when it is imported; nothing else calls it."""
+    _SHAPERS.find = lookup
 
 
 class Signal(ABC):
@@ -61,6 +81,21 @@ class Signal(ABC):
     @abstractmethod
     def compute(self, times: NDArray[np.float64]) -> NDArray[np.float64]:
         """The values at `times`: finite, from 0 up, float64, any shape. Return an array of the same shape."""
+
+    def pipe(self, shaper: Callable[..., "Signal"], /, **params: object) -> "Signal":
+        """`shaper(self, **params)`: shape this signal with a registered shaper (`lib.clip`) or any function that takes
+        a signal and keywords and returns a signal. A result that is not a signal is a `TypeError` naming `shaper`."""
+        shaped = shaper(self, **params)
+        if not isinstance(shaped, Signal):
+            raise TypeError(f"{getattr(shaper, '__name__', shaper)!r} gave {type(shaped).__name__}, not a Signal")
+        return shaped
+
+    def _apply(self, name: str, /, **params: object) -> "Signal":
+        """The registered shaper `name` applied to this signal with `params`. Only the generated chain methods call it
+        (hence the underscore); `pipe` is the public way."""
+        if _SHAPERS.find is None:
+            raise RuntimeError("no shapers are connected: import bullterrier_control (its registry connects them)")
+        return _SHAPERS.find(name)(self, **params)
 
     def __add__(self, other: "Signal | float") -> "Signal":
         return _combined(np.add, self, other)
