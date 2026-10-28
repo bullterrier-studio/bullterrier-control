@@ -2,7 +2,7 @@
 
 Small batches of work, in order. Each batch gets its own plan before work starts, ends merged into `main` with the whole
 gate green and an independent review done, and leaves the worked examples it names passing. Sizes: **S** about one
-working session, **M** two or three. Decisions behind the batches: [design-decisions.md](design-decisions.md).
+working session, **M** two or three, **L** four or more. Decisions behind the batches: [design-decisions.md](design-decisions.md).
 
 | # | Batch | Size | State |
 |---|---|---|---|
@@ -17,7 +17,15 @@ working session, **M** two or three. Decisions behind the batches: [design-decis
 | C3a | Causal shapers; the scenes example | M | done |
 | C3b | Operations on events and series | M | done |
 | C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | done |
-| C5 | First release | S | |
+| R0 | Rust core: workspace, gates, `slew` and `follow` in Rust | M | |
+| R0b | Rust core: CI and a wheel per platform | S | |
+| R1 | Rust core: the formats | M | |
+| R2 | Rust core: parameters | M | |
+| R3 | Rust core: the signal graph | L | |
+| R4 | Rust core: registry, inputs, `lib`, patches | M | |
+| R5 | Rust core: the built-in sources, shapers and operations | L | |
+| R6 | Rust core: cleanup, the public crate | S | |
+| C5 | First release (after R6: it ships the Rust core) | S | |
 
 C2a went first: it added the inputs mechanism every later source uses. C2b, C2c and C2d then depend only on C2a and can
 run in any order. `bullterrier-audio` can run in parallel: the two share only the formats.
@@ -131,6 +139,30 @@ it becomes a signal. (`slew` and `clip` shipped in C1.)
 - README example that runs.
 - Parameter descriptions keep one shape across the ecosystem: if `bullterrier-image` marks parameters that wrap (a
   `cyclic` flag for angles), `list --json` carries it too (`lfo.phase` wraps).
+
+## R0 to R6 Rust core
+
+The package becomes a Rust crate, `bullterrier-control`, with this Python package as its interface (as polars is): for
+speed, threads without the GIL, small memory, reading signals from a Rust video renderer without Python, and a core
+that builds for WebAssembly. Foundation first, then the engine, the built-ins last, each ported once and its Python
+body deleted. Until a built-in is ported, the engine calls its Python body, the path third-party Python plugins keep.
+The Python suite runs unchanged against the Rust core throughout.
+
+- **R0 Foundation.** Cargo workspace (`crates/core`: pure Rust, no Python, builds for wasm32; `crates/python`: the
+  bindings), maturin as build backend, Rust gates as strict as the Python ones (each proven by a known-bad input),
+  `slew` and `follow` rendered in Rust. Done when their tests pass unchanged and the gate is green.
+- **R0b CI and wheels.** Every workflow builds the core; a wheel per platform (Linux x86_64 and aarch64, macOS arm64
+  and x86_64, Windows x86_64), each installed and run before release.
+- **R1 Formats.** Series, Event, Grid, Bundle in Rust; the schema generated from Rust, its meaning unchanged.
+- **R2 Parameters.** Declared once in Rust (unit, range, doc, `advanced`, `cyclic`); Python models, `help()` and
+  `list --json` built from that declaration.
+- **R3 Signal graph.** `Signal`, arithmetic, `from_series`, `Rendered`, `sample` and the numeric helpers in Rust; a
+  Python `Signal` is a handle; Python `compute` and `Rendered(run=...)` stay possible for plugins. `poe new-source`
+  writes a Rust-backed shaper.
+- **R4 Registry and patches.** Registry, inputs, `lib` and the patch in Rust: a patch is loaded and sampled with no
+  Python.
+- **R5 Built-ins.** Every other source, shaper and operation ported.
+- **R6 Cleanup.** No Python duplicate left, crate documentation, final speed and memory measured against R0's baseline.
 
 ## C5 First release
 

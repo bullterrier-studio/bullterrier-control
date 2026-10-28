@@ -32,8 +32,8 @@ uv run poe check                     # the whole gate, before you report or merg
 **State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`), inputs (`points`, `events`, `grid`, `values`, `series`), easing, cadence, hashing and scaling, and
 the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `noise`, the shapers `clip`, `slew`, `follow`,
 `gate`, `hold`, `remap` and `delay`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`,
-patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. Next: batch C5, the
-first release (`docs/roadmap.md`).
+patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. Next: the Rust core,
+batches R0 to R6, then C5, the first release (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.
