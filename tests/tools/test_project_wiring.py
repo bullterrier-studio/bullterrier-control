@@ -6,6 +6,7 @@ detector the rules use is shown a known-bad and a known-good input.
 """
 
 import itertools
+import json
 import re
 import shlex
 import shutil
@@ -201,3 +202,61 @@ def test_every_poe_command_the_documentation_mentions_is_a_task(pyproject, docum
     mentioned = set(re.findall(r"uv run poe ([a-z][a-z-]*)", (ROOT / document).read_text(encoding="utf-8")))
     assert mentioned, f"{document} should mention at least one poe task"
     assert mentioned <= pyproject["tool"]["poe"]["tasks"].keys()
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# names: the Rust crate a Rust user depends on is the Python package's twin
+
+
+def core_crate_names(workspace: Path) -> tuple[str, str]:
+    """The core crate's package and library names in the Cargo workspace at `workspace`, as cargo reports them (so a
+    library name left to cargo's default counts as what cargo makes of it)."""
+    result = subprocess.run(
+        ["cargo", "metadata", "--no-deps", "--offline", "--format-version", "1"],
+        cwd=workspace,
+        capture_output=True,
+        encoding="utf-8",
+        check=True,
+    )
+    core = (workspace / "crates" / "core" / "Cargo.toml").resolve()
+    [package] = [package for package in json.loads(result.stdout)["packages"] if Path(package["manifest_path"]) == core]
+    [library] = [target["name"] for target in package["targets"] if "lib" in target["kind"]]
+    return package["name"], library
+
+
+def public_names(pyproject) -> tuple[str, str]:
+    """The package's name on PyPI and the name it is imported by."""
+    return pyproject["project"]["name"], pyproject["tool"]["maturin"]["module-name"].split(".")[0]
+
+
+def test_the_core_crate_is_named_as_the_package_is_on_pypi_and_imported(pyproject):
+    """Naming rule: crates.io and PyPI carry the same name, and the crate's library the import name."""
+    assert core_crate_names(ROOT) == public_names(pyproject)
+
+
+CORE = "crates/core/Cargo.toml"
+RENAMED = {  # a way the core crate can drift from the public names -> its edits: (file, old text, new text)
+    # the library keeps the import name here, so only the package's name differs
+    "the package renamed (R0's name)": [
+        (
+            "Cargo.toml",
+            'bullterrier-control = { path = "crates/core" }',
+            'bullterrier-control-core = { path = "crates/core" }',
+        ),
+        (CORE, 'name = "bullterrier-control"\n', 'name = "bullterrier-control-core"\n'),
+        ("crates/python/Cargo.toml", "bullterrier-control.workspace", "bullterrier-control-core.workspace"),
+    ],
+    "the library renamed": [(CORE, 'name = "bullterrier_control"\n', 'name = "btc_core"\n')],
+}
+
+
+@pytest.mark.parametrize("edits", RENAMED.values(), ids=RENAMED.keys())
+def test_the_naming_rule_catches_a_core_crate_named_otherwise(pyproject, tmp_path, edits):
+    for name in ("Cargo.toml", "Cargo.lock"):
+        shutil.copy(ROOT / name, tmp_path)
+    shutil.copytree(ROOT / "crates", tmp_path / "crates", ignore=shutil.ignore_patterns("target"))
+    for relative, old, new in edits:
+        text = (tmp_path / relative).read_text(encoding="utf-8")
+        assert old in text
+        (tmp_path / relative).write_text(text.replace(old, new), encoding="utf-8")
+    assert core_crate_names(tmp_path) != public_names(pyproject)
