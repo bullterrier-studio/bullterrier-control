@@ -4,7 +4,7 @@
 use numpy::{PyArray1, PyArrayDescrMethods, PyArrayMethods, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyFloat, PyInt, PyList, PyMapping, PyString, PyTuple};
+use pyo3::types::{PyBool, PyFloat, PyInt, PyList, PyMapping, PyString};
 use serde_json::Value;
 
 /// The shapers of bullterrier-control's Rust core, run on numpy series.
@@ -72,14 +72,14 @@ fn series<'a, 'py>(inputs: &'a Bound<'py, PyAny>) -> PyResult<&'a Bound<'py, PyA
 
 /// `value` (parameters as Pydantic's `model_dump` gives them) as JSON, for the core to read with serde.
 fn to_json(value: &Bound<'_, PyAny>) -> PyResult<Value> {
-    if value.is_none() {
-        Ok(Value::Null)
-    } else if let Ok(flag) = value.cast::<PyBool>() {
+    if let Ok(flag) = value.cast::<PyBool>() {
         Ok(Value::Bool(flag.is_true()))
     } else if let Ok(whole) = value.cast::<PyInt>() {
-        let number = whole
-            .extract::<i64>()
-            .map_err(|_| PyValueError::new_err(format!("a parameter is out of range for 64 bits: {whole}")))?;
+        let number = whole.extract::<i64>().map_err(|_| {
+            PyValueError::new_err(format!(
+                "a parameter is out of range for a signed 64-bit integer: {whole}"
+            ))
+        })?;
         Ok(Value::from(number))
     } else if let Ok(real) = value.cast::<PyFloat>() {
         serde_json::Number::from_f64(real.value())
@@ -89,12 +89,6 @@ fn to_json(value: &Bound<'_, PyAny>) -> PyResult<Value> {
         Ok(Value::String(text.to_str()?.to_owned()))
     } else if let Ok(list) = value.cast::<PyList>() {
         list.iter()
-            .map(|item| to_json(&item))
-            .collect::<PyResult<_>>()
-            .map(Value::Array)
-    } else if let Ok(tuple) = value.cast::<PyTuple>() {
-        tuple
-            .iter()
             .map(|item| to_json(&item))
             .collect::<PyResult<_>>()
             .map(Value::Array)
