@@ -13,12 +13,14 @@ import only the layers below it:
                when a time counts as a bound
     formats    bundle > series | event | grid > model | units (each format builds on the base and the units only)
     validated  the base of every validated model and its strict value types
-    errors     the exceptions; import nothing from bullterrier_control, so every layer may raise them
+    errors | _native   the exceptions | the home of the Rust extension (`_native._core`); both import nothing from
+               bullterrier_control, so every layer may use them
 
-These are architecture tests: their subject is the package's structure (its import graph and its source files), so,
-unlike behaviour tests, they read source (the linter).
+These are architecture tests: their subject is the package's structure (its import graph, its source files and the
+modules a fresh import loads), so, unlike behaviour tests, they read source (the linter).
 """
 
+import json
 import os
 import re
 import shutil
@@ -36,7 +38,7 @@ LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-im
 
 LAYERS = (
     "Layers: app > builtin | lib | patch | plotting > plugin > registry > rendered | inputs > signal | params | easing"
-    " | cadence | hashing | scaling | rounding > formats > validated > errors"
+    " | cadence | hashing | scaling | rounding > formats > validated > errors | _native"
 )
 SOURCES_APART = "Built-in sources never import each other"
 SOURCES_DOOR = "Built-in sources use only the author API"
@@ -218,6 +220,18 @@ FORBIDDEN = {
         FORMATS,
     ),
     "cli to main": ("cli.py", "import bullterrier_control.__main__", "bullterrier_control.cli", LAYERS),
+    "the Rust extension's home to signal": (
+        "_native/__init__.py",
+        "import bullterrier_control.signal",
+        "bullterrier_control._native",
+        LAYERS,
+    ),
+    "errors to the Rust extension's home": (
+        "errors.py",
+        "from bullterrier_control._native import _core",
+        "bullterrier_control.errors",
+        LAYERS,
+    ),
 }
 
 
@@ -252,6 +266,8 @@ ALLOWED = {
     "event to units": ("formats/event.py", "import bullterrier_control.formats.units"),
     "bundle to grid": ("formats/bundle.py", "import bullterrier_control.formats.grid"),
     "grid to model": ("formats/grid.py", "import bullterrier_control.formats.model"),
+    "rendered to the Rust extension": ("rendered.py", "from bullterrier_control._native import _core"),
+    "a source to the Rust extension": ("builtin/slew.py", "from bullterrier_control._native import _core"),
 }
 
 
@@ -259,3 +275,37 @@ ALLOWED = {
 def test_a_layer_may_import_the_layers_below_it(module, line, tmp_path):
     result = lint_a_copy_with(tmp_path, module, line)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+# --- the Rust extension --------------------------------------------------------------------------------------------
+
+
+def package_modules_loaded_by(module: str) -> list[str]:
+    """The modules of bullterrier_control a fresh interpreter has loaded after importing `module`, besides `module` and
+    the packages holding it. The package's own `__init__`, which imports nearly everything, is replaced by an empty
+    package of the same folder, so only what `module` itself imports shows."""
+    code = (
+        "import importlib.util, json, sys, types\n"
+        "package = types.ModuleType('bullterrier_control')\n"
+        "package.__path__ = list(importlib.util.find_spec('bullterrier_control').submodule_search_locations)\n"
+        "sys.modules['bullterrier_control'] = package\n"
+        f"import {module}\n"
+        f"loaded = [m for m in sys.modules if m.startswith('bullterrier_control.') and not {module!r}.startswith(m)]\n"
+        "json.dump(sorted(loaded), sys.stdout)\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, encoding="utf-8", check=False)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+@pytest.mark.parametrize(
+    ("module", "leaf"),
+    [
+        pytest.param("bullterrier_control._native._core", True, id="the extension is a leaf"),
+        pytest.param("bullterrier_control.rendered", False, id="a module that imports others is not"),
+    ],
+)
+def test_the_rust_extension_imports_nothing_from_the_package(module, leaf):
+    """The import linter checks the extension's home (`_native`) but cannot read the compiled module in it: importing
+    the module shows that it loads nothing else of the package either."""
+    assert (package_modules_loaded_by(module) == []) == leaf

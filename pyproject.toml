@@ -55,9 +55,28 @@ plot = [
     "matplotlib>=3.8",
 ]
 
+# maturin builds the Rust extension `bullterrier_control._native._core` (crates/python) and packs it with the Python code
+# of src/
 [build-system]
-requires = ["uv_build>=0.13.0,<0.14.0"]
-build-backend = "uv_build"
+requires = ["maturin>=1.15,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+manifest-path = "crates/python/Cargo.toml"
+python-source = "src"
+module-name = "bullterrier_control._native._core"
+# the sdist builds the extension on its own: it needs the pinned toolchain too
+include = [{ path = "rust-toolchain.toml", format = "sdist" }]
+
+# `uv sync` and `uv run` rebuild the extension when one of these changes (by default uv looks at pyproject.toml only)
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "crates/**/*.rs" },
+    { file = "crates/**/Cargo.toml" },
+]
 
 # Read by `check-wheel-contents` in `poe build-check`: the wheel holds exactly src/bullterrier_control minus these, so a
 # shipped picture or test fails (W102), and so does library code left out of the wheel (W101).
@@ -182,6 +201,7 @@ select = [
     "PLW1514",  # text files opened without `encoding=` use the locale's, which breaks non-ASCII names on Windows (preview)
     "BLE",  # `except Exception` hides bugs; catch what can happen, or say why everything must be caught
     "PTH",  # pathlib, not os.path / open() / glob: one way to handle paths
+    "PYI",  # type stubs (the Rust extension's, `_core.pyi`) written as stubs: no bodies, no docstrings
 ]
 # Deliberately NOT enabled: TRY003 / EM (message-style noise); the docstring style rules D2xx / D4xx beyond D419 (we
 # enforce presence, not formatting); PLR2004 magic numbers and PLR0913 argument counts (numeric code and
@@ -301,7 +321,7 @@ DEP004 = ["packaging"]
 root_package = "bullterrier_control"
 
 [[tool.importlinter.contracts]]
-name = "Layers: app > builtin | lib | patch | plotting > plugin > registry > rendered | inputs > signal | params | easing | cadence | hashing | scaling | rounding > formats > validated > errors"
+name = "Layers: app > builtin | lib | patch | plotting > plugin > registry > rendered | inputs > signal | params | easing | cadence | hashing | scaling | rounding > formats > validated > errors | _native"
 type = "layers"
 containers = ["bullterrier_control"]
 exhaustive = true  # a new top-level module must be placed in a layer here
@@ -315,7 +335,9 @@ layers = [
     "signal | params | easing | cadence | hashing | scaling | rounding",  # what a signal is | parameters | easing curves | cycle positions | seeded hash | range mapping | decisions at a time boundary
     "formats",  # the plain-data formats
     "validated",  # the base of every validated model and its strict value types
-    "errors",  # the exceptions: they import nothing, so every layer may raise them
+    # the exceptions, and the home of the Rust extension (`_native._core`): they import nothing, so every layer may use
+    # them
+    "errors | _native",
 ]
 
 [[tool.importlinter.contracts]]

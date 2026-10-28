@@ -1,0 +1,15 @@
+[package]
+name = "bullterrier-control"
+description = "The numeric core of bullterrier-control: its shapers and the primitives they share, in pure Rust."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "bullterrier_control"
+
+[lints]
+workspace = true

@@ -1,0 +1,7 @@
+# The Rust toolchain of this repository: rustup installs it on the first cargo command in the checkout.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+# the core builds for the browser, too (the gate checks it): rustup installs the target with the toolchain
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

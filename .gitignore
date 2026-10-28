@@ -15,3 +15,8 @@ dist/
 
 # notes about this machine: where earlier experiments live (paths outside the repository), for agents to reuse
 .local/
+
+# Rust: the build folder, and the extension an editable install (`uv sync`) builds into the source tree
+target/
+src/bullterrier_control/_native/_core*.so
+src/bullterrier_control/_native/_core*.pyd
