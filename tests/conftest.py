@@ -1,10 +1,11 @@
-"""What the tests share: the project's root, a scratch copy of it for the tooling tests, and the environment `uv run`
-gives a command. A helper one file uses stays in that file."""
+"""What the tests share: the project's root, a scratch copy of it for the tooling tests, the environment `uv run`
+gives a command, and the blanking of Rust comments and strings. A helper one file uses stays in that file."""
 
 import os
 import re
 import shutil
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,21 @@ def project_copy(tmp_path):
 def uv_run_env() -> dict[str, str]:
     """The environment a command gets under `uv run`: this one, with its executables first on PATH."""
     return {**os.environ, "PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")])}
+
+
+# Rust comments, strings and character literals, in the order a Rust lexer meets them (a lifetime `'a` is none of them)
+_RUST_NOISE = re.compile(r'//[^\n]*|/\*.*?\*/|r(#*)".*?"\1|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])\'', re.DOTALL)
+
+
+@pytest.fixture
+def rust_code() -> Callable[[str], str]:
+    """`rust_code(source)`: the Rust `source` with its comments, strings and character literals blanked out (each of
+    their characters but a newline becomes a space): only code is left, at the lines and columns of the source."""
+
+    def blank(source: str) -> str:
+        return _RUST_NOISE.sub(lambda match: re.sub(r"[^\n]", " ", match.group()), source)
+
+    return blank
 
 
 # property tests are deterministic (the same cases on every run, so a failure reproduces) and never time out

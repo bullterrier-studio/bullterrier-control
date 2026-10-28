@@ -127,8 +127,9 @@ check-min-deps = { cmd = "uv run --isolated --python 3.12 --resolution lowest-di
 # Not part of `check`: it asks the PyPI vulnerability database about every locked package (runtime, extras and dev
 # tools, pinned by hash), so it needs the network and its verdict changes as advisories are published. For CI and
 # before a release; an advisory with no fixed release is ignored with `--ignore-vuln ID` and listed in SECURITY.md.
-audit = { sequence = ["uv export --frozen --all-extras --all-groups --no-emit-project --quiet --output-file dist/audit/requirements.txt", "pip-audit --requirement dist/audit/requirements.txt --disable-pip --require-hashes --progress-spinner off"], default_item_type = "cmd", help = "Check every locked dependency against known vulnerabilities (needs the network)" }
-fix = { sequence = ["ruff check --fix .", "ruff format ."], default_item_type = "cmd", help = "Apply every automatic lint and format fix" }
+# The Rust crates in Cargo.lock are checked by cargo-deny against the RustSec advisory database, likewise online.
+audit = { sequence = ["uv export --frozen --all-extras --all-groups --no-emit-project --quiet --output-file dist/audit/requirements.txt", "pip-audit --requirement dist/audit/requirements.txt --disable-pip --require-hashes --progress-spinner off", "cargo deny --locked check advisories"], default_item_type = "cmd", help = "Check every locked dependency (Python and Rust) against known vulnerabilities (needs the network)" }
+fix = { sequence = ["ruff check --fix .", "ruff format .", "cargo fmt --all"], default_item_type = "cmd", help = "Apply every automatic lint and format fix" }
 # The sdist and wheel as PyPI would get them, built into dist/check (git-ignored, emptied first) and checked by twine
 # (metadata, rendered README; the quoted glob is twine's to expand) and check-wheel-contents (stray or unimportable files)
 build-check = { sequence = ["uv build --quiet --clear --no-create-gitignore --out-dir dist/check", "twine check --strict 'dist/check/*'", "check-wheel-contents dist/check"], default_item_type = "cmd", help = "Build the sdist and wheel and check what would be uploaded" }
@@ -137,7 +138,19 @@ build-check = { sequence = ["uv build --quiet --clear --no-create-gitignore --ou
 # injection, persisted credentials, over-broad permissions). `uv run`, because the actionlint-py distribution names
 # its program differently. zizmor stays offline so the gate needs no network; its online audits need a GitHub token.
 lint-workflows = { sequence = ["uv run actionlint", "zizmor --offline .github"], default_item_type = "cmd", help = "Lint the GitHub workflows (actionlint, zizmor)" }
-check = { sequence = ["ruff format --check .", "ruff check .", { ref = "lint-workflows" }, "vulture", "deptry .", { ref = "build-check" }, "mypy", { ref = "test" }], default_item_type = "cmd", help = "The full gate (format, lint, workflows, dead code, dependencies, distributions, types, tests); stops at the first failure" }
+# The Rust gates, each beside its Python counterpart; cargo comes with rustup, at the version rust-toolchain.toml pins.
+# Warnings fail only here (`-D warnings`), never a user's build. tests/tools/test_rust_gates.py shows each one failing.
+rust-fmt = { cmd = "cargo fmt --all --check", help = "Check the Rust formatting (rustfmt.toml)" }
+rust-lint = { cmd = "cargo clippy --workspace --all-targets --locked --quiet -- -D warnings", help = "Lint the Rust code: clippy, dead code, missing docs, unreachable pub, unsafe ([workspace.lints] in Cargo.toml)" }
+rust-doc = { cmd = "cargo doc --workspace --no-deps --locked --quiet", env = { RUSTDOCFLAGS = "-D warnings" }, help = "Build the Rust documentation; any rustdoc warning (a broken link) fails" }
+rust-tools = { cmd = "uv run python tools/rust_tools.py check", help = "Check that the cargo tools the gate runs are installed at the versions Cargo.toml pins" }
+rust-shear = { cmd = "cargo shear", help = "Find Rust dependencies no code uses (cargo-shear)" }
+rust-deny = { cmd = "cargo deny --offline --locked check bans licenses sources", help = "Check the Rust dependencies offline: banned crates, licences, sources (deny.toml)" }
+# The core is pure Rust so that it also runs in a browser (WebAssembly): only the core crate, which has no Python in it
+rust-wasm = { cmd = "cargo check -p bullterrier-control --target wasm32-unknown-unknown --locked --quiet", help = "Check that the core builds for the browser (wasm32-unknown-unknown)" }
+stubtest = { cmd = "uv run python -m mypy.stubtest --mypy-config-file pyproject.toml bullterrier_control._native._core", help = "Check the stub _core.pyi against the built extension" }
+rust-test = { cmd = "cargo test --workspace --locked --quiet", help = "Run the Rust tests" }
+check = { sequence = ["ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, { ref = "lint-workflows" }, "vulture", { ref = "rust-doc" }, "deptry .", { ref = "rust-tools" }, { ref = "rust-shear" }, { ref = "rust-deny" }, { ref = "rust-wasm" }, { ref = "build-check" }, "mypy", { ref = "stubtest" }, { ref = "rust-test" }, { ref = "test" }], default_item_type = "cmd", help = "The full gate, Python and Rust (format, lint, workflows, dead code, docs, dependencies, distributions, types, tests); stops at the first failure" }
 # Redraw the gallery (docs/gallery/ and docs/gallery.md) from the patches in examples/gallery/; needs matplotlib (uv sync)
 gallery = { cmd = "uv run python tools/gallery.py", help = "Redraw docs/gallery/ and docs/gallery.md from examples/gallery/" }
 # Developer commands that need a source checkout (tools/dev.py); extra arguments go to the script
@@ -146,7 +159,7 @@ new-source = { cmd = "uv run python tools/dev.py new-source", help = "Write a ne
 # atomic push of main and the tag (CONTRIBUTING.md, "Releasing")
 release = { cmd = "uv run python tools/release.py", help = "Release VERSION from main (e.g. 0.1.0rc1 to TestPyPI, 0.1.0 to PyPI): check, plan, ask, bump, tag, push [--dry-run] [--yes]" }
 # `default_install_hook_types` in .pre-commit-config.yaml names the three hook types, so a bare `install` covers them
-setup = { sequence = ["pre-commit install --install-hooks", "git config --local commit.template .gitmessage"], default_item_type = "cmd", help = "Install the git hooks and the commit-message template (once per clone)" }
+setup = { sequence = ["pre-commit install --install-hooks", "git config --local commit.template .gitmessage", "uv run python tools/rust_tools.py install"], default_item_type = "cmd", help = "Install the git hooks, the commit-message template and the cargo tools the gate runs (once per clone)" }
 
 # Read by tools/check_commit_message.py (the commit-msg hook): Conventional Commits 1.0 with these limits.
 [tool.commit-message]

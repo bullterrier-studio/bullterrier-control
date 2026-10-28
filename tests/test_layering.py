@@ -16,6 +16,8 @@ import only the layers below it:
     errors | _native   the exceptions | the home of the Rust extension (`_native._core`); both import nothing from
                bullterrier_control, so every layer may use them
 
+The Rust core keeps the same rule for its built-ins: `crates/core/src/builtin/<name>.rs` never refers to another.
+
 These are architecture tests: their subject is the package's structure (its import graph, its source files and the
 modules a fresh import loads), so, unlike behaviour tests, they read source (the linter).
 """
@@ -26,6 +28,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -309,3 +312,64 @@ def test_the_rust_extension_imports_nothing_from_the_package(module, leaf):
     """The import linter checks the extension's home (`_native`) but cannot read the compiled module in it: importing
     the module shows that it loads nothing else of the package either."""
     assert (package_modules_loaded_by(module) == []) == leaf
+
+
+# --- the Rust core's built-ins -------------------------------------------------------------------------------------
+
+CORE_CRATE = ROOT / "crates" / "core"
+# the names through which a built-in file could reach the others: `super` (the module holding every built-in) and the
+# `builtin` module itself, however a path writes it (`crate::builtin::x`, `crate::{builtin::x}`, `crate::builtin`)
+BUILTIN_PATH = re.compile(r"\b(?:super|builtin)\b")
+
+
+def references_to_other_builtins(code: str) -> list[str]:
+    """Each name in the Rust built-in `code` (comments and strings blanked out) through which it could reach another."""
+    return BUILTIN_PATH.findall(code)
+
+
+def builtins_referring_to_others(crate: Path, blank: Callable[[str], str]) -> dict[str, list[str]]:
+    """File name -> names, for each file of `crate`'s `src/builtin/` folder (none yet is none) that has any."""
+    found = {
+        path.name: references_to_other_builtins(blank(path.read_text(encoding="utf-8")))
+        for path in sorted((crate / "src" / "builtin").glob("*.rs"))
+    }
+    return {name: names for name, names in found.items() if names}
+
+
+def test_no_rust_builtin_refers_to_another(rust_code):
+    assert builtins_referring_to_others(CORE_CRATE, rust_code) == {}
+
+
+def test_a_copy_of_the_core_in_which_one_builtin_refers_to_another_is_caught(tmp_path, rust_code):
+    crate = tmp_path / "core"
+    shutil.copytree(CORE_CRATE, crate, ignore=shutil.ignore_patterns("target"))
+    builtin = crate / "src" / "builtin"
+    builtin.mkdir(exist_ok=True)
+    files = {
+        "alpha.rs": "use super::beta;\n\nfn run() {}\n",
+        "beta.rs": "use crate::Error;\n\nfn run() {}\n",
+        "gamma.rs": "// unlike super::alpha, this keeps to itself\nfn run() {}\n",
+    }
+    for name, source in files.items():
+        (builtin / name).write_text(source, encoding="utf-8")
+    assert builtins_referring_to_others(crate, rust_code) == {"alpha.rs": ["super"]}
+
+
+@pytest.mark.parametrize(
+    ("source", "found"),
+    [
+        pytest.param("use super::vignette;\n", ["super"], id="a sibling through super"),
+        pytest.param("let out = crate::builtin::slew::run(p, &q);\n", ["builtin"], id="a crate path"),
+        pytest.param("use crate :: builtin :: slew;\n", ["builtin"], id="spaced out"),
+        pytest.param("use crate::{builtin::slew, error};\n", ["builtin"], id="inside a use group"),
+        pytest.param("use crate::{error, builtin};\n", ["builtin"], id="the builtin module in a use group"),
+        pytest.param("use crate::builtin;\n", ["builtin"], id="the builtin module itself"),
+        pytest.param("use crate::error::Error;\nuse crate::{Params, Shape};\n", [], id="the core's other modules"),
+        pytest.param("// unlike super::slew, this keeps to itself\nfn f() {}\n", [], id="a line comment is none"),
+        pytest.param("/* crate::builtin::slew */\nfn f() {}\n", [], id="a block comment is none"),
+        pytest.param('const NAME: &str = "builtin::slew";\n', [], id="a string is none"),
+        pytest.param("fn rebuiltin() {}\n", [], id="a word containing it is none"),
+    ],
+)
+def test_the_builtin_reference_check_flags_any_path_through_the_builtin_module(source, found, rust_code):
+    assert references_to_other_builtins(rust_code(source)) == found
