@@ -17,10 +17,10 @@ from .errors import (
     SignalError,
     UnknownNameError,
 )
-from .formats import Bundle, Event, Grid, Series, Unit, load, save
+from .formats import Bundle, Event, Grid, Series, Unit, events, load, save
 from .inputs import Keyframe
 from .patch import Patch, load_patch
-from .signal import Signal, from_series, maximum, minimum
+from .signal import Signal, from_series, from_values, maximum, minimum
 
 __version__ = metadata.version("bullterrier-control")
 
@@ -41,7 +41,9 @@ __all__ = [
     "Unit",
     "UnknownNameError",
     "__version__",
+    "events",
     "from_series",
+    "from_values",
     "lib",
     "load",
     "load_patch",

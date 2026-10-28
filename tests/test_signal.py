@@ -3,8 +3,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from bullterrier_control import Series, SignalError, Unit
-from bullterrier_control.signal import Constant, Signal, from_series, maximum, minimum
+from bullterrier_control import FormatError, Series, SignalError, Unit
+from bullterrier_control.signal import Constant, Signal, from_series, from_values, maximum, minimum
 
 
 def a_series(values, *, start=0.0, rate=1.0, unit=Unit.RATIO) -> Series:
@@ -118,6 +118,52 @@ def test_a_series_signal_gives_back_each_sample_at_its_own_time(start, rate, val
 def test_an_interpolation_that_is_not_offered_is_refused():
     with pytest.raises(ValueError, match="cubic"):
         from_series(a_series([0.0, 1.0]), interpolation="cubic")  # type: ignore[arg-type]
+
+
+FROM_VALUES = {
+    "linear between samples, the value at a sample time": (
+        {"values": [0.0, 1.0, 0.2, 0.0], "rate": 10.0},
+        [0.0, 0.05, 0.1, 0.3],
+        [0.0, 0.5, 1.0, 0.0],
+    ),
+    "hold keeps the earlier sample": (
+        {"values": [0.0, 1.0, 0.2, 0.0], "rate": 10.0, "interpolation": "hold"},
+        [0.05, 0.1, 0.15],
+        [0.0, 1.0, 1.0],
+    ),
+    "the first value holds before start": (
+        {"values": [0.4, 0.8], "rate": 10.0, "start": 1.0},
+        [0.0, 0.5, 1.0, 1.05, 1.1, 5.0],
+        [0.4, 0.4, 0.4, 0.6, 0.8, 0.8],
+    ),
+    "an array of values": ({"values": np.array([0.0, 1.0]), "rate": 2.0}, [0.0, 0.25, 0.5], [0.0, 0.5, 1.0]),
+}
+
+
+@pytest.mark.parametrize(("arguments", "times", "expected"), FROM_VALUES.values(), ids=FROM_VALUES.keys())
+def test_values_make_a_signal_in_one_call(arguments, times, expected):
+    assert from_values(**arguments).sample(times).tolist() == pytest.approx(expected)
+
+
+FROM_VALUES_REFUSED = {
+    "no values": ({"values": [], "rate": 10.0}, "values"),
+    "a nan value": ({"values": [0.0, float("nan")], "rate": 10.0}, "values[1]"),
+    "a nan in an array": ({"values": np.array([0.0, np.nan]), "rate": 10.0}, "values[1]"),
+    "rate zero": ({"values": [0.0, 1.0], "rate": 0.0}, "rate"),
+    "negative start": ({"values": [0.0, 1.0], "rate": 10.0, "start": -1.0}, "start"),
+}
+
+
+@pytest.mark.parametrize(("arguments", "named"), FROM_VALUES_REFUSED.values(), ids=FROM_VALUES_REFUSED.keys())
+def test_values_that_break_the_series_rules_are_refused_naming_the_field(arguments, named, reports):
+    with pytest.raises(FormatError) as refused:
+        from_values(**arguments)
+    reports(refused.value, named)
+
+
+def test_values_with_an_interpolation_that_is_not_offered_are_refused():
+    with pytest.raises(ValueError, match="cubic"):
+        from_values([0.0, 1.0], rate=1.0, interpolation="cubic")  # type: ignore[arg-type]
 
 
 TIMES = [0.0, 1.25, 1.5, 2.0, 9.0]

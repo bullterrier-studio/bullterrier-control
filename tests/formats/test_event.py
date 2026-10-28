@@ -1,6 +1,7 @@
+import numpy as np
 import pytest
 
-from bullterrier_control import Event, FormatError
+from bullterrier_control import Event, FormatError, events
 
 
 def test_a_moment_has_full_strength_and_no_span_by_default():
@@ -54,4 +55,55 @@ INVALID = {
 def test_an_invalid_event_is_refused_naming_the_field(data, named, reports):
     with pytest.raises(FormatError) as refused:
         Event.parse(data)
+    reports(refused.value, named)
+
+
+def moments(made):
+    return [(event.t, event.strength, event.label, event.duration) for event in made]
+
+
+EVENTS = {
+    "labelled times": (([0.5, 1.0], {"label": "kick"}), [(0.5, 1.0, "kick", None), (1.0, 1.0, "kick", None)]),
+    "a strength each, in order": (
+        ([0.5, 1.0], {"strength": [0.2, 0.9]}),
+        [(0.5, 0.2, None, None), (1.0, 0.9, None, None)],
+    ),
+    "one strength for all": (([0.5, 1.0], {"strength": 0.4}), [(0.5, 0.4, None, None), (1.0, 0.4, None, None)]),
+    "a duration for all": (([2.0], {"duration": 0.25}), [(2.0, 1.0, None, 0.25)]),
+    "times in the order given": (([3.0, 1.0], {}), [(3.0, 1.0, None, None), (1.0, 1.0, None, None)]),
+    "an array of times": (
+        (np.array([0.5, 1.0]), {"strength": np.array([0.1, 0.2])}),
+        [(0.5, 0.1, None, None), (1.0, 0.2, None, None)],
+    ),
+    "no times": (([], {}), []),
+}
+
+
+@pytest.mark.parametrize(("given", "expected"), EVENTS.values(), ids=EVENTS.keys())
+def test_times_make_events_in_one_call(given, expected):
+    times, options = given
+    made = events(times, **options)
+    assert isinstance(made, tuple)
+    assert moments(made) == expected
+
+
+def test_an_array_of_times_gives_python_floats():
+    assert {type(event.t) for event in events(np.array([0.5, 1.0]))} == {float}
+
+
+EVENTS_REFUSED = {
+    "fewer strengths than times": (([0.5, 1.0], {"strength": [0.2]}), "strength"),
+    "more strengths than times": (([0.5], {"strength": [0.2, 0.3]}), "strength"),
+    "a strength above one": (([0.5], {"strength": 1.5}), "strength"),
+    "a negative time": (([-0.5], {}), "t"),
+    "a zero duration": (([0.5], {"duration": 0.0}), "duration"),
+    "an empty label": (([0.5], {"label": ""}), "label"),
+}
+
+
+@pytest.mark.parametrize(("given", "named"), EVENTS_REFUSED.values(), ids=EVENTS_REFUSED.keys())
+def test_times_that_break_the_event_rules_are_refused_naming_the_field(given, named, reports):
+    times, options = given
+    with pytest.raises(FormatError) as refused:
+        events(times, **options)
     reports(refused.value, named)

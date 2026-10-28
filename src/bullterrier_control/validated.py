@@ -12,14 +12,16 @@ Promises:
   fields reports the first it finds.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Annotated, Any, ClassVar, Self
 
+import numpy as np
+from numpy.typing import NDArray
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, Strict, ValidationError
 
 from .errors import InvalidError
 
-__all__ = ["Finite", "Switch", "Text", "ValidatedModel", "Whole", "whole_number"]
+__all__ = ["Finite", "Switch", "Text", "ValidatedModel", "Whole", "plain", "whole_number"]
 
 # a JSON number: not a bool, not a string, not NaN or an infinity
 Finite = Annotated[float, Strict(), Field(allow_inf_nan=False)]
@@ -30,6 +32,12 @@ def whole_number(value: object) -> object:
     if type(value) is not int:
         raise InvalidError(f"must be a whole number (got {value!r})")
     return value
+
+
+def plain[T](values: "Sequence[T] | NDArray[np.float64]") -> "Sequence[T] | list[float]":
+    """The values as a sequence of Python numbers: an array's elements become `float`s (never numpy scalars), any
+    other sequence is returned as it is, for the model to validate."""
+    return values.tolist() if isinstance(values, np.ndarray) else values
 
 
 def _utf8_text(text: str) -> str:

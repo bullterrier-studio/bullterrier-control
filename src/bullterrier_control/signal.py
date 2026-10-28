@@ -18,7 +18,7 @@ Promises:
 
 import numbers
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Literal, final
 
 import numpy as np
@@ -26,8 +26,10 @@ from numpy.typing import ArrayLike, NDArray
 
 from .errors import SignalError
 from .formats.series import Series
+from .formats.units import Unit
+from .validated import plain
 
-__all__ = ["Constant", "Signal", "from_series", "maximum", "minimum"]
+__all__ = ["Constant", "Signal", "from_series", "from_values", "maximum", "minimum"]
 
 # float rounding of (time - start) * rate: a time that is a sample time to within this share of a sample is that sample
 _ROUNDING = 1e-9
@@ -161,3 +163,16 @@ def from_series(series: Series, *, interpolation: Literal["linear", "hold"] = "l
     if interpolation not in ("linear", "hold"):
         raise ValueError(f"interpolation must be 'linear' or 'hold' (got {interpolation!r})")
     return _SeriesSignal(series, interpolation)
+
+
+def from_values(
+    values: Sequence[float] | NDArray[np.float64],
+    rate: float,
+    *,
+    start: float = 0.0,
+    interpolation: Literal["linear", "hold"] = "linear",
+) -> Signal:
+    """The signal that reads `values` as plain ratios, sample *i* at `start + i / rate` seconds (`from_series` of a
+    `Series` in unit `ratio`). A `FormatError` names the field that breaks a `Series` rule."""
+    series = Series(start=start, rate=rate, values=tuple(plain(values)), unit=Unit.RATIO)
+    return from_series(series, interpolation=interpolation)
