@@ -16,7 +16,8 @@ mod _core {
 
 /// Run the shaper called `name` over `inputs` (its input sampled at the shaper's rate from time 0: a 1-D, C-contiguous
 /// float64 array, read in place) with `params` (exactly the shaper's parameters, validated); a new float64 array of
-/// the same length. The shaper runs without the GIL.
+/// the same length. The shaper runs without the GIL, reading `inputs` in place: the caller must not change it until the
+/// call returns.
 ///
 /// `ValueError` if the name, the parameters or the array are not what the core expects: a programming error, since the
 /// package validates a user's values before they get here.

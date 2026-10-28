@@ -318,15 +318,19 @@ def test_the_rust_extension_imports_nothing_from_the_package(module, leaf):
 # --- the Rust core's built-ins -------------------------------------------------------------------------------------
 
 CORE_CRATE = ROOT / "crates" / "core"
-# a path from `super` (in a built-in file, the module holding every built-in; in its test module, the file's own module)
-# or from the `builtin` module (`crate::builtin`, `crate::{builtin::x}`), however it is spaced, with its use groups
-BUILTIN_PATH = re.compile(r"\b(?:super|builtin)\b((?:\s*::\s*(?:\w+|\*|\{[^}]*\}))*)")
+# a name in a path: before `::` (`beta::run`, `super::`), after it (`super::beta`, `b::beta`), or in a `::{...}` use
+# group. However a built-in file reaches another (by `super`, `crate::builtin`, a glob, an alias), it names that
+# module in a path; a test module's `use super::*` names none.
+BEFORE_OR_AFTER_PATH = re.compile(r"\b(\w+)\s*(?=::)|(?<=::)\s*(\w+)")
+USE_GROUP = re.compile(r"::\s*\{([^{}]*)\}")
 
 
 def references_to_other_builtins(code: str, others: set[str]) -> list[str]:
-    """Each of the built-ins `others` that the Rust built-in `code` (comments and strings blanked out) names in a path
-    from `super` or from the `builtin` module: the ways one built-in file could reach another."""
-    return [name for path in BUILTIN_PATH.findall(code) for name in re.findall(r"\w+", path) if name in others]
+    """The built-ins of `others` that the Rust built-in `code` (comments and strings blanked out) names in a path,
+    sorted: the ways one built-in file could reach another."""
+    named = {name for pair in BEFORE_OR_AFTER_PATH.findall(code) for name in pair}
+    named |= {name for group in USE_GROUP.findall(code) for name in re.findall(r"\w+", group)}
+    return sorted(named & others)
 
 
 def builtins_referring_to_others(crate: Path, blank: Callable[[str], str]) -> dict[str, list[str]]:
@@ -375,7 +379,14 @@ def test_a_copy_of_the_core_in_which_one_builtin_refers_to_another_is_caught(tmp
             ["follow"],
             id="the builtin module brought in, then a built-in through it",
         ),
+        pytest.param(
+            "use super::*;\n\nfn f() {\n    follow::run();\n}\n", ["follow"], id="a glob from super, then one"
+        ),
+        pytest.param("use crate::builtin::*;\n\nfn f() {\n    slew::run();\n}\n", ["slew"], id="a glob from builtin"),
+        pytest.param("use crate::builtin as b;\n\nfn f() {\n    b::slew::run();\n}\n", ["slew"], id="builtin aliased"),
+        pytest.param("use crate::builtin as b;\nuse b::slew as s;\n", ["slew"], id="a built-in aliased through it"),
         pytest.param("#[cfg(test)]\nmod tests {\n    use super::*;\n}\n", [], id="a test module using its file"),
+        pytest.param("let slew = 1.0;\nlet rate = slew * 2.0;\n", [], id="a local named like a built-in is none"),
         pytest.param("mod tests {\n    use super::{run, Params};\n}\n", [], id="a test module naming its file's items"),
         pytest.param("use crate::error::Error;\nuse crate::{Params, Shape};\n", [], id="the core's other modules"),
         pytest.param("// unlike super::slew, this keeps to itself\nfn f() {}\n", [], id="a line comment is none"),
