@@ -15,8 +15,12 @@ publish = false
 
 [workspace.dependencies]
 bullterrier-control = { path = "crates/core" }
+numpy = "0.30"
+proptest = "1.12"
 # abi3-py312: one wheel per platform serves every Python from 3.12 (the oldest the package supports)
 pyo3 = { version = "0.30", features = ["abi3-py312"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 # Warnings, not errors, so a newer compiler's new lint never breaks a user's install; the gate (`poe check`) runs clippy
 # and rustdoc with `-D warnings`, so every one fails it.

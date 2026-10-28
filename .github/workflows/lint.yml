@@ -28,7 +28,7 @@ jobs:
       - name: Lint (ruff check)
         run: uv run --locked ruff check .
       - name: Dead code (vulture)
-        run: uv run --locked vulture && echo "vulture found no dead code"
+        run: uv run --locked poe dead-code && echo "vulture found no dead code"
       - name: Dependencies (deptry)
         run: uv run --locked deptry .
       - name: Types (mypy)

@@ -168,13 +168,13 @@ OFFENCES = {
     "a dependency no code uses": (
         "rust-shear",
         CORE_MANIFEST,
-        replaced("[lints]\n", '[dependencies]\nlibc = "0.2"\n\n[lints]\n'),
+        replaced("[dependencies]\n", '[dependencies]\nlibc = "0.2"\n'),
         ["unused dependency `libc`", CORE_MANIFEST],
     ),
     "PyO3 in the pure-Rust core": (
         "rust-deny",
         CORE_MANIFEST,
-        replaced("[lints]\n", "[dependencies]\npyo3.workspace = true\n\n[lints]\n"),
+        replaced("[dependencies]\n", "[dependencies]\npyo3.workspace = true\n"),
         ["banned", "pyo3", "bullterrier-control"],
     ),
     "a licence outside the allow-list": (

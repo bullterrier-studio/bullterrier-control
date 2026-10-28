@@ -1,7 +1,8 @@
 """slew: limit how fast a signal may rise and fall, so jumps become ramps."""
 
-import numpy as np
-from numpy.typing import NDArray
+from functools import partial
+
+from bullterrier_control._native import _core
 
 from ..plugin import Finite, Params, Rendered, Signal, param, shaper
 
@@ -40,16 +41,4 @@ def slew(signal: Signal, params: SlewParams) -> Signal:
     It starts at the input's value at time 0. A limit is a time per unit of change: rise = 2 means at most 0.5 per
     second.
     """
-    step = 1.0 / params.rate
-    up = step / params.rise if params.rise > 0 else float("inf")
-    down = step / params.fall if params.fall > 0 else float("inf")
-
-    def follow(inputs: NDArray[np.float64]) -> NDArray[np.float64]:
-        outputs = np.empty_like(inputs)
-        level = float(inputs[0])
-        for index, target in enumerate(inputs.tolist()):
-            level = min(target, level + up) if target > level else max(target, level - down)
-            outputs[index] = level
-        return outputs
-
-    return Rendered(signal, rate=params.rate, run=follow)
+    return Rendered(signal, rate=params.rate, run=partial(_core.render, "slew", params=params.model_dump()))

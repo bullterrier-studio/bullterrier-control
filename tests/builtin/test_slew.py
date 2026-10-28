@@ -1,9 +1,13 @@
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from bullterrier_control import Series, Unit, registry
+from bullterrier_control import Series, SignalError, Unit, registry
+from bullterrier_control.plugin import Signal
 from bullterrier_control.signal import Constant, from_series
 
 slew = registry.get("slew")
@@ -82,3 +86,33 @@ def test_it_starts_at_the_value_the_input_has_at_time_zero_not_at_zero():
 def test_a_slower_rate_still_follows_within_one_step_of_the_internal_rate():
     out = slew(step(1.0, 0.0, 1.0), rise=2.0, fall=2.0, rate=10.0)
     assert out.sample([1.5]).tolist() == pytest.approx([0.25], abs=0.1)
+
+
+def test_threads_released_together_reading_one_slew_get_the_serial_values():
+    times = np.linspace(0, 400, 64)
+    serial = slew(step(1.0, 0.0, 1.0), rise=2.0, fall=2.0).sample(times)
+    shared = slew(step(1.0, 0.0, 1.0), rise=2.0, fall=2.0)
+    chunks = np.array_split(times, 8)
+    start = threading.Barrier(len(chunks))
+
+    def read(chunk):
+        start.wait()
+        return shared.sample(chunk)
+
+    with ThreadPoolExecutor(len(chunks)) as pool:
+        parts = list(pool.map(read, chunks[::-1]))  # the far chunks are asked for first
+    assert np.concatenate(parts[::-1]).tolist() == serial.tolist()
+
+
+class BrokenAfterOne(Signal):
+    """1 until 1 s, then NaN: a broken upstream signal (a Series cannot hold a NaN; a signal's `compute` can)."""
+
+    def compute(self, times):
+        return np.where(times < 1.0, 1.0, np.nan)
+
+
+def test_a_nan_in_its_input_makes_a_read_there_a_signal_error_not_a_crash():
+    out = slew(BrokenAfterOne(), rise=0.5, fall=0.5)
+    assert out.sample([0.5]).tolist() == [1.0]
+    with pytest.raises(SignalError, match="not finite"):
+        out.sample([1.5])

@@ -270,7 +270,8 @@ ALLOWED = {
     "bundle to grid": ("formats/bundle.py", "import bullterrier_control.formats.grid"),
     "grid to model": ("formats/grid.py", "import bullterrier_control.formats.model"),
     "rendered to the Rust extension": ("rendered.py", "from bullterrier_control._native import _core"),
-    "a source to the Rust extension": ("builtin/slew.py", "from bullterrier_control._native import _core"),
+    # the one exception to "Built-in sources use only the author API": a built-in may call the Rust core
+    "a source to the Rust extension": ("builtin/clip.py", "from bullterrier_control._native import _core"),
 }
 
 
@@ -317,23 +318,27 @@ def test_the_rust_extension_imports_nothing_from_the_package(module, leaf):
 # --- the Rust core's built-ins -------------------------------------------------------------------------------------
 
 CORE_CRATE = ROOT / "crates" / "core"
-# the names through which a built-in file could reach the others: `super` (the module holding every built-in) and the
-# `builtin` module itself, however a path writes it (`crate::builtin::x`, `crate::{builtin::x}`, `crate::builtin`)
-BUILTIN_PATH = re.compile(r"\b(?:super|builtin)\b")
+# a path from `super` (in a built-in file, the module holding every built-in; in its test module, the file's own module)
+# or from the `builtin` module (`crate::builtin`, `crate::{builtin::x}`), however it is spaced, with its use groups
+BUILTIN_PATH = re.compile(r"\b(?:super|builtin)\b((?:\s*::\s*(?:\w+|\*|\{[^}]*\}))*)")
 
 
-def references_to_other_builtins(code: str) -> list[str]:
-    """Each name in the Rust built-in `code` (comments and strings blanked out) through which it could reach another."""
-    return BUILTIN_PATH.findall(code)
+def references_to_other_builtins(code: str, others: set[str]) -> list[str]:
+    """Each of the built-ins `others` that the Rust built-in `code` (comments and strings blanked out) names in a path
+    from `super` or from the `builtin` module: the ways one built-in file could reach another."""
+    return [name for path in BUILTIN_PATH.findall(code) for name in re.findall(r"\w+", path) if name in others]
 
 
 def builtins_referring_to_others(crate: Path, blank: Callable[[str], str]) -> dict[str, list[str]]:
-    """File name -> names, for each file of `crate`'s `src/builtin/` folder (none yet is none) that has any."""
+    """File name -> the other built-ins it names, for each file of `crate`'s `src/builtin/` folder (none yet is none)
+    that names any."""
+    files = sorted((crate / "src" / "builtin").glob("*.rs"))
+    names = {path.stem for path in files}
     found = {
-        path.name: references_to_other_builtins(blank(path.read_text(encoding="utf-8")))
-        for path in sorted((crate / "src" / "builtin").glob("*.rs"))
+        path.name: references_to_other_builtins(blank(path.read_text(encoding="utf-8")), names - {path.stem})
+        for path in files
     }
-    return {name: names for name, names in found.items() if names}
+    return {name: others for name, others in found.items() if others}
 
 
 def test_no_rust_builtin_refers_to_another(rust_code):
@@ -347,29 +352,37 @@ def test_a_copy_of_the_core_in_which_one_builtin_refers_to_another_is_caught(tmp
     builtin.mkdir(exist_ok=True)
     files = {
         "alpha.rs": "use super::beta;\n\nfn run() {}\n",
-        "beta.rs": "use crate::Error;\n\nfn run() {}\n",
+        "beta.rs": "use crate::Error;\n\nfn run() {}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n}\n",
         "gamma.rs": "// unlike super::alpha, this keeps to itself\nfn run() {}\n",
     }
     for name, source in files.items():
         (builtin / name).write_text(source, encoding="utf-8")
-    assert builtins_referring_to_others(crate, rust_code) == {"alpha.rs": ["super"]}
+    assert builtins_referring_to_others(crate, rust_code) == {"alpha.rs": ["beta"]}
 
 
 @pytest.mark.parametrize(
     ("source", "found"),
     [
-        pytest.param("use super::vignette;\n", ["super"], id="a sibling through super"),
-        pytest.param("let out = crate::builtin::slew::run(p, &q);\n", ["builtin"], id="a crate path"),
-        pytest.param("use crate :: builtin :: slew;\n", ["builtin"], id="spaced out"),
-        pytest.param("use crate::{builtin::slew, error};\n", ["builtin"], id="inside a use group"),
-        pytest.param("use crate::{error, builtin};\n", ["builtin"], id="the builtin module in a use group"),
-        pytest.param("use crate::builtin;\n", ["builtin"], id="the builtin module itself"),
+        pytest.param("use super::follow;\n", ["follow"], id="a sibling through super"),
+        pytest.param("use super::{follow, Params};\n", ["follow"], id="a sibling in a use group from super"),
+        pytest.param("mod tests {\n    use super::super::follow;\n}\n", ["follow"], id="from a test module, up twice"),
+        pytest.param("let out = crate::builtin::slew::run(p, &q);\n", ["slew"], id="a crate path"),
+        pytest.param("use crate :: builtin :: slew;\n", ["slew"], id="spaced out"),
+        pytest.param("use crate::{builtin::slew, error};\n", ["slew"], id="inside a use group"),
+        pytest.param("use crate::builtin::{follow, slew};\n", ["follow", "slew"], id="a use group of built-ins"),
+        pytest.param(
+            "use crate::{error, builtin};\nfn f() { builtin::follow::run(); }\n",
+            ["follow"],
+            id="the builtin module brought in, then a built-in through it",
+        ),
+        pytest.param("#[cfg(test)]\nmod tests {\n    use super::*;\n}\n", [], id="a test module using its file"),
+        pytest.param("mod tests {\n    use super::{run, Params};\n}\n", [], id="a test module naming its file's items"),
         pytest.param("use crate::error::Error;\nuse crate::{Params, Shape};\n", [], id="the core's other modules"),
         pytest.param("// unlike super::slew, this keeps to itself\nfn f() {}\n", [], id="a line comment is none"),
         pytest.param("/* crate::builtin::slew */\nfn f() {}\n", [], id="a block comment is none"),
         pytest.param('const NAME: &str = "builtin::slew";\n', [], id="a string is none"),
-        pytest.param("fn rebuiltin() {}\n", [], id="a word containing it is none"),
+        pytest.param("use super::slewing;\n", [], id="a name containing a built-in's is none"),
     ],
 )
-def test_the_builtin_reference_check_flags_any_path_through_the_builtin_module(source, found, rust_code):
-    assert references_to_other_builtins(rust_code(source)) == found
+def test_the_builtin_reference_check_flags_a_path_to_another_builtin_and_only_that(source, found, rust_code):
+    assert references_to_other_builtins(rust_code(source), {"follow", "slew"}) == found

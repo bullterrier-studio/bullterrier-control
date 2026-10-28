@@ -3,9 +3,10 @@
     smoothed = Rendered(signal, rate=1000.0, run=lambda inputs: ...)    # run: a causal function of the sampled input
 
 Promises:
-- `run` receives the input signal sampled at `rate` samples per second from time 0, and returns an array of the same
-  length. It must be causal: output *i* depends only on inputs 0 to *i*. That makes the signal independent of what was
-  read before: whatever the order and size of the reads, the same time gives the same value.
+- `run` receives the input signal sampled at `rate` samples per second from time 0, always as a 1-D, C-contiguous
+  float64 array (whatever the input's `compute` returned), and returns an array of the same length. It must be
+  causal: output *i* depends only on inputs 0 to *i*. That makes the signal independent of what was read before:
+  whatever the order and size of the reads, the same time gives the same value.
 - The signal is rendered as far as the largest time read needs, growing by doubling. A time between two samples reads
   the earlier one, so a read at time t depends on the input only up to t (a float rounding of a billionth of a sample
   aside). A read that would need more than `limit` samples raises a `SignalError` before anything is allocated.
@@ -71,7 +72,9 @@ class Rendered(Signal):
 
     def _render(self, count: int) -> None:
         count = min(count, self._limit)
-        inputs = self._signal.compute(np.arange(count) / self._rate)
+        # the one place a recurrence is called: it gets the array its promise names (a float32 or strided `compute`
+        # result is copied once, here), so no shaper copes with another and the Rust core reads it in place
+        inputs = np.ascontiguousarray(self._signal.compute(np.arange(count) / self._rate), dtype=np.float64)
         outputs = np.asarray(self._run(inputs), dtype=np.float64)
         if outputs.shape != inputs.shape:
             raise ValueError(

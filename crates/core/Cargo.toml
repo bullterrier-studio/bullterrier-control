@@ -11,5 +11,16 @@ publish.workspace = true
 [lib]
 name = "bullterrier_control"
 
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
 [lints]
 workspace = true
+
+# the built-in files are compiled in by the build script's generated `mod` declarations, which cargo-shear cannot see
+[package.metadata.cargo-shear]
+ignored-paths = ["src/builtin/*.rs"]

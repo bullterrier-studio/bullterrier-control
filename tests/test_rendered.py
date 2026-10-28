@@ -7,6 +7,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from bullterrier_control import Series, SignalError, Unit
+from bullterrier_control.plugin import Signal
 from bullterrier_control.rendered import Rendered
 from bullterrier_control.signal import Constant, from_series
 
@@ -172,6 +173,24 @@ def test_a_limit_that_is_not_a_positive_whole_number_of_samples_is_refused(bad):
 def test_a_rate_that_is_a_bool_is_refused():
     with pytest.raises(ValueError, match="rate"):
         Rendered(Constant(1.0), rate=True, run=integrate)
+
+
+class Narrow(Signal):
+    """Its times as float32, every other value of a wider array: a strided float32 view, which `compute` may return."""
+
+    def compute(self, times):
+        return np.repeat(times, 2).astype(np.float32)[::2]
+
+
+def test_the_recurrence_always_gets_a_1d_contiguous_float64_array_whatever_compute_returned():
+    seen = []
+
+    def run(inputs):
+        seen.append((inputs.dtype, inputs.ndim, inputs.flags.c_contiguous))
+        return inputs.copy()
+
+    assert Rendered(Narrow(), rate=RATE, run=run).sample([0.5, 2.0]).tolist() == [0.5, 2.0]
+    assert seen == [(np.dtype(np.float64), 1, True)]
 
 
 def test_a_recurrence_that_returns_the_wrong_shape_is_named_with_both_shapes():
