@@ -213,12 +213,12 @@ def test_the_recurrence_gets_a_fresh_aligned_owned_array_even_if_compute_returne
     seen = []
 
     def run(inputs):
-        seen.append((inputs.flags.aligned, inputs.flags.c_contiguous, inputs.flags.owndata))
-        seen.append(any(np.shares_memory(inputs, returned) for returned in signal.returned))
+        shared = any(np.shares_memory(inputs, returned) for returned in signal.returned)
+        seen.append((inputs.flags.aligned, inputs.flags.c_contiguous, inputs.flags.owndata, shared))
         return inputs.copy()
 
     Rendered(signal, rate=RATE, run=run).sample([0.5])
-    assert seen == [(True, True, True), False]
+    assert seen == [(True, True, True, False)]
 
 
 def test_a_recurrence_that_returns_the_wrong_shape_is_named_with_both_shapes():
