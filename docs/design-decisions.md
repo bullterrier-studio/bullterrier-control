@@ -374,9 +374,11 @@ separate ramp. Changed:
   bindings name no shaper, so porting one never changes them. It serves only shapers that need history, which is all R0
   ports; it goes away in R3, when `Signal` and `Rendered` themselves live in Rust. A wrong name, parameter set, dtype or
   shape is a programming error (`ValueError`): a user's values are validated before they get here.
-- **`Rendered` promises its `run` a 1-D, C-contiguous float64 array.** *Reason:* the core reads the input in place; if each
-  recurrence had to cope with a float32 or strided array, or the core copied it, the cost and the bug would be repeated per
-  shaper. `Rendered` makes the conversion once, in the one place a recurrence is called.
+- **`Rendered` promises its `run` a fresh 1-D, C-contiguous float64 array.** *Reason:* the core reads the input in place,
+  without the GIL; if each recurrence had to cope with a float32, strided or misaligned array, or the core copied it, the
+  cost and the bug would be repeated per shaper. Fresh (always a copy, owned and aligned) because a plugin's `compute` may
+  return a view it keeps and changes from another thread. `Rendered` makes the copy once, in the one place a recurrence is
+  called.
 - **A NaN in a shaper's input comes through the kernel.** A Rust kernel never panics on it; `sample` reports it as a
   `SignalError`, as for a Python recurrence. *Reason:* the signal contract is kept in one place (`sample`), not in each
   kernel.

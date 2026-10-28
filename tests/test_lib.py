@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from bullterrier_control import Event, Series, Unit, from_series, lib, registry
@@ -120,3 +121,24 @@ def test_help_marks_a_parameter_that_wraps_as_cyclic():
     assert text is not None
     assert "phase (cycles, 0 to 1), default 0.0, cyclic" in text
     assert "rate (cycles, 0 to 1000), default 1.0\n" in text  # a rate does not wrap: no `, cyclic`
+
+
+class Ramp(Signal):
+    """The time up to 1, then 1; `aligned=False` returns it as a float64 view at an odd byte offset, which is legal."""
+
+    def __init__(self, *, aligned: bool) -> None:
+        self.aligned = aligned
+
+    def compute(self, times):
+        values = np.minimum(times, 1.0)
+        if self.aligned:
+            return values
+        view = np.frombuffer(bytearray(times.size * 8 + 1), dtype=np.float64, offset=1, count=times.size)
+        view[:] = values
+        return view
+
+
+def test_a_shaper_over_a_signal_whose_compute_returns_a_misaligned_array_samples_as_over_any_other():
+    times = [0.0, 0.5, 1.0, 5.0]
+    expected = lib.slew(Ramp(aligned=True), rise=2.0, fall=2.0).sample(times)
+    assert lib.slew(Ramp(aligned=False), rise=2.0, fall=2.0).sample(times).tolist() == expected.tolist()

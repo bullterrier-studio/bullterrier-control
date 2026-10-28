@@ -193,6 +193,34 @@ def test_the_recurrence_always_gets_a_1d_contiguous_float64_array_whatever_compu
     assert seen == [(np.dtype(np.float64), 1, True)]
 
 
+class Misaligned(Signal):
+    """Its times in float64 read from a byte buffer at an odd offset: C-contiguous, but not aligned, which a plugin's
+    `compute` may legally return (a view of bytes it read from a file or the network)."""
+
+    def __init__(self) -> None:
+        self.returned: list[np.ndarray] = []
+
+    def compute(self, times):
+        raw = bytearray(times.size * 8 + 1)
+        view = np.frombuffer(raw, dtype=np.float64, offset=1, count=times.size)
+        view[:] = times
+        self.returned.append(view)
+        return view
+
+
+def test_the_recurrence_gets_a_fresh_aligned_owned_array_even_if_compute_returned_a_misaligned_view():
+    signal = Misaligned()
+    seen = []
+
+    def run(inputs):
+        seen.append((inputs.flags.aligned, inputs.flags.c_contiguous, inputs.flags.owndata))
+        seen.append(any(np.shares_memory(inputs, returned) for returned in signal.returned))
+        return inputs.copy()
+
+    Rendered(signal, rate=RATE, run=run).sample([0.5])
+    assert seen == [(True, True, True), False]
+
+
 def test_a_recurrence_that_returns_the_wrong_shape_is_named_with_both_shapes():
     signal = Rendered(Constant(1.0), rate=RATE, run=lambda inputs: np.zeros((len(inputs), 1)))
     with pytest.raises(ValueError, match=r"shape \(\d+, 1\).*shape \(\d+,\)"):
