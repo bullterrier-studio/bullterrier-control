@@ -288,6 +288,8 @@ golden file, sleep, mock of our own code) is worse than none: delete it. Reviewe
 - Expected values come from an independent oracle (standard, hand computation, brute-force reference), never the code's formula.
 - Every checker/validator gets a known-good and a known-bad input. Seeds pin determinism. No sleeps, live network or wall-clock
   assertions.
+- Proptest's `crates/core/proptest-regressions/` files are committed: each is a seed that replays a failure found once,
+  not a golden output.
 - Tests run in random order (pytest-randomly; rerun with `-p randomly --randomly-seed=N`, disable with `-p no:randomly`); none
   may depend on another.
 - **Mutation-check your tests:** break the code on purpose (a sign, a boundary, an ignored argument) and see a test fail.
