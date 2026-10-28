@@ -153,8 +153,8 @@ The Python suite runs unchanged against the Rust core throughout.
   bindings), maturin as build backend, Rust gates as strict as the Python ones (each proven by a known-bad input),
   `slew` and `follow` rendered in Rust through the transitional boundary `_core.render`. Done when their tests pass
   unchanged and the gate is green.
-- **R0b CI and wheels (done).** Every workflow builds the core; a wheel per platform (Linux x86_64 and aarch64, macOS arm64
-  and x86_64, Windows x86_64), each installed and run before release.
+- **R0b CI and wheels (done).** Every workflow that imports the package builds the core; a wheel per
+  platform (Linux x86_64 and aarch64, macOS arm64 and x86_64, Windows x86_64), each installed and run before release.
 - **R0.5 Code-first API.** The programmatic API is the product; see the section below.
 - **R1 Formats.** Series, Event, Grid, Bundle in Rust; the schema generated from Rust, its meaning unchanged.
 - **R2 Parameters.** Declared once in Rust (unit, range, doc, `advanced`, `cyclic`); Python models, `help()` and

@@ -40,9 +40,9 @@ means in practice.
 
 ## Continuous integration and releasing
 
-Every push to `main` and every pull request runs the whole gate on GitHub, builds the Rust core in every job, and
-builds the sdist and a wheel per platform (Linux x86_64 and aarch64, macOS arm64 and x86_64, Windows x86_64), each
-installed and run before anything is released; a release is one command, `uv run poe release
+Every push to `main` and every pull request runs the whole gate on GitHub, builds the Rust core in every job that
+imports the package, and builds the sdist and a wheel per platform (Linux x86_64 and aarch64, macOS arm64 and x86_64,
+Windows x86_64), each installed and run before anything is released; a release is one command, `uv run poe release
 VERSION`, and it publishes only if everything passes. How it works, how to approve and recover, and the one-time setup
 are in [docs/releasing.md](docs/releasing.md).
 
