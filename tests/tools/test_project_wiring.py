@@ -5,6 +5,7 @@ check without rewriting, say how to reproduce a failure), so adding or changing 
 detector the rules use is shown a known-bad and a known-good input.
 """
 
+import itertools
 import re
 import shlex
 import shutil
@@ -123,12 +124,21 @@ def test_every_stage_a_hook_runs_at_is_installed_by_a_bare_install(precommit):
     assert used <= installed, f"hooks run at {sorted(used - installed)}, which a bare install does not set up"
 
 
+# `uv run` options a hook may give: `--no-sync` runs the tool as the environment is, without rebuilding the Rust
+# extension first (the commit hooks never import the package, and a sync after a Rust change rebuilds it, which fails
+# on a commit that stages only part of the Rust changes)
+UV_RUN_OPTIONS = {"--no-sync"}
+
+
 def test_local_hooks_run_the_projects_pinned_tools_through_uv(precommit, pyproject):
     assert shutil.which("uv"), "uv must be installed to run the hooks"
     for hook_id, hook in hooks_by_id(precommit, "local").items():
-        tokens = shlex.split(hook["entry"])
+        words = shlex.split(hook["entry"])
         assert hook["language"] == "system", hook_id
-        assert tokens[:2] == ["uv", "run"], hook_id
+        assert words[:2] == ["uv", "run"], hook_id
+        options = list(itertools.takewhile(lambda word: word.startswith("-"), words[2:]))
+        assert set(options) <= UV_RUN_OPTIONS, f"{hook_id} gives uv run {options}"
+        tokens = words[:2] + words[2 + len(options) :]  # uv run PROGRAM ARGS
         if tokens[2] == "python":  # the project's own script: it must exist
             assert (ROOT / tokens[3]).is_file(), f"{hook_id} runs {tokens[3]}, which does not exist"
         elif tokens[2] == "poe":  # a project task: it must be defined
