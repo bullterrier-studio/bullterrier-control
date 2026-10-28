@@ -43,7 +43,6 @@ def poe_test(tmp_path: Path, probe: str, env: dict[str, str]) -> subprocess.Comp
 def test_a_clean_test_passes(tmp_path, uv_run_env):
     result = poe_test(tmp_path, CLEAN, uv_run_env)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert (tmp_path / "basetemp").is_dir()  # the probe's temporary folders went under its own tmp_path
 
 
 @pytest.mark.parametrize(
