@@ -22,7 +22,12 @@ bullterrier-control is before 1.0: only the latest release receives security fix
 
 - **Audited code and dependencies.** ruff's security rules (flake8-bandit) are part of every `poe check`, and
   `uv run poe audit` checks every release pinned in `uv.lock` with pip-audit and every crate in `Cargo.lock` with
-  cargo-deny. No known advisory is open; one that has no fixed release yet would be listed here by its id.
+  cargo-deny. No known advisory is open; one that has no fixed release yet would be listed here by its id (and, for a
+  crate, in `deny.toml`).
+- **The Rust core** is safe Rust (`#![forbid(unsafe_code)]`), and cargo-deny admits only crates from crates.io under
+  permissive licences, with no PyO3 in the core (`deny.toml`, in every `poe check`).
+- **Release files** are built in CI without a build cache. Each wheel is installed on its own platform from the built
+  file alone and run, and the sdist is built and run, before anything is published.
 - **Two Python runtime dependencies** (numpy and pydantic), so there is little to audit and nothing that downloads or
   executes at import.
 - **Plugins** are Python packages: installing one runs its code, as with any package.

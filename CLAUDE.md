@@ -34,7 +34,7 @@ uv run poe check                     # the whole gate, before you report or merg
 the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `noise`, the shapers `clip`, `slew`, `follow`,
 `gate`, `hold`, `remap` and `delay`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`,
 patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. The Rust core's foundation
-(R0) exists: `slew` and `follow` run in Rust. Next: R0b, R0.5, R1 to R6, then C5, the first release (`docs/roadmap.md`).
+(R0) exists: `slew` and `follow` run in Rust, and CI builds the core and a wheel per platform (R0b). Next: R0.5, R1 to R6, then C5, the first release (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.
@@ -188,9 +188,11 @@ its Rust twin do not coexist: port a shaper once and delete the Python body.
   shows the plan, asks, bumps, writes CHANGELOG.md with git-cliff, commits, tags, pushes main and the tag; `docs/releasing.md`).
   Tests read the version from `pyproject.toml`, never write it.
 - CI: one workflow per concern in `.github/workflows/`, joined by `ci.yml`; checks run in parallel, then `build`, then
-  `release.yml` publishes only what that build made. `ci-ok` is the only required check: a new job goes into its `needs` (a new
-  check also into `build`'s). Actions are pinned by commit SHA, jobs hold minimal permissions; `uv run poe lint-workflows`
-  (in `poe check`) enforces it. The workflows are linted offline; they have not run on GitHub until the repository exists.
+  `release.yml` publishes only what that build made. `build` makes the sdist and a wheel per platform, checks them with
+  `tools/check_dists.py`, installs each on its own platform and runs `bt-control` on a patch that uses the extension.
+  `ci-ok` is the only required check: a new job goes into its `needs` (a new check also into `build`'s). Actions are
+  pinned by commit SHA, jobs hold minimal permissions; `uv run poe lint-workflows` (in `poe check`) enforces it. The
+  workflows are linted offline; they have not run on GitHub until the repository exists.
 - The gates are the review: reviewers check behaviour and these rules only. A defect a review finds twice becomes a gate.
 - Design decisions and reasons go in `docs/design-decisions.md`, not here.
 

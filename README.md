@@ -136,8 +136,9 @@ If you know a library that already does all of this, we would like to hear of it
 
 Requires Python 3.12+. Pre-alpha, not yet on PyPI. The shapers are written in Rust, so installing from GitHub compiles
 the extension and needs a Rust toolchain from [rustup](https://rustup.rs/) (a distribution's `cargo` is too old).
-Releases will ship ready-built wheels for most Linux, macOS and Windows machines
-([which, and what the others need](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/design-decisions.md#the-rust-core-batch-r0)). From GitHub:
+Releases will ship ready-built wheels, one per platform for every Python from 3.12: Linux x86_64 and aarch64 (glibc
+2.28+), macOS Apple silicon and Intel, Windows x86_64. Any other platform installs the source package and compiles
+the extension with rustup ([why these](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/design-decisions.md#the-rust-core-batch-r0)). From GitHub:
 
 ```bash
 pip install git+https://github.com/bullterrier-studio/bullterrier-control.git
