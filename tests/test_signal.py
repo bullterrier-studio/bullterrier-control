@@ -148,6 +148,7 @@ def test_values_make_a_signal_in_one_call(arguments, times, expected):
 FROM_VALUES_REFUSED = {
     "no values": ({"values": [], "rate": 10.0}, "values"),
     "a nan value": ({"values": [0.0, float("nan")], "rate": 10.0}, "values[1]"),
+    "an array of bools": ({"values": np.array([True, False]), "rate": 10.0}, "values[0]"),
     "a nan in an array": ({"values": np.array([0.0, np.nan]), "rate": 10.0}, "values[1]"),
     "rate zero": ({"values": [0.0, 1.0], "rate": 0.0}, "rate"),
     "negative start": ({"values": [0.0, 1.0], "rate": 10.0, "start": -1.0}, "start"),

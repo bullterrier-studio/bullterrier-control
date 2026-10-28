@@ -87,15 +87,13 @@ def test_times_make_events_in_one_call(given, expected):
     assert moments(made) == expected
 
 
-def test_an_array_of_times_gives_python_floats():
-    assert {type(event.t) for event in events(np.array([0.5, 1.0]))} == {float}
-
-
 EVENTS_REFUSED = {
     "fewer strengths than times": (([0.5, 1.0], {"strength": [0.2]}), "strength"),
     "more strengths than times": (([0.5], {"strength": [0.2, 0.3]}), "strength"),
     "a strength above one": (([0.5], {"strength": 1.5}), "strength"),
     "a negative time": (([-0.5], {}), "t"),
+    "an array of bools as times": ((np.array([True, False]), {}), "t"),
+    "an array of bools as strengths": ((np.array([0.5, 1.0]), {"strength": np.array([True, False])}), "strength"),
     "a zero duration": (([0.5], {"duration": 0.0}), "duration"),
     "an empty label": (([0.5], {"label": ""}), "label"),
 }

@@ -34,9 +34,9 @@ def whole_number(value: object) -> object:
     return value
 
 
-def plain[T](values: "Sequence[T] | NDArray[np.float64]") -> "Sequence[T] | list[float]":
-    """The values as a sequence of Python numbers: an array's elements become `float`s (never numpy scalars), any
-    other sequence is returned as it is, for the model to validate."""
+def plain[T](values: Sequence[T] | NDArray[np.float64]) -> Sequence[T] | list[float]:
+    """The values as Python numbers for a model to validate: an array is listed, so a numpy bool array is refused
+    instead of being read as 0 and 1. Any other sequence is returned as it is."""
     return values.tolist() if isinstance(values, np.ndarray) else values
 
 
