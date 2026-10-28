@@ -153,6 +153,17 @@ OFFENCES = {
         ),
         ["unsafe_code", CORE],
     ),
+    "unsafe code allowed on a function in the core": (
+        "rust-lint",
+        CORE,
+        replaced(
+            "#[cfg(test)]\nmod tests {",
+            "/// Probe.\n#[must_use]\n#[allow(unsafe_code)]\npub fn probe(value: &u8) -> u8 {\n"
+            "    // SAFETY: a reference is valid to read.\n    unsafe { *std::ptr::from_ref(value) }\n}\n\n"
+            "#[cfg(test)]\nmod tests {",
+        ),
+        ["allow(unsafe_code)", "forbid", CORE],
+    ),
     "a pedantic lint": (
         "rust-lint",
         CORE,
@@ -176,6 +187,12 @@ OFFENCES = {
         CORE_MANIFEST,
         replaced("[dependencies]\n", "[dependencies]\npyo3.workspace = true\n"),
         ["banned", "pyo3", "bullterrier-control"],
+    ),
+    "PyO3's raw bindings in the pure-Rust core": (
+        "rust-deny",
+        CORE_MANIFEST,
+        replaced("[dependencies]\n", '[dependencies]\npyo3-ffi = "0.30"\n'),
+        ["banned", "pyo3-ffi", "bullterrier-control"],
     ),
     "a licence outside the allow-list": (
         "rust-deny",

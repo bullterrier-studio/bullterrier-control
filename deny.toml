@@ -26,6 +26,10 @@ allow-wildcard-paths = true  # the workspace's own crates depend on each other b
 deny = [
     { crate = "pyo3", wrappers = ["bullterrier-control-python", "numpy"] },
     { crate = "numpy", wrappers = ["bullterrier-control-python"] },
+    { crate = "pyo3-ffi", wrappers = ["pyo3"] },
+    { crate = "pyo3-build-config", wrappers = ["pyo3", "pyo3-ffi", "numpy"] },
+    # not used yet: banned outright, so the first crate to use it (the bindings) names itself as a wrapper here
+    { crate = "pythonize" },
 ]
 
 [sources]
