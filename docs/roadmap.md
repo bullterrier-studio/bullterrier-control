@@ -18,7 +18,7 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | C3b | Operations on events and series | M | done |
 | C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | done |
 | R0 | Rust core: workspace, gates, `slew` and `follow` in Rust | M | done |
-| R0b | Rust core: CI and a wheel per platform | S | done |
+| R0b | Rust core: CI and a wheel per platform | S | done (first GitHub run pending) |
 | R0.5 | Code-first API: the spec in Python and Rust, then the Python improvements | M | |
 | R1 | Rust core: the formats | M | |
 | R2 | Rust core: parameters | M | |
@@ -153,7 +153,7 @@ The Python suite runs unchanged against the Rust core throughout.
   bindings), maturin as build backend, Rust gates as strict as the Python ones (each proven by a known-bad input),
   `slew` and `follow` rendered in Rust through the transitional boundary `_core.render`. Done when their tests pass
   unchanged and the gate is green.
-- **R0b CI and wheels (done).** Every workflow that imports the package builds the core; a wheel per
+- **R0b CI and wheels (done; first GitHub run pending).** Every workflow that imports the package builds the core; a wheel per
   platform (Linux x86_64 and aarch64, macOS arm64 and x86_64, Windows x86_64), each installed and run before release.
 - **R0.5 Code-first API.** The programmatic API is the product; see the section below.
 - **R1 Formats.** Series, Event, Grid, Bundle in Rust; the schema generated from Rust, its meaning unchanged.
