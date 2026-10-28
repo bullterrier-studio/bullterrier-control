@@ -402,6 +402,17 @@ separate ramp. Changed:
   refer to each other (an architecture test, as for the Python ones). Warnings are errors only in the gate, so a newer
   compiler never breaks a user's build. No `.cargo/config.toml` and no `target-cpu=native`: a wheel must run on every CPU
   of its platform.
+- **Platforms: wheels for five, the sdist for the rest.** One abi3 wheel each (every Python from 3.12) for Linux x86_64
+  and aarch64 with glibc 2.28 or newer (manylinux_2_28), macOS arm64 and x86_64, and Windows x86_64, built by
+  maturin-action on GitHub's runners (Linux natively in the manylinux container of each architecture; macOS x86_64
+  cross-compiled), with no build cache. Windows on Arm, musl Linux (Alpine) and glibc older than 2.28 install from the
+  sdist, which needs Rust (rustup; the sdist carries `rust-toolchain.toml`, so it builds with the compiler CI tests);
+  only a glibc Linux build of the sdist is tried before release. Every wheel is installed from the artifact alone on its
+  own platform, and the sdist built, each running `bt-control` and a patch that uses `slew` (the Rust extension),
+  before anything is published. *Reason:* a user on a common platform never needs a compiler, and nothing published
+  goes untried. manylinux2014 (glibc 2.17) is end-of-life and no dependency here
+  forces a floor, so it is 2_28, the one bullterrier-image's wheels have; a musl or Windows arm64 wheel waits for
+  someone to ask.
 
 ## API first (owner, 2026-10-28)
 
