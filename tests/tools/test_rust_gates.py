@@ -124,7 +124,7 @@ OFFENCES = {
         "rust-lint",
         CORE,
         appended('\n/// Probe.\npub fn probe() {\n    panic!("no");\n}\n'),
-        ["#panic", CORE],
+        ["clippy::panic", CORE],
     ),
     "printing": (
         "rust-lint",
