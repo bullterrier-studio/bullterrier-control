@@ -411,8 +411,7 @@ separate ramp. Changed:
   own platform, and the sdist built, each running `bt-control` and a patch that uses `slew` (the Rust extension),
   before anything is published. *Reason:* a user on a common platform never needs a compiler, and nothing published
   goes untried. manylinux2014 (glibc 2.17) is end-of-life and no dependency here
-  forces a floor, so it is 2_28, the one bullterrier-image's wheels have; a musl or Windows arm64 wheel waits for
-  someone to ask.
+  forces a floor, so it is 2_28. A musl or Windows arm64 wheel waits for someone to ask.
 
 ## API first (owner, 2026-10-28)
 
