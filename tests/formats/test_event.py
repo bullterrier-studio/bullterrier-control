@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import pytest
 
@@ -22,6 +24,9 @@ EDGES = {
     "time zero": {"t": 0},
     "strength zero": {"t": 1, "strength": 0},
     "strength one": {"t": 1, "strength": 1},
+    "strength zero as a float": {"t": 0, "strength": 0.0},
+    "strength one as a float": {"t": 0, "strength": 1.0},
+    "strength just below one": {"t": 0, "strength": math.nextafter(1.0, 0.0)},
     "lowest pitch": {"t": 1, "pitch": 0},
     "highest pitch": {"t": 1, "pitch": 127},
     "a very short span": {"t": 1, "duration": 1e-9},
@@ -42,6 +47,7 @@ INVALID = {
     "time not finite": ({"t": float("nan")}, "t"),
     "strength above one": ({"t": 1, "strength": 1.2}, "strength"),
     "strength below zero": ({"t": 1, "strength": -0.1}, "strength"),
+    "strength just above one": ({"t": 1, "strength": math.nextafter(1.0, 2.0)}, "strength"),
     "zero duration": ({"t": 1, "duration": 0}, "duration"),
     "negative duration": ({"t": 1, "duration": -1}, "duration"),
     "empty label": ({"t": 1, "label": ""}, "label"),

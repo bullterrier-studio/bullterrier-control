@@ -55,6 +55,22 @@ VALUES = {
             Series(rate=2, values=[0.0, 0.5], unit=Unit.FRACTION, scaling="peak"),
         ],
     ),
+    "Series with scaling and a start": (
+        Series(rate=4, values=[0.0, 1.0], unit=Unit.FRACTION, scaling="peak", start=1.5),
+        Series.parse({"start": 1.5, "rate": 4, "values": [0, 1], "unit": "fraction", "scaling": "peak"}),
+        [
+            Series(rate=4, values=[0.0, 1.0], unit=Unit.FRACTION, scaling="rank", start=1.5),
+            Series(rate=4, values=[0.0, 1.0], unit=Unit.FRACTION, scaling="peak", start=0.5),
+        ],
+    ),
+    "Series with a start and another unit": (
+        Series(rate=4, values=[10.0, 20.0], unit=Unit.HERTZ, start=2.5),
+        Series.parse({"start": 2.5, "rate": 4, "values": [10, 20], "unit": "hertz"}),
+        [
+            Series(rate=4, values=[10.0, 20.0], unit=Unit.HERTZ, start=0),
+            Series(rate=4, values=[10.0, 20.0], unit=Unit.MIDI, start=2.5),
+        ],
+    ),
     "Grid": (
         GRID,
         Grid.parse({"beats": (0.5, 1), "meter": 2, "first_downbeat": 0}),
@@ -133,6 +149,19 @@ def test_a_copy_or_an_unpickled_value_is_equal_and_of_the_same_class(value, same
     assert type(made) is type(value)
     assert made == value
     assert hash(made) == hash(value)
+
+
+SERIES_FIELDS = {
+    "a fraction series": (VALUES["Series with scaling and a start"][0], ("peak", 1.5, Unit.FRACTION)),
+    "a series in hertz": (VALUES["Series with a start and another unit"][0], (None, 2.5, Unit.HERTZ)),
+}
+
+
+@pytest.mark.parametrize("make", COPIES.values(), ids=COPIES.keys())
+@pytest.mark.parametrize(("series", "fields"), SERIES_FIELDS.values(), ids=SERIES_FIELDS.keys())
+def test_a_copied_or_unpickled_series_keeps_its_scaling_start_and_unit(series, fields, make):
+    made = make(series)
+    assert (made.scaling, made.start, made.unit) == fields
 
 
 def test_an_unpickled_bundle_keeps_its_parts_as_formats():
