@@ -94,7 +94,11 @@ impl Grid {
                 );
             }
             Some(first) => {
-                if let (Some(meter), Some(beats)) = (meter, &beats) {
+                // not against a meter or a beat count already found broken: that would be the same fault twice
+                if let (Some(meter), Some(beats)) = (meter, &beats)
+                    && (1..=i128::from(u32::MAX)).contains(&meter)
+                    && beats.len() >= 2
+                {
                     let count = i128::try_from(beats.len()).unwrap_or(i128::MAX);
                     if first >= meter.min(count) {
                         let rule = format!("{first} must be a beat inside a bar of meter = {meter} ({count} beats)");
@@ -304,7 +308,8 @@ mod tests {
             ("two beats, one per bar, the smallest grid", vec![0.0, 1.0], 1, 0, &[]),
             ("a first beat of negative zero is zero", vec![-0.0, 1.0], 4, 1, &[]),
             ("one beat", vec![0.0], 1, 0, &[("beats", "at least 2")]),
-            ("no beats", vec![], 1, 0, &[("beats", "at least 2"), ("first_downbeat", "meter = 1 (0 beats)")]),
+            ("no beats", vec![], 1, 0, &[("beats", "at least 2")]),
+            ("one beat and a first downbeat past it", vec![0.0], 4, 1, &[("beats", "at least 2")]),
             ("a beat below zero", vec![-0.5, 1.0], 1, 0, &[("beats[0]", ">= 0 (got -0.5)")]),
             ("a NaN beat", vec![0.0, f64::NAN, 2.0], 1, 0, &[("beats[1]", "finite (got NaN)")]),
             ("an infinite beat", vec![0.0, f64::INFINITY], 1, 0, &[("beats[1]", "finite (got Infinity)")]),
@@ -312,13 +317,16 @@ mod tests {
             ("a beat out of order", vec![0.0, 2.0, 1.0], 1, 0, &[("beats[2]", "1.0 does not come after beats[1] = 2.0")]),
             ("two beats out of order", vec![0.0, 3.0, 2.0, 1.0], 1, 0,
                 &[("beats[2]", "2.0 does not come after beats[1] = 3.0"), ("beats[3]", "after beats[2] = 2.0")]),
-            ("meter zero", eight.clone(), 0, 0, &[("meter", ">= 1 (got 0)"), ("first_downbeat", "meter = 0 (8 beats)")]),
+            ("meter zero", eight.clone(), 0, 0, &[("meter", ">= 1 (got 0)")]),
+            ("meter zero and a first downbeat: one fault, not two", eight.clone(), 0, 3, &[("meter", ">= 1 (got 0)")]),
             ("first downbeat just inside the meter", eight.clone(), 4, 3, &[]),
             ("first downbeat equal to the meter", eight.clone(), 4, 4, &[("first_downbeat", "4 must be a beat inside a bar of meter = 4 (8 beats)")]),
             ("first downbeat just inside the beats", vec![0.0, 1.0, 2.0], 8, 2, &[]),
             ("first downbeat equal to the number of beats", vec![0.0, 1.0, 2.0], 8, 3, &[("first_downbeat", "3 must be a beat inside a bar of meter = 8 (3 beats)")]),
-            ("every rule broken at once", vec![0.0, 0.0], 0, 5,
-                &[("beats[1]", "does not come after"), ("meter", ">= 1"), ("first_downbeat", "meter = 0 (2 beats)")]),
+            ("beats and meter broken", vec![0.0, 0.0], 0, 5,
+                &[("beats[1]", "does not come after"), ("meter", ">= 1")]),
+            ("beats and first downbeat broken", vec![0.0, 0.0], 2, 5,
+                &[("beats[1]", "does not come after"), ("first_downbeat", "5 must be a beat inside a bar of meter = 2 (2 beats)")]),
         ];
         for (id, beats, meter, first_downbeat, expected) in rows {
             check_against(id, Grid::new(beats, meter, first_downbeat), expected);
@@ -444,7 +452,7 @@ mod tests {
             ("first downbeat as a decimal", r#"{"beats": [0, 1], "meter": 4, "first_downbeat": 0.0}"#, &[("first_downbeat", "whole number")]),
             ("meter as text", r#"{"beats": [0, 1], "meter": "4", "first_downbeat": 0}"#, &[("meter", "string")]),
             ("meter as a bool", r#"{"beats": [0, 1], "meter": true, "first_downbeat": 0}"#, &[("meter", "boolean")]),
-            ("a negative meter", r#"{"beats": [0, 1], "meter": -4, "first_downbeat": 0}"#, &[("meter", ">= 1 (got -4)"), ("first_downbeat", "meter = -4")]),
+            ("a negative meter", r#"{"beats": [0, 1], "meter": -4, "first_downbeat": 0}"#, &[("meter", ">= 1 (got -4)")]),
             ("a negative first downbeat", r#"{"beats": [0, 1], "meter": 4, "first_downbeat": -1}"#, &[("first_downbeat", ">= 0 (got -1)")]),
             ("a meter beyond what a count holds", r#"{"beats": [0, 1], "meter": 4294967296, "first_downbeat": 0}"#, &[("meter", "<= 4294967295")]),
             ("a bool beat", r#"{"beats": [0, false], "meter": 4, "first_downbeat": 0}"#, &[("beats[1]", "boolean")]),

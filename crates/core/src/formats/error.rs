@@ -53,8 +53,8 @@ impl FormatError {
         // key is taken from the message
         let repeated = message
             .strip_prefix("duplicate field `")
-            .and_then(|rest| rest.split('`').next())
-            .map(str::to_owned);
+            // the key may hold a backtick itself: it ends at the last one (a JSON reader adds " at line .. column .." after)
+            .and_then(|rest| rest.rfind('`').map(|end| rest[..end].to_owned()));
         match (repeated, path.as_str()) {
             (Some(key), ".") => Self::at(&key, message),
             (Some(key), parent) => Self::at(&format!("{parent}.{key}"), message),

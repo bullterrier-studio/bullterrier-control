@@ -13,7 +13,7 @@ use serde_json::ser::Formatter;
 
 use super::error::{FormatError, Problem};
 use super::event::{Event, RawEvent};
-use super::field::{Number, Whole, check, decode, push, required, show};
+use super::field::{Number, Object, Whole, check, decode, push, required, show};
 use super::grid::{Grid, RawGrid};
 use super::series::{RawSeries, Series};
 
@@ -252,11 +252,12 @@ struct RawBundle {
     source: Option<String>,
     #[schemars(extend("exclusiveMinimum" = 0))]
     duration: Option<Number>,
-    grid: Option<RawGrid>,
+    // each struct is read as an `Object`: a JSON array is no grid, series or event
+    grid: Option<Object<RawGrid>>,
     #[serde(default)]
-    series: Names<RawSeries>,
+    series: Names<Object<RawSeries>>,
     #[serde(default)]
-    events: Names<Vec<RawEvent>>,
+    events: Names<Vec<Object<RawEvent>>>,
 }
 
 fn format_schema(_: &mut SchemaGenerator) -> Schema {
@@ -285,28 +286,30 @@ impl RawBundle {
         }
         let duration = self.duration.map(|number| number.0);
         let limit = check_duration(problems, duration);
-        let grid = self.grid.map(|grid| grid.read("grid", problems));
+        let grid = self.grid.map(|Object(grid)| grid.read("grid", problems));
         let mut series = BTreeMap::new();
-        for (name, raw) in self.series.0 {
+        for (name, Object(raw)) in self.series.0 {
             check_name(problems, "series", &name);
             let start = raw.start();
-            if let Some(found) = raw.read(&format!("series.{name}"), problems) {
-                series.insert(name.clone(), found);
-            }
+            let found = raw.read(&format!("series.{name}"), problems);
             check_start(problems, &name, start, limit);
+            if let Some(found) = found {
+                series.insert(name, found);
+            }
         }
         let mut events = BTreeMap::new();
         for (name, list) in self.events.0 {
             check_name(problems, "events", &name);
             let mut found = Vec::with_capacity(list.len());
             let mut before = None;
-            for (index, raw) in list.into_iter().enumerate() {
+            for (index, Object(raw)) in list.into_iter().enumerate() {
                 let t = raw.t();
                 if let Some(event) = raw.read(&format!("events.{name}[{index}]"), problems) {
                     found.push(event);
                 }
                 check_event(problems, &name, index, t, before, limit);
-                before = t.filter(|t| t.is_finite());
+                // the next event is compared with the last time that could be read, even past an event without one
+                before = t.filter(|t| t.is_finite()).or(before);
             }
             events.insert(name, found);
         }
@@ -532,9 +535,25 @@ mod tests {
                 &[("series.bass.rate", "duplicate field `rate`")]),
             ("a repeated field of an event", doc(r#""events": {"kick": [{"t": 1}, {"t": 1, "t": 2}]}"#), &[("events.kick[1].t", "duplicate field `t`")]),
             ("a repeated field of the grid", doc(r#""grid": {"beats": [0, 1], "meter": 2, "meter": 3, "first_downbeat": 0}"#), &[("grid.meter", "duplicate field `meter`")]),
+            ("a repeated name with a backtick in it is named in full", doc(r#""events": {"a`b": [], "a`b": []}"#), &[("events.a`b", "duplicate field `a`b`")]),
+            ("a repeated name inside a series name map with two backticks", doc(r#""series": {"`x`": {"rate": 1, "values": [1], "unit": "ratio"}, "`x`": {}}"#), &[("series.`x`", "duplicate field")]),
+            ("a whole number beyond 64 bits is not told it is not whole", r#"{"format": "bullterrier-control/bundle", "version": 18446744073709551616}"#.to_owned(), &[("version", "within 64 bits")]),
+            ("a grid written as an array", doc(r#""grid": [[0, 1], 4, 0]"#), &[("grid", "an object")]),
+            ("a series written as an array", doc(r#""series": {"bass": [0, 10, [0.1], "ratio", null]}"#), &[("series.bass", "an object")]),
+            ("an event written as an array", doc(r#""events": {"kick": [[1, null, null, null, null]]}"#), &[("events.kick[0]", "an object")]),
+            ("an event written as a short array", doc(r#""events": {"kick": [{"t": 1}, [1]]}"#), &[("events.kick[1]", "an object")]),
+            ("a time left out does not hide the order of the others", doc(r#""events": {"kick": [{"t": 5}, {"strength": 1}, {"t": 1}]}"#),
+                &[("events.kick[1].t", "is required"), ("events.kick[2]", "t = 1.0 comes before t = 5.0")]),
         ];
         for (id, text, expected) in rows {
-            check_against(id, Bundle::from_json(&text), expected);
+            let result = Bundle::from_json(&text);
+            if let Err(error) = &result {
+                assert!(
+                    !error.to_string().contains("Raw"),
+                    "{id}: names an internal type: {error}"
+                );
+            }
+            check_against(id, result, expected);
         }
     }
 
@@ -927,8 +946,8 @@ mod tests {
         fn a_valid_bundle_survives_its_json_text_exactly_with_or_without_ascii_only(bundle in arbitrary_bundles()) {
             for ascii_only in [false, true] {
                 let text = bundle.to_json(ascii_only);
-                prop_assert!(text.ends_with("}\n") && !text[..text.len() - 1].contains('\n') || text.contains("\\n") || !ascii_only, "{}", text);
-                prop_assert_eq!(!ascii_only || text.is_ascii(), true, "{}", text);
+                prop_assert!(text.ends_with('\n') && text.matches('\n').count() == 1, "{}", text);
+                prop_assert!(!ascii_only || text.is_ascii(), "{}", text);
                 prop_assert_eq!(Bundle::from_json(&text), Ok(bundle.clone()), "{}", text);
             }
         }

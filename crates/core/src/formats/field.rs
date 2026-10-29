@@ -17,6 +17,9 @@ use super::error::{FormatError, Problem};
 /// close that gap, at a cost in every number read).
 const LARGEST_EXACT: u64 = 1 << 53;
 
+/// 2^64: from here a float is no integer that fits 64 bits (an integer written beyond that arrives as a float).
+const BEYOND_64_BITS: f64 = 18_446_744_073_709_551_616.0;
+
 /// A JSON number read strictly: an integer or a decimal, never `true`, a string or `null`, and a whole number only
 /// while it is exact in an `f64`.
 #[derive(Clone, Copy, Debug)]
@@ -110,7 +113,13 @@ impl Visitor<'_> for WholeVisitor {
 
     // a decimal (`4.0`, `1e2`) or an integer too large for 64 bits, which `serde_json` has already rounded
     fn visit_f64<E: de::Error>(self, value: f64) -> Result<Whole, E> {
-        Err(E::custom(format!("must be a whole number (got {})", show(value))))
+        // a number that large has no fraction left to speak of: what is wrong with it is its size
+        let rule = if value.abs() >= BEYOND_64_BITS {
+            "must be a whole number within 64 bits"
+        } else {
+            "must be a whole number"
+        };
+        Err(E::custom(format!("{rule} (got {})", show(value))))
     }
 }
 
@@ -146,8 +155,28 @@ pub(crate) fn show(value: f64) -> String {
 }
 
 /// A struct read from a JSON object only: serde's derived `Deserialize` also reads a struct from an array (field by
-/// field, in order), which a file must not be allowed to do.
-struct Object<T>(T);
+/// field, in order), which a file must not be allowed to do. The one definition of that rule: [`decode`] reads a
+/// document's top level through it, and a document that holds structs (a bundle) types each one `Object<Raw...>`.
+pub(crate) struct Object<T>(pub(crate) T);
+
+/// In a schema an `Object<T>` is the `T` it holds.
+impl<T: JsonSchema> JsonSchema for Object<T> {
+    fn inline_schema() -> bool {
+        T::inline_schema()
+    }
+
+    fn schema_name() -> Cow<'static, str> {
+        T::schema_name()
+    }
+
+    fn schema_id() -> Cow<'static, str> {
+        T::schema_id()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        T::json_schema(generator)
+    }
+}
 
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for Object<T> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
