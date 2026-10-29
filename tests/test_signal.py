@@ -5,7 +5,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from bullterrier_control import FormatError, Series, SignalError, Unit, lib, load_patch, registry
+from bullterrier_control import FormatError, ParameterError, Series, SignalError, Unit, lib, load_patch, registry
 from bullterrier_control.signal import Constant, Signal, from_series, from_values, maximum, minimum
 
 
@@ -311,6 +311,12 @@ def test_pipe_results_can_be_piped_again():
     assert values_of(RAMP.pipe(lib.clip, high=0.5).pipe(lib.clip, low=0.25)) == pytest.approx(
         [0.25, 0.5, 0.5, 0.25, 0.25]
     )
+
+
+def test_pipe_with_a_registered_shaper_refuses_a_misspelt_keyword_naming_it():
+    """Parameters that come from data go through `lib.<name>` or `pipe`: the same error as calling the shaper."""
+    with pytest.raises(ParameterError, match="rize"):
+        RAMP.pipe(lib.slew, rize=0.2)
 
 
 def test_pipe_refuses_a_callable_that_does_not_return_a_signal_naming_it():

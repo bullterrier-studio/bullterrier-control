@@ -10,7 +10,11 @@ from .formats import Event
 
 class Chain[S]:
     """A method per built-in shaper, which `Signal` inherits as `Chain["Signal"]`: each gives a `Signal`
-    (`S`, a parameter only so that this module, which `signal` imports, imports nothing of it)."""
+    (`S`, a parameter only so that this module, which `signal` imports, imports nothing of it).
+
+    The signatures are for literal calls: a misspelt keyword is a type error, and a `TypeError` when run.
+    Parameters that come from data (a config dict) go through `lib.<name>` or `signal.pipe(lib.<name>,
+    **params)`, which raise `ParameterError` naming the field."""
 
     @abstractmethod
     def _apply(self, name: str, /, **params: object) -> S:
