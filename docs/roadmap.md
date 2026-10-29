@@ -19,7 +19,7 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | done |
 | R0 | Rust core: workspace, gates, `slew` and `follow` in Rust | M | done |
 | R0b | Rust core: CI and a wheel per platform | S | done (first GitHub run pending) |
-| R0.5 | Code-first API: the spec in Python and Rust, then the Python improvements | M | done (merge pending) |
+| R0.5 | Code-first API: the spec in Python and Rust, then the Python improvements | M | done |
 | R1 | Rust core: the formats | M | |
 | R2 | Rust core: parameters | M | |
 | R3 | Rust core: the signal graph | L | |
@@ -167,7 +167,7 @@ The Python suite runs unchanged against the Rust core throughout.
 - **R5 Built-ins.** Every other source, shaper and operation ported.
 - **R6 Cleanup.** No Python duplicate left, crate documentation, final speed and memory measured against R0's baseline.
 
-## R0.5 Code-first API (done, merge pending)
+## R0.5 Code-first API (done)
 
 The programmatic API, in Python and later in Rust, is the product; patch files are a serialisation of the same graph,
 built only through it ([design-decisions.md](design-decisions.md), "API first"). Weak spots in today's Python API: `lib`
