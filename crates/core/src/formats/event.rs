@@ -1,5 +1,6 @@
 //! [`Event`]: a moment, or a span when it has a duration.
 
+use schemars::JsonSchema;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -138,20 +139,36 @@ impl Event {
     }
 }
 
-/// The fields as a file spells them, before any rule is checked; an absent field and a `null` one are both `None`.
-/// A document that holds events (a bundle) reads them as this and calls [`RawEvent::read`] with each one's place in it,
-/// so every problem of every event is kept, under a full path.
-#[derive(Deserialize)]
+// The fields as a file spells them, before any rule is checked; an absent field and a `null` one are both `None`.
+// A document that holds events (a bundle) reads them as this and calls `RawEvent::read` with each one's place in it,
+// so every problem of every event is kept, under a full path. It is also the one description of the file's shape that
+// the bundle schema is generated from: the attributes state the rules a schema can.
+#[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(
+    rename = "Event",
+    description = "Something at `t` seconds: an onset, a beat, a note (with `duration` and `pitch`) or a section start."
+)]
 pub(crate) struct RawEvent {
+    #[schemars(with = "Number", range(min = 0))]
     t: Option<Number>,
+    #[schemars(range(min = 0, max = 1))]
     strength: Option<Number>,
+    #[schemars(extend("exclusiveMinimum" = 0))]
     duration: Option<Number>,
+    #[schemars(length(min = 1))]
     label: Option<String>,
+    #[schemars(range(min = 0, max = 127))]
     pitch: Option<Number>,
 }
 
 impl RawEvent {
+    /// When it happens, if the data said and it is a number (the bundle checks it against the document's duration
+    /// even when another field of the event is broken).
+    pub(crate) fn t(&self) -> Option<f64> {
+        self.t.map(|number| number.0)
+    }
+
     /// Check the rules of [`Event::new`], recording each broken one in `problems` under `prefix` (`events.kick[3]`);
     /// the event if none is broken.
     pub(crate) fn read(self, prefix: &str, problems: &mut Vec<Problem>) -> Option<Event> {

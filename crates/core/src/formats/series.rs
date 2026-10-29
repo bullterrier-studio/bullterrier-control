@@ -1,5 +1,6 @@
 //! [`Series`]: values at a fixed rate.
 
+use schemars::JsonSchema;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -146,26 +147,40 @@ impl Series {
     }
 }
 
-/// The fields as a file spells them, before any rule is checked; an absent field and a `null` one are both `None`.
-/// A document that holds series (a bundle) reads them as this and calls [`RawSeries::read`] with each one's place in
-/// it, so every problem of every series is kept, under a full path.
-#[derive(Deserialize)]
+// The fields as a file spells them, before any rule is checked; an absent field and a `null` one are both `None`.
+// A document that holds series (a bundle) reads them as this and calls `RawSeries::read` with each one's place in it,
+// so every problem of every series is kept, under a full path. It is also the one description of the file's shape that
+// the bundle schema is generated from: the attributes state the rules a schema can.
+#[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(
+    rename = "Series",
+    description = "Values at a fixed rate: sample *i* is at `start + i / rate` seconds. A `fraction` series states its `scaling` and stays within 0..1."
+)]
 pub(crate) struct RawSeries {
+    #[schemars(range(min = 0))]
     start: Option<Number>,
+    #[schemars(with = "Number", extend("exclusiveMinimum" = 0))]
     rate: Option<Number>,
+    #[schemars(with = "Vec<Number>", length(min = 1))]
     values: Option<Vec<Number>>,
+    #[schemars(with = "Unit")]
     unit: Option<Unit>,
     scaling: Option<String>,
 }
 
 impl RawSeries {
+    /// When the first sample is: the number the data said, or 0 if it did not.
+    pub(crate) fn start(&self) -> f64 {
+        self.start.map_or(SeriesOptions::default().start, |number| number.0)
+    }
+
     /// Check the rules of [`Series::new`], recording each broken one in `problems` under `prefix` (`series.bass`); the
     /// series if none is broken.
     pub(crate) fn read(self, prefix: &str, problems: &mut Vec<Problem>) -> Option<Series> {
         Series::build(
             prefix,
-            self.start.map_or(SeriesOptions::default().start, |number| number.0),
+            self.start(),
             self.rate.map(|number| number.0),
             self.values
                 .map(|values| values.into_iter().map(|number| number.0).collect()),

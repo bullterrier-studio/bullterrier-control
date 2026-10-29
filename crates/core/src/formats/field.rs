@@ -2,9 +2,11 @@
 //! object and a failure of that named by its path, and how a field is checked against a rule and a broken rule
 //! recorded under a path prefix (so a format nested in a document reports `events.kick[3].t`, not `t`).
 
+use std::borrow::Cow;
 use std::fmt;
 use std::marker::PhantomData;
 
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 
 use super::error::{FormatError, Problem};
@@ -61,6 +63,68 @@ impl Visitor<'_> for NumberVisitor {
                 "integer {value} is beyond 2^53, which a number cannot hold exactly"
             )))
         }
+    }
+}
+
+impl JsonSchema for Number {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("number")
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({"type": "number"})
+    }
+}
+
+/// A JSON integer read strictly: a whole number written without a fraction or exponent (`4`, never `4.0`, `true` or
+/// `"4"`). Any 64-bit integer is held exactly; its sign and size are rules for the field that reads it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Whole(pub(crate) i128);
+
+impl<'de> Deserialize<'de> for Whole {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(WholeVisitor)
+    }
+}
+
+struct WholeVisitor;
+
+impl Visitor<'_> for WholeVisitor {
+    type Value = Whole;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a whole number")
+    }
+
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<Whole, E> {
+        Ok(Whole(value.into()))
+    }
+
+    fn visit_i64<E: de::Error>(self, value: i64) -> Result<Whole, E> {
+        Ok(Whole(value.into()))
+    }
+
+    // a decimal (`4.0`, `1e2`) or an integer too large for 64 bits, which `serde_json` has already rounded
+    fn visit_f64<E: de::Error>(self, value: f64) -> Result<Whole, E> {
+        Err(E::custom(format!("must be a whole number (got {})", show(value))))
+    }
+}
+
+impl JsonSchema for Whole {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("whole")
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({"type": "integer"})
     }
 }
 

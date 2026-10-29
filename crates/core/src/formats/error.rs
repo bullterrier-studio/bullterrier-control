@@ -58,7 +58,8 @@ impl FormatError {
         match (repeated, path.as_str()) {
             (Some(key), ".") => Self::at(&key, message),
             (Some(key), parent) => Self::at(&format!("{parent}.{key}"), message),
-            (None, ".") => Self::at("", message),
+            // a text that is not JSON fails before any field is reached: no path is known
+            (None, "." | "?") => Self::at("", message),
             (None, _) => Self::at(&path, message),
         }
     }

@@ -19,6 +19,8 @@ numpy = "0.30"
 proptest = "1.12"
 # abi3-py312: one wheel per platform serves every Python from 3.12 (the oldest the package supports)
 pyo3 = { version = "0.30", features = ["abi3-py312"] }
+# schemars: the bundle schema is generated from the structs that read the file
+schemars = "1"
 serde = { version = "1", features = ["derive"] }
 # float_roundtrip: a decimal read back is the f64 that was written, not one unit in the last place off (a file must
 # render the same on every read)

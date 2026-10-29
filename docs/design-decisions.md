@@ -481,3 +481,20 @@ Taught in `docs/api.md`, Python and Rust side by side; every Python example ther
   that gap, at a cost in every number read). `serde_json`'s `float_roundtrip`
   feature is on (workspace dependency): without it a decimal can read back one unit in the last place
   away from the `f64` that was written, found by the round-trip property test. *Cost:* slightly slower float parsing.
+- **`schemars` generates the bundle schema from the structs that read the file.** *Reason:* the reader (`RawBundle`,
+  `RawEvent`, `RawSeries`, `RawGrid`) is the one description of the file's shape, so field names, required fields,
+  refused unknown fields and the name maps cannot drift from the schema, and no Python model is needed to generate it. The ranges a schema can state (`minimum`, `exclusiveMinimum`, `minItems`) are attributes on those fields, beside
+  the checks that enforce them: two statements of one rule, which a test running both over the same documents keeps in
+  agreement. Default features only (`derive`, `std`), no new transitive licence class (`deny.toml` passes). *Cost:* a
+  proc-macro crate in the core's build.
+- **The schema is stricter than its predecessor where that one was wrong.** Pydantic wrote `ge` (not a JSON Schema
+  keyword, so ignored by validators) for `meter` and `first_downbeat`; the generated schema states `minimum`. A schema
+  is generated for the file as it is written, so an optional field may be `null` and the name maps are objects only.
+- **A rule across the document is listed with the item it is about, and `meter` is a `u32`.** Events sorted by `t`, `t`
+  within the `duration` and a series' `start` within it are listed, all of them, after that item's own rules (the
+  item's own rules still apply when it is broken: its `t` is read even if its `strength` is not). `Grid` holds `meter` and
+  `first_downbeat` as `u32`; a larger `meter` in a file is a problem of its own (no real bar has four billion beats).
+- **`Bundle::to_json` spaces JSON as Python's `json.dumps`** (`", "`, `": "`) and with `ascii_only` escapes as
+  `ensure_ascii=True` does (UTF-16 units, DEL too), so a file written by either side is read by the other and the
+  output of the old and the new writer can be compared. Floats are written by `serde_json` (shortest round-trip form,
+  `1e22` where Python writes `1e+22`).

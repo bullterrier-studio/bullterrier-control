@@ -1,8 +1,10 @@
 //! What a [`Series`](super::Series)' values measure.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::str::FromStr;
 
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -87,6 +89,21 @@ impl<'de> Deserialize<'de> for Unit {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let name = String::deserialize(deserializer)?;
         Self::named(&name).map_err(D::Error::custom)
+    }
+}
+
+impl JsonSchema for Unit {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("Unit")
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        let names: Vec<&str> = Self::ALL.iter().map(|unit| unit.as_str()).collect();
+        json_schema!({
+            "type": "string",
+            "enum": names,
+            "description": "What a Series' values measure. `fraction` values lie in 0..1 and the Series says how that was reached.",
+        })
     }
 }
 

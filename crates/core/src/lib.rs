@@ -1,5 +1,5 @@
 //! The numeric core of bullterrier-control: the shapers implemented in Rust and the primitives they share, and the
-//! plain-data [`formats`] (Unit, Event, Series) that every package of the ecosystem reads and writes.
+//! plain-data [`formats`] (Unit, Event, Series, Grid, Bundle) that every package of the ecosystem reads and writes.
 //!
 //! Pure Rust, no Python: the `bullterrier-control-python` crate binds it to the package. A shaper's parameters arrive
 //! already validated by the Python package, which declares them; the core trusts them and does not check their ranges
