@@ -467,3 +467,15 @@ Taught in `docs/api.md`, Python and Rust side by side; every Python example ther
   built-in shaper named like an attribute `Signal` has already. (2) The chain methods take keyword parameters only. A
   future built-in shaper that takes an input such as `points` would need `_chain` to import the input's type from a layer
   above it, which the contract forbids; it must be typed differently (for example by taking its data through `pipe`).
+
+## The formats in Rust (batch R1)
+
+- **`serde_path_to_error` names the field of a wrongly typed value.** *Reason:* serde stops at the first value it cannot
+  read and says only "invalid type"; the crate gives the path (`values[2]`) so the one problem such a value is can be
+  listed like every other rule (`path: rule`). It has no dependencies of its own beyond serde and `itoa`, both already
+  permissive and tiny.
+- **Formats are read from JSON objects only, numbers strictly, and `serde_json` round-trips floats.** serde's derived
+  `Deserialize` also reads a struct from a JSON array, field by field; the formats refuse that (`[0.5, null, ...]` is not an
+  Event). A JSON integer beyond 2^53 is refused, since an `f64` would round it to a neighbour. `serde_json`'s
+  `float_roundtrip` feature is on (workspace dependency): without it a decimal can read back one unit in the last place
+  away from the `f64` that was written, found by the round-trip property test. *Cost:* slightly slower float parsing.
