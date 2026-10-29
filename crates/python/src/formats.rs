@@ -353,7 +353,7 @@ impl PyEvent {
 #[pyclass(frozen, module = "bullterrier_control", name = "Series")]
 pub(crate) struct PySeries {
     inner: Series,
-    /// `inner`'s values as a read-only numpy array, made once.
+    /// `inner`'s values as a read-only numpy array, made once; `values` hands out views of it.
     values: Py<PyArray1<f64>>,
 }
 
@@ -429,10 +429,15 @@ impl PySeries {
         self.inner.rate()
     }
 
-    /// The samples: a read-only float64 array, the series' own.
+    /// The samples: a read-only float64 array over the series' own data. Each call returns a new array object over
+    /// the same immutable bytes, so reassigning the shape or dtype of one changes nothing for any other.
     #[getter]
-    fn values<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-        self.values.bind(py).clone()
+    fn values<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
+        Ok(self
+            .values
+            .bind(py)
+            .call_method0("view")?
+            .cast_into::<PyArray1<f64>>()?)
     }
 
     /// What the values measure.

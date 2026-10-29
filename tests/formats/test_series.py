@@ -1,10 +1,12 @@
+import contextlib
 import copy
 import pickle
+import warnings
 
 import numpy as np
 import pytest
 
-from bullterrier_control import FormatError, Series, Unit
+from bullterrier_control import FormatError, Series, Unit, from_series
 
 VALID = {"start": 1.5, "rate": 100, "values": [0.0, 0.25, 1], "unit": "fraction", "scaling": "peak"}
 
@@ -138,7 +140,6 @@ def test_values_are_a_read_only_array_of_the_series_own():
     series = a_series(source)
     source[0] = 9.0
     assert series.values.tolist() == [0.5, 1.5]
-    assert series.values is series.values
     assert not series.values.flags.writeable
     with pytest.raises(ValueError, match="read-only"):
         series.values[0] = 9.0
@@ -199,3 +200,30 @@ def test_a_unit_that_is_neither_a_member_nor_a_name_is_refused(reports):
     with pytest.raises(FormatError) as refused:
         Series(rate=1, values=[1], unit=3)  # type: ignore[arg-type]  # wrong on purpose: refused at run time
     reports(refused.value, "unit")
+
+
+def _try_to_reinterpret(array):
+    """Reassign the shape and the dtype of `array`; newer numpy may refuse, older only warns."""
+    for name, new in (("shape", (2, 2)), ("dtype", np.int64)):
+        with warnings.catch_warnings(), contextlib.suppress(AttributeError, ValueError, TypeError):
+            warnings.simplefilter("ignore")
+            setattr(array, name, new)
+
+
+def test_reshaping_or_retyping_a_returned_array_changes_nothing_for_anyone_else():
+    series = a_series([0.5, 1.5, 2.5, 3.5])
+    again = a_series([0.5, 1.5, 2.5, 3.5])
+    signal = from_series(series, interpolation="hold")
+    before = signal.sample([0.0, 1.0, 2.0, 3.0]).tolist()
+
+    _try_to_reinterpret(series.values)
+    held = series.values
+    _try_to_reinterpret(held)
+
+    assert series.values.shape == (4,)
+    assert series.values.dtype == np.float64
+    assert series.values.tolist() == [0.5, 1.5, 2.5, 3.5]
+    assert series == again
+    assert series.to_dict() == again.to_dict()
+    assert signal.sample([0.0, 1.0, 2.0, 3.0]).tolist() == before == [0.5, 1.5, 2.5, 3.5]
+    assert from_series(series, interpolation="hold").sample([0.0, 1.0, 2.0, 3.0]).tolist() == before
