@@ -186,6 +186,20 @@ def test_a_summary_that_would_write_an_invalid_file_is_refused_naming_the_built_
         gen_api.render(registry.all_registered())
 
 
+def test_a_shaper_without_a_module_is_not_a_built_in(empty_registry):
+    """A function made by `exec` has no `__module__`: it is left out, not an `AttributeError`."""
+
+    def made_by_exec(signal: Signal, params: WarpParams) -> Signal:
+        """Made at run time."""
+        return signal
+
+    made_by_exec.__module__ = None  # type: ignore[assignment]  # what exec gives a function
+    shaper(params=WarpParams)(made_by_exec)
+    files = gen_api.render(registry.all_registered())
+    assert "made_by_exec" not in files[Path(LIB)]
+    assert "made_by_exec" not in files[Path(CHAIN)]
+
+
 def test_check_passes_on_the_files_just_written_and_fails_naming_one_that_differs(tmp_path, capsys):
     assert gen_api.main(["--root", str(tmp_path)]) == 0
     assert gen_api.main(["--check", "--root", str(tmp_path)]) == 0

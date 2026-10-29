@@ -77,7 +77,9 @@ def render(registered: Mapping[str, Registered[Any, Any]]) -> dict[Path, str]:
 
     `ValueError` for a built-in shaper named like an attribute `Signal` has already, or a parameter whose schema has no
     Python type here."""
-    built_ins = {name: one for name, one in sorted(registered.items()) if one.function.__module__.startswith(BUILT_IN)}
+    built_ins = {
+        name: one for name, one in sorted(registered.items()) if (one.function.__module__ or "").startswith(BUILT_IN)
+    }
     taken = {name for kind in Signal.__mro__ if kind.__module__ != "bullterrier_control._chain" for name in vars(kind)}
     shapers = {name: one for name, one in built_ins.items() if one.kind == "shaper"}
     for name in shapers:
