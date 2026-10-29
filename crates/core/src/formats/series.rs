@@ -3,8 +3,8 @@
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::error::FormatError;
-use super::field::{Number, check, decode, push, required};
+use super::error::{FormatError, Problem};
+use super::field::{Number, check, decode, finite, push, required};
 use super::unit::Unit;
 
 /// Values at a fixed rate: sample *i* is at `start + i / rate` seconds. A `fraction` series states its `scaling` and
@@ -32,77 +32,87 @@ impl Series {
     /// The series of `values` sampled `rate` times per second, measuring `unit`.
     ///
     /// # Errors
-    /// A [`FormatError`] listing every rule broken.
+    /// A [`FormatError`] listing every rule broken, in the order of the fields: `start` below 0, `rate` not above 0,
+    /// `values` empty, any number not finite, and for a `fraction` series a value outside `[0, 1]` and a missing or
+    /// empty `scaling`.
     pub fn new(rate: f64, values: Vec<f64>, unit: Unit, options: SeriesOptions) -> Result<Self, FormatError> {
-        Self::from_parts(options.start, Some(rate), Some(values), Some(unit), options.scaling)
+        let mut problems = Vec::new();
+        Self::build(
+            "",
+            options.start,
+            Some(rate),
+            Some(values),
+            Some(unit),
+            options.scaling,
+            &mut problems,
+        )
+        .ok_or_else(|| FormatError::new(problems))
     }
 
-    /// The one place the rules are written; `None` is a field the data lacked. Problems come in the order of the
-    /// fields they are about: a `fraction` series' range rule is about its values, its scaling rule about `scaling`.
-    fn from_parts(
+    /// The one place the rules are written. Every rule broken is recorded in `problems` under `prefix` (empty, or where
+    /// this series sits in a document: `series.bass`), after what the caller already collected; `None` is a field the
+    /// data lacked. Problems come in the order of the fields they are about: a `fraction` series' range rule is about
+    /// its values, its scaling rule about `scaling`. The series, if none is broken.
+    fn build(
+        prefix: &str,
         start: f64,
         rate: Option<f64>,
         values: Option<Vec<f64>>,
         unit: Option<Unit>,
         scaling: Option<String>,
-    ) -> Result<Self, FormatError> {
-        let mut problems = Vec::new();
-        check(&mut problems, "start", start, "must be >= 0", |x| x >= 0.0);
+        problems: &mut Vec<Problem>,
+    ) -> Option<Self> {
+        let before = problems.len();
+        check(problems, prefix, "start", start, "must be >= 0", |x| x >= 0.0);
         match rate {
-            Some(rate) => check(&mut problems, "rate", rate, "must be > 0", |x| x > 0.0),
-            None => required(&mut problems, "rate"),
+            Some(rate) => check(problems, prefix, "rate", rate, "must be > 0", |x| x > 0.0),
+            None => required(problems, prefix, "rate"),
         }
         match &values {
-            None => required(&mut problems, "values"),
-            Some(values) if values.is_empty() => push(&mut problems, "values", "needs at least one value"),
+            None => required(problems, prefix, "values"),
+            Some(values) if values.is_empty() => push(problems, prefix, "values", "needs at least one value"),
             Some(values) => {
                 for (index, &value) in values.iter().enumerate() {
-                    let path = format!("values[{index}]");
+                    let field = format_args!("values[{index}]");
                     if unit == Some(Unit::Fraction) {
                         let rule = "must be in [0, 1] when unit is \"fraction\"";
-                        check(&mut problems, &path, value, rule, |x| (0.0..=1.0).contains(&x));
+                        check(problems, prefix, field, value, rule, |x| (0.0..=1.0).contains(&x));
                     } else {
-                        check(&mut problems, &path, value, "", |_| true);
+                        finite(problems, prefix, field, value);
                     }
                 }
             }
         }
         if unit.is_none() {
-            required(&mut problems, "unit");
+            required(problems, prefix, "unit");
         }
         if unit == Some(Unit::Fraction) && scaling.as_deref().is_none_or(str::is_empty) {
-            push(
-                &mut problems,
-                "scaling",
-                "is required when unit is \"fraction\": say how 0..1 was reached",
-            );
+            let rule = "is required when unit is \"fraction\": say how 0..1 was reached";
+            push(problems, prefix, "scaling", rule);
         }
         match (rate, values, unit) {
-            (Some(rate), Some(values), Some(unit)) if problems.is_empty() => Ok(Self {
+            (Some(rate), Some(values), Some(unit)) if problems.len() == before => Some(Self {
                 start,
                 rate,
                 values,
                 unit,
                 scaling,
             }),
-            _ => Err(FormatError::new(problems)),
+            _ => None,
         }
     }
 
-    /// Read a series from any serde format.
+    /// Read a series from any serde format and check it with [`Series::new`]'s rules. A field absent or `null` is unset
+    /// (`rate`, `values` and `unit` are then required, `start` is 0).
     ///
     /// # Errors
-    /// A [`FormatError`].
+    /// A [`FormatError`]: the one problem that stopped the reading (a wrong type for a field, an unknown or repeated
+    /// field, something that is not an object, a whole number beyond 2^53), or, when the data was read, every rule it
+    /// breaks.
     pub fn from_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Self, FormatError> {
         let raw: RawSeries = decode(deserializer)?;
-        Self::from_parts(
-            raw.start.map_or(0.0, |number| number.0),
-            raw.rate.map(|number| number.0),
-            raw.values
-                .map(|values| values.into_iter().map(|number| number.0).collect()),
-            raw.unit,
-            raw.scaling,
-        )
+        let mut problems = Vec::new();
+        raw.read("", &mut problems).ok_or_else(|| FormatError::new(problems))
     }
 
     /// When the first sample is, in seconds.
@@ -137,14 +147,33 @@ impl Series {
 }
 
 /// The fields as a file spells them, before any rule is checked; an absent field and a `null` one are both `None`.
+/// A document that holds series (a bundle) reads them as this and calls [`RawSeries::read`] with each one's place in
+/// it, so every problem of every series is kept, under a full path.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawSeries {
+pub(crate) struct RawSeries {
     start: Option<Number>,
     rate: Option<Number>,
     values: Option<Vec<Number>>,
     unit: Option<Unit>,
     scaling: Option<String>,
+}
+
+impl RawSeries {
+    /// Check the rules of [`Series::new`], recording each broken one in `problems` under `prefix` (`series.bass`); the
+    /// series if none is broken.
+    pub(crate) fn read(self, prefix: &str, problems: &mut Vec<Problem>) -> Option<Series> {
+        Series::build(
+            prefix,
+            self.start.map_or(SeriesOptions::default().start, |number| number.0),
+            self.rate.map(|number| number.0),
+            self.values
+                .map(|values| values.into_iter().map(|number| number.0).collect()),
+            self.unit,
+            self.scaling,
+            problems,
+        )
+    }
 }
 
 impl<'de> Deserialize<'de> for Series {
@@ -156,7 +185,7 @@ impl<'de> Deserialize<'de> for Series {
 #[cfg(test)]
 #[allow(clippy::float_cmp, reason = "the getters give back exactly what was given")]
 mod tests {
-    use super::super::test_support::{Expected, check_against};
+    use super::super::test_support::{Expected, check_against, check_problems, object_of_floats};
     use super::*;
     use proptest::prelude::*;
     use serde_json::{Value, json};
@@ -270,6 +299,41 @@ mod tests {
         for (id, text, expected) in rows {
             check_against(id, read(text), expected);
         }
+    }
+
+    #[test]
+    fn a_format_that_delivers_nan_still_lists_the_other_broken_rules() {
+        let fields = [("start", f64::NAN), ("rate", 0.0)];
+        check_against(
+            "NaN beside a range error and fields left out",
+            Series::from_deserializer(object_of_floats(&fields)),
+            &[
+                ("start", "finite (got NaN)"),
+                ("rate", "> 0"),
+                ("values", "is required"),
+                ("unit", "is required"),
+            ],
+        );
+    }
+
+    #[test]
+    fn a_series_inside_a_document_reports_every_problem_under_its_own_path() -> Result<(), serde_json::Error> {
+        let mut problems = Vec::new();
+        let raw: RawSeries =
+            serde_json::from_value(json!({"start": -1, "values": [0.5, 2, 0.1, 3], "unit": "fraction"}))?;
+        assert!(raw.read("series.bass", &mut problems).is_none());
+        check_problems(
+            "values and scaling under the series' name",
+            &problems,
+            &[
+                ("series.bass.start", ">= 0"),
+                ("series.bass.rate", "is required"),
+                ("series.bass.values[1]", "[0, 1]"),
+                ("series.bass.values[3]", "[0, 1]"),
+                ("series.bass.scaling", "required"),
+            ],
+        );
+        Ok(())
     }
 
     #[test]

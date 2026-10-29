@@ -476,6 +476,8 @@ Taught in `docs/api.md`, Python and Rust side by side; every Python example ther
   permissive and tiny.
 - **Formats are read from JSON objects only, numbers strictly, and `serde_json` round-trips floats.** serde's derived
   `Deserialize` also reads a struct from a JSON array, field by field; the formats refuse that (`[0.5, null, ...]` is not an
-  Event). A JSON integer beyond 2^53 is refused, since an `f64` would round it to a neighbour. `serde_json`'s
-  `float_roundtrip` feature is on (workspace dependency): without it a decimal can read back one unit in the last place
+  Event). A JSON integer beyond 2^53 and within 64 bits is refused, since an `f64` would round it to a neighbour; one beyond
+  64 bits reaches `serde_json` as an already rounded `f64` and is accepted like a decimal (`arbitrary_precision` would close
+  that gap, at a cost in every number read). `serde_json`'s `float_roundtrip`
+  feature is on (workspace dependency): without it a decimal can read back one unit in the last place
   away from the `f64` that was written, found by the round-trip property test. *Cost:* slightly slower float parsing.

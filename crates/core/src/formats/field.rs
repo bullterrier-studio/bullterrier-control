@@ -1,4 +1,6 @@
-//! What the formats share about a number field: how it is read from JSON, shown in a message and checked.
+//! What the formats share: how a number is read from JSON and shown in a message, how a struct is read from a JSON
+//! object and a failure of that named by its path, and how a field is checked against a rule and a broken rule
+//! recorded under a path prefix (so a format nested in a document reports `events.kick[3].t`, not `t`).
 
 use std::fmt;
 use std::marker::PhantomData;
@@ -8,7 +10,9 @@ use serde::de::{self, Deserialize, Deserializer, Visitor};
 use super::error::{FormatError, Problem};
 
 /// The largest whole number a JSON number can carry into an `f64` without rounding (2^53): beyond it, two different
-/// integers in a file would read as one value.
+/// integers in a file would read as one value. Only integers `serde_json` reads as 64-bit are held to it: one beyond
+/// `i64`/`u64` arrives as an already rounded `f64`, like a decimal, and is accepted (`arbitrary_precision` would
+/// close that gap, at a cost in every number read).
 const LARGEST_EXACT: u64 = 1 << 53;
 
 /// A JSON number read strictly: an integer or a decimal, never `true`, a string or `null`, and a whole number only
@@ -31,12 +35,10 @@ impl Visitor<'_> for NumberVisitor {
         formatter.write_str("a number")
     }
 
+    // NaN and the infinities (a Python float can be either) are accepted here and refused by `check`, the one place
+    // that does, so they are listed beside the other broken rules instead of stopping the reading.
     fn visit_f64<E: de::Error>(self, value: f64) -> Result<Number, E> {
-        if value.is_finite() {
-            Ok(Number(value))
-        } else {
-            Err(E::custom(format!("must be finite (got {})", show(value))))
-        }
+        Ok(Number(value))
     }
 
     fn visit_u64<E: de::Error>(self, value: u64) -> Result<Number, E> {
@@ -110,23 +112,48 @@ pub(crate) fn decode<'de, T: Deserialize<'de>, D: Deserializer<'de>>(deserialize
         .map_err(|error| FormatError::from_serde(&error))
 }
 
-/// Record a problem at `path` unless `value` is finite and satisfies `rule`'s `holds`.
-pub(crate) fn check(problems: &mut Vec<Problem>, path: &str, value: f64, rule: &str, holds: fn(f64) -> bool) {
-    if !value.is_finite() {
-        push(problems, path, format!("must be finite (got {})", show(value)));
-    } else if !holds(value) {
-        push(problems, path, format!("{rule} (got {})", show(value)));
+/// The path of `field` under `prefix` (`events.kick[3]` + `t`), or `field` alone when there is no prefix.
+fn path(prefix: &str, field: impl fmt::Display) -> String {
+    if prefix.is_empty() {
+        field.to_string()
+    } else {
+        format!("{prefix}.{field}")
     }
 }
 
-pub(crate) fn push(problems: &mut Vec<Problem>, path: &str, rule: impl Into<String>) {
+/// Record that `field` (under `prefix`) breaks `rule`.
+pub(crate) fn push(problems: &mut Vec<Problem>, prefix: &str, field: impl fmt::Display, rule: impl Into<String>) {
     problems.push(Problem {
-        path: path.to_owned(),
+        path: path(prefix, field),
         rule: rule.into(),
     });
 }
 
+/// Record a problem unless `value` is finite; whether it was.
+pub(crate) fn finite(problems: &mut Vec<Problem>, prefix: &str, field: impl fmt::Display, value: f64) -> bool {
+    let is_finite = value.is_finite();
+    if !is_finite {
+        push(problems, prefix, field, format!("must be finite (got {})", show(value)));
+    }
+    is_finite
+}
+
+/// Record a problem unless `value` is finite and satisfies `holds`, which `rule` states (`"must be >= 0"`).
+pub(crate) fn check(
+    problems: &mut Vec<Problem>,
+    prefix: &str,
+    field: impl fmt::Display + Copy,
+    value: f64,
+    rule: &str,
+    holds: fn(f64) -> bool,
+) {
+    // the field is only turned into text when a problem is recorded
+    if finite(problems, prefix, field, value) && !holds(value) {
+        push(problems, prefix, field, format!("{rule} (got {})", show(value)));
+    }
+}
+
 /// The problem for a field the data lacks.
-pub(crate) fn required(problems: &mut Vec<Problem>, path: &str) {
-    push(problems, path, "is required");
+pub(crate) fn required(problems: &mut Vec<Problem>, prefix: &str, field: impl fmt::Display) {
+    push(problems, prefix, field, "is required");
 }

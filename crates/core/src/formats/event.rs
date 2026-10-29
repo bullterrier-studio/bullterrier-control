@@ -3,7 +3,7 @@
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::error::FormatError;
+use super::error::{FormatError, Problem};
 use super::field::{Number, check, decode, push, required};
 
 /// Something at `t` seconds: an onset, a beat, a note (with `duration` and `pitch`) or a section start.
@@ -50,60 +50,61 @@ impl Event {
     /// A [`FormatError`] listing every rule broken: `t` is below 0, `strength` outside `[0, 1]`, `duration` not above 0,
     /// `label` empty, `pitch` outside `[0, 127]`, or any number not finite.
     pub fn new(t: f64, options: EventOptions) -> Result<Self, FormatError> {
-        Self::from_parts(Some(t), options)
+        let mut problems = Vec::new();
+        Self::build("", Some(t), options, &mut problems).ok_or_else(|| FormatError::new(problems))
     }
 
-    /// The one place the rules are written; `t` is `None` when the data lacked it.
-    fn from_parts(t: Option<f64>, options: EventOptions) -> Result<Self, FormatError> {
-        let mut problems = Vec::new();
+    /// The one place the rules are written. Every rule `options` breaks is recorded in `problems` under `prefix`
+    /// (empty, or where this event sits in a document: `events.kick[3]`), after what the caller already collected;
+    /// `t` is `None` when the data lacked it. The event, if none is broken.
+    fn build(prefix: &str, t: Option<f64>, options: EventOptions, problems: &mut Vec<Problem>) -> Option<Self> {
+        let before = problems.len();
         match t {
-            Some(t) => check(&mut problems, "t", t, "must be >= 0", |t| t >= 0.0),
-            None => required(&mut problems, "t"),
+            Some(t) => check(problems, prefix, "t", t, "must be >= 0", |t| t >= 0.0),
+            None => required(problems, prefix, "t"),
         }
-        check(&mut problems, "strength", options.strength, "must be in [0, 1]", |x| {
-            (0.0..=1.0).contains(&x)
-        });
+        check(
+            problems,
+            prefix,
+            "strength",
+            options.strength,
+            "must be in [0, 1]",
+            |x| (0.0..=1.0).contains(&x),
+        );
         if let Some(duration) = options.duration {
-            check(&mut problems, "duration", duration, "must be > 0", |x| x > 0.0);
+            check(problems, prefix, "duration", duration, "must be > 0", |x| x > 0.0);
         }
         if options.label.as_deref() == Some("") {
-            push(&mut problems, "label", "must not be empty");
+            push(problems, prefix, "label", "must not be empty");
         }
         if let Some(pitch) = options.pitch {
-            check(&mut problems, "pitch", pitch, "must be in [0, 127]", |x| {
+            check(problems, prefix, "pitch", pitch, "must be in [0, 127]", |x| {
                 (0.0..=127.0).contains(&x)
             });
         }
-        match (t, problems.is_empty()) {
-            (Some(t), true) => Ok(Self {
+        match t {
+            Some(t) if problems.len() == before => Some(Self {
                 t,
                 strength: options.strength,
                 duration: options.duration,
                 label: options.label,
                 pitch: options.pitch,
             }),
-            _ => Err(FormatError::new(problems)),
+            _ => None,
         }
     }
 
-    /// Read an event from any serde format (JSON, a Python object) and check it with [`Event::new`]'s rules; a field
-    /// absent or `null` is unset.
+    /// Read an event from any serde format (JSON, a Python object) and check it with [`Event::new`]'s rules. A field
+    /// absent or `null` is unset (`t` is then required, `strength` is 1).
     ///
     /// # Errors
-    /// A [`FormatError`]: the one problem that stopped the reading (a wrong type, an unknown field, an integer beyond
-    /// 2^53), or every rule the data breaks.
+    /// A [`FormatError`]: the one problem that stopped the reading (a wrong type for a field, an unknown or repeated
+    /// field, something that is not an object, a whole number beyond 2^53), or, when the data was read, every rule it
+    /// breaks.
     pub fn from_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Self, FormatError> {
         let raw: RawEvent = decode(deserializer)?;
-        let defaults = EventOptions::default();
-        Self::from_parts(
-            raw.t.map(|number| number.0),
-            EventOptions {
-                strength: raw.strength.map_or(defaults.strength, |number| number.0),
-                duration: raw.duration.map(|number| number.0),
-                label: raw.label,
-                pitch: raw.pitch.map(|number| number.0),
-            },
-        )
+        let mut problems = Vec::new();
+        raw.read("", &mut problems).ok_or_else(|| FormatError::new(problems))
     }
 
     /// When it happens, in seconds from the start of the material.
@@ -138,14 +139,31 @@ impl Event {
 }
 
 /// The fields as a file spells them, before any rule is checked; an absent field and a `null` one are both `None`.
+/// A document that holds events (a bundle) reads them as this and calls [`RawEvent::read`] with each one's place in it,
+/// so every problem of every event is kept, under a full path.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawEvent {
+pub(crate) struct RawEvent {
     t: Option<Number>,
     strength: Option<Number>,
     duration: Option<Number>,
     label: Option<String>,
     pitch: Option<Number>,
+}
+
+impl RawEvent {
+    /// Check the rules of [`Event::new`], recording each broken one in `problems` under `prefix` (`events.kick[3]`);
+    /// the event if none is broken.
+    pub(crate) fn read(self, prefix: &str, problems: &mut Vec<Problem>) -> Option<Event> {
+        let defaults = EventOptions::default();
+        let options = EventOptions {
+            strength: self.strength.map_or(defaults.strength, |number| number.0),
+            duration: self.duration.map(|number| number.0),
+            label: self.label,
+            pitch: self.pitch.map(|number| number.0),
+        };
+        Event::build(prefix, self.t.map(|number| number.0), options, problems)
+    }
 }
 
 impl<'de> Deserialize<'de> for Event {
@@ -157,7 +175,7 @@ impl<'de> Deserialize<'de> for Event {
 #[cfg(test)]
 #[allow(clippy::float_cmp, reason = "the getters give back exactly what was given")]
 mod tests {
-    use super::super::test_support::{Expected, check_against};
+    use super::super::test_support::{Expected, check_against, check_problems, object_of_floats};
     use super::*;
     use proptest::prelude::*;
     use serde_json::{Value, json};
@@ -280,6 +298,44 @@ mod tests {
         for (id, text, expected) in rows {
             check_against(id, read(text), expected);
         }
+    }
+
+    #[test]
+    fn a_format_that_delivers_nan_still_lists_the_other_broken_rules() {
+        let fields = [("t", f64::NAN), ("strength", 2.0), ("pitch", f64::INFINITY)];
+        check_against(
+            "NaN beside a range error and an infinity",
+            Event::from_deserializer(object_of_floats(&fields)),
+            &[
+                ("t", "finite (got NaN)"),
+                ("strength", "[0, 1] (got 2.0)"),
+                ("pitch", "finite (got Infinity)"),
+            ],
+        );
+    }
+
+    #[test]
+    fn an_event_inside_a_document_reports_every_problem_under_its_own_path() -> Result<(), serde_json::Error> {
+        let mut problems = Vec::new();
+        let fine: RawEvent = serde_json::from_value(json!({"t": 1.5}))?;
+        let broken: RawEvent = serde_json::from_value(json!({"t": -1, "strength": 2, "label": "ok"}))?;
+        let also_broken: RawEvent = serde_json::from_value(json!({"strength": 0.5, "pitch": 128}))?;
+
+        assert!(fine.read("events.kick[2]", &mut problems).is_some());
+        assert!(problems.is_empty(), "{problems:?}");
+        assert!(broken.read("events.kick[3]", &mut problems).is_none());
+        assert!(also_broken.read("events.snare[0]", &mut problems).is_none());
+        check_problems(
+            "two items, the second added after the first",
+            &problems,
+            &[
+                ("events.kick[3].t", ">= 0 (got -1.0)"),
+                ("events.kick[3].strength", "[0, 1] (got 2.0)"),
+                ("events.snare[0].t", "is required"),
+                ("events.snare[0].pitch", "[0, 127] (got 128.0)"),
+            ],
+        );
+        Ok(())
     }
 
     #[test]
