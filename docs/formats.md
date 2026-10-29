@@ -42,6 +42,8 @@ Values at a fixed rate: sample *i* is at `start + i / rate`.
 
 An undefined stretch (unvoiced pitch) is not `NaN`: the producer reports it as Events, or leaves the series out.
 
+In Python, `Series.values` is a read-only float64 array, not a tuple.
+
 ## Event
 
 A moment, or a span when `duration` is set.
@@ -79,11 +81,11 @@ version it does not know and says which it supports. Producers write the lowest 
 
 ## Schema
 
-`schemas/bundle-1.schema.json` is generated from the models (`uv run bt-control schema`) for tools in other languages. It
-states the shapes, types, ranges and names. A schema cannot state, and `bt-control validate FILE` and
-`bullterrier_control.load` enforce: sorted events, `duration` bounds, strictly increasing beats, `first_downbeat` below
+`schemas/bundle-1.schema.json` is generated from the Rust types of the core (`uv run bt-control schema`) for tools in other
+languages. It states the shapes, types, ranges and names. A schema cannot state, and `bt-control validate FILE` and
+`bullterrier_control.load` alone enforce: sorted events, `duration` bounds, strictly increasing beats, `first_downbeat` below
 `meter` and `len(beats)`, `scaling` and the 0..1 range of a `fraction` series, repeated keys, integers written as `1.0`
-(JSON Schema counts `1.0` as an integer), and UTF-8 text.
+(JSON Schema counts `1.0` as an integer), non-finite numbers, and UTF-8 text.
 
 ## Patch
 
