@@ -31,7 +31,7 @@ jobs:
       - name: Read the cargo tools' versions (Cargo.toml)
         id: cargo-tools
         run: echo "specs=$(uv run --no-project python tools/rust_tools.py specs)" >> "$GITHUB_OUTPUT"
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
         with:
           tool: ${{ steps.cargo-tools.outputs.specs }}
       # every crate Cargo.lock names, for every platform and target: the dev-dependencies and the cargo-deny gate's
