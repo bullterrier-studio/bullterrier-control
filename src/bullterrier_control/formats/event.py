@@ -34,14 +34,19 @@ def events(
     duration: float | None = None,
 ) -> tuple[Event, ...]:
     """One `Event` per time, in the order given. `strength` is one number for all or one per time; `label` and
-    `duration` apply to all. A `FormatError` names the field that breaks an `Event` rule, or `strength` when its
-    count differs from the times'."""
+    `duration` apply to all. A `FormatError` names the field that breaks an `Event` rule and the event's place in
+    the list (`events[1].t`), or `strength` when its count differs from the times'."""
     moments = plain(times)
     strengths = plain(strength) if isinstance(strength, Sequence | np.ndarray) else [strength] * len(moments)
     if len(strengths) != len(moments):
         raise FormatError.at(
             "strength", f"needs one value per time or a single number (got {len(strengths)} for {len(moments)} times)"
         )
-    return tuple(
-        Event(t=t, strength=each, label=label, duration=duration) for t, each in zip(moments, strengths, strict=True)
-    )
+    made = []
+    for index, (t, each) in enumerate(zip(moments, strengths, strict=True)):
+        try:
+            made.append(Event(t=t, strength=each, label=label, duration=duration))
+        except FormatError as error:  # the same problems, under the event's place in the list
+            problems = tuple((f"events[{index}].{path}", rule) for path, rule in error.problems)
+            raise FormatError("; ".join(f"{path}: {rule}" for path, rule in problems), problems) from None
+    return tuple(made)

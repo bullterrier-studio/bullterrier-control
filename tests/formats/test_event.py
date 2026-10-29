@@ -105,3 +105,18 @@ def test_times_that_break_the_event_rules_are_refused_naming_the_field(given, na
     with pytest.raises(FormatError) as refused:
         events(times, **options)
     reports(refused.value, named)
+
+
+EVENTS_REFUSED_AT = {
+    "a bad time in the second event": (([0.5, -1.0], {}), "events[1].t"),
+    "a bad time in the third event": (([0.5, 1.0, -2.0], {}), "events[2].t"),
+    "a bad strength in the second event": (([0.5, 1.0], {"strength": [0.5, 2.0]}), "events[1].strength"),
+}
+
+
+@pytest.mark.parametrize(("given", "path"), EVENTS_REFUSED_AT.values(), ids=EVENTS_REFUSED_AT.keys())
+def test_the_event_that_breaks_a_rule_is_named_by_its_index(given, path, reports):
+    times, options = given
+    with pytest.raises(FormatError) as refused:
+        events(times, **options)
+    reports(refused.value, path)
