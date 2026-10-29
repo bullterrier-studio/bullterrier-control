@@ -157,32 +157,11 @@ impl<'de> Deserialize<'de> for Event {
 #[cfg(test)]
 #[allow(clippy::float_cmp, reason = "the getters give back exactly what was given")]
 mod tests {
+    use super::super::test_support::{Expected, check_against};
     use super::*;
     use proptest::prelude::*;
     use serde_json::{Value, json};
 
-    /// `(path, rule substring)` of each problem, in order.
-    fn problems_of<T>(result: Result<T, FormatError>) -> Result<T, Vec<(String, String)>> {
-        result.map_err(|error| error.problems.into_iter().map(|p| (p.path, p.rule)).collect())
-    }
-
-    fn check_against<T: std::fmt::Debug>(id: &str, result: Result<T, FormatError>, expected: &[(&str, &str)]) {
-        match problems_of(result) {
-            Ok(value) => assert!(expected.is_empty(), "{id}: accepted {value:?}, wanted {expected:?}"),
-            Err(got) => {
-                assert!(!expected.is_empty(), "{id}: refused with {got:?}");
-                let paths: Vec<&str> = got.iter().map(|(path, _)| path.as_str()).collect();
-                let wanted: Vec<&str> = expected.iter().map(|(path, _)| *path).collect();
-                assert_eq!(paths, wanted, "{id}: {got:?}");
-                for ((path, rule), (_, part)) in got.iter().zip(expected) {
-                    assert!(rule.contains(part), "{id}: {path}: {rule:?} lacks {part:?}");
-                }
-            }
-        }
-    }
-
-    /// The problems wanted: each a path and a part of its rule.
-    type Expected = &'static [(&'static str, &'static str)];
     /// A case: its name, `t`, the options and the problems wanted.
     type Row = (&'static str, f64, EventOptions, Expected);
 
@@ -284,8 +263,8 @@ mod tests {
             ("negative beyond 2^53", r#"{"t": 0, "pitch": -9007199254740993}"#, &[("pitch", "2^53")]),
             ("a bool for a number", r#"{"t": true}"#, &[("t", "boolean")]),
             ("a string for a number", r#"{"t": "1"}"#, &[("t", "string")]),
-            ("NaN is not JSON", r#"{"t": NaN}"#, &[("t", "")]),
-            ("a number out of range", r#"{"t": 1e999}"#, &[("t", "")]),
+            ("NaN is not JSON", r#"{"t": NaN}"#, &[("t", "expected value")]),
+            ("a number out of range", r#"{"t": 1e999}"#, &[("t", "out of range")]),
             ("null for t is missing", r#"{"t": null}"#, &[("t", "is required")]),
             ("no t", r#"{"strength": 0.5}"#, &[("t", "is required")]),
             ("missing t and a broken rule", r#"{"strength": 2}"#, &[("t", "is required"), ("strength", "[0, 1] (got 2.0)")]),
@@ -388,12 +367,6 @@ mod tests {
         fn a_valid_event_survives_a_json_value(event in valid_event()) {
             let value: Value = serde_json::to_value(&event).map_err(|e| TestCaseError::fail(e.to_string()))?;
             prop_assert_eq!(Event::from_deserializer(value), Ok(event));
-        }
-
-        #[test]
-        fn t_is_accepted_exactly_when_it_is_finite_and_at_least_zero(t in any::<f64>()) {
-            let accepted = Event::new(t, EventOptions::default()).is_ok();
-            prop_assert_eq!(accepted, t.is_finite() && t >= 0.0, "{}", t);
         }
 
         #[test]

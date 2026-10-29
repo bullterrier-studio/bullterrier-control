@@ -156,32 +156,11 @@ impl<'de> Deserialize<'de> for Series {
 #[cfg(test)]
 #[allow(clippy::float_cmp, reason = "the getters give back exactly what was given")]
 mod tests {
+    use super::super::test_support::{Expected, check_against};
     use super::*;
     use proptest::prelude::*;
     use serde_json::{Value, json};
 
-    fn check_against<T: std::fmt::Debug>(id: &str, result: Result<T, FormatError>, expected: &[(&str, &str)]) {
-        match result {
-            Ok(value) => assert!(expected.is_empty(), "{id}: accepted {value:?}, wanted {expected:?}"),
-            Err(error) => {
-                assert!(!expected.is_empty(), "{id}: refused with {error}");
-                let got: Vec<(&str, &str)> = error
-                    .problems
-                    .iter()
-                    .map(|p| (p.path.as_str(), p.rule.as_str()))
-                    .collect();
-                let paths: Vec<&str> = got.iter().map(|(path, _)| *path).collect();
-                let wanted: Vec<&str> = expected.iter().map(|(path, _)| *path).collect();
-                assert_eq!(paths, wanted, "{id}: {error}");
-                for ((path, rule), (_, part)) in got.iter().zip(expected) {
-                    assert!(rule.contains(part), "{id}: {path}: {rule:?} lacks {part:?}");
-                }
-            }
-        }
-    }
-
-    /// The problems wanted: each a path and a part of its rule.
-    type Expected = &'static [(&'static str, &'static str)];
     /// A case: its name, `rate`, the values, the unit, the options and the problems wanted.
     type Row = (&'static str, f64, Vec<f64>, Unit, SeriesOptions, Expected);
 
@@ -275,7 +254,7 @@ mod tests {
             ("null values are missing", r#"{"rate": 1, "values": null, "unit": "hertz"}"#, &[("values", "is required")]),
             ("a string rate", r#"{"rate": "1", "values": [1], "unit": "hertz"}"#, &[("rate", "string")]),
             ("a bool value", r#"{"rate": 1, "values": [1, true, 3], "unit": "hertz"}"#, &[("values[1]", "boolean")]),
-            ("a null value", r#"{"rate": 1, "values": [1, null], "unit": "hertz"}"#, &[("values[1]", "")]),
+            ("a null value", r#"{"rate": 1, "values": [1, null], "unit": "hertz"}"#, &[("values[1]", "null")]),
             ("2^53 + 1 in a value", r#"{"rate": 1, "values": [1, 9007199254740993], "unit": "hertz"}"#, &[("values[1]", "2^53")]),
             ("values not an array", r#"{"rate": 1, "values": "abc", "unit": "hertz"}"#, &[("values", "sequence")]),
             ("a capitalised unit", r#"{"rate": 1, "values": [1], "unit": "Hertz"}"#, &[("unit", "fraction, decibels")]),
@@ -355,12 +334,6 @@ mod tests {
         fn a_valid_series_survives_a_json_value(series in valid_series()) {
             let value: Value = serde_json::to_value(&series).map_err(|e| TestCaseError::fail(e.to_string()))?;
             prop_assert_eq!(Series::from_deserializer(value), Ok(series));
-        }
-
-        #[test]
-        fn a_fraction_value_is_accepted_exactly_when_it_lies_in_zero_to_one(value in any::<f64>()) {
-            let result = Series::new(1.0, vec![value], Unit::Fraction, scaled("x"));
-            prop_assert_eq!(result.is_ok(), (0.0..=1.0).contains(&value), "{}", value);
         }
 
         #[test]

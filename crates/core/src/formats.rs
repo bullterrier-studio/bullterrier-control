@@ -11,6 +11,8 @@ mod error;
 mod event;
 mod field;
 mod series;
+#[cfg(test)]
+mod test_support;
 mod unit;
 
 pub use error::{FormatError, Problem};
