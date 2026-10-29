@@ -1,9 +1,5 @@
-"""The committed JSON Schemas are what the models produce.
-
-The bundle's text depends on the version of pydantic that generates it (`const` or `enum` for a literal, which limits it
-adds), so the committed file is the one the locked pydantic writes, and this test is left out of the run on the oldest
-dependencies (`poe check-min-deps`). The schemas' meaning is checked on every version in tests/test_cli.py.
-"""
+"""The committed JSON Schemas are what the code produces: the bundle's is generated from the Rust core's types
+(schemars), the patch's is written in patch.py. The schemas' meaning is checked in tests/test_cli.py."""
 
 import json
 from pathlib import Path

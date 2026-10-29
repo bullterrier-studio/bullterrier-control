@@ -1,7 +1,9 @@
-"""The Rust core's home in the package: `_core` here is the extension built from crates/python, which runs the shapers
-implemented in Rust (`_core.pyi` is its stub).
+"""The Rust core's home in the package: `_core` here is the extension built from crates/python (`_core.pyi` is its
+stub). It runs the shapers implemented in Rust and holds the formats' classes (`Event`, `Series`, `Grid`, `Bundle`,
+`Unit`), which the package exports as its own.
 
-Internal, and a leaf: it imports nothing from the rest of the package, so every layer may use it. Callers write
+Internal, and below every layer but `errors`: the extension imports `bullterrier_control.errors` (its `FormatError`)
+when it first raises one, and nothing else of the package, so every layer above may use it. Callers write
 `from bullterrier_control._native import _core`; the import linter sees this package where it cannot see a compiled
 module.
 """

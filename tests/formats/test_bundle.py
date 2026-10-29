@@ -173,15 +173,16 @@ def a_series_json(values: str, rate: int = 1) -> str:
 
 
 FILES = {
-    "a nan": (a_bundle_file(f'"a": {a_series_json("NaN")}'), "NaN"),
-    "an infinity": (a_bundle_file(f'"a": {a_series_json("Infinity")}'), "Infinity"),
+    "a nan": (a_bundle_file(f'"a": {a_series_json("NaN")}'), r"series\.a\.values\[0\]: expected value"),
+    "an infinity": (a_bundle_file(f'"a": {a_series_json("Infinity")}'), r"series\.a\.values\[0\]: expected value"),
     "a repeated series name": (
         a_bundle_file(f'"a": {a_series_json("1")}, "a": {a_series_json("1", rate=2)}'),
-        "repeated",
+        "series.a: duplicate field `a`",
     ),
-    "text that is not json": ("not json", "JSON"),
-    "an array at the top": ("[1, 2]", "object"),
-    "an empty file": ("", "JSON"),
+    "text that is not json": ("not json", "line 1 column 2"),
+    "an array at the top": ("[1, 2]", "expected an object"),
+    "an empty file": ("", "EOF while parsing"),
+    "text after the object": (a_bundle_file("") + " x", "trailing characters"),
 }
 
 
@@ -253,7 +254,7 @@ def test_a_bundle_cannot_be_changed_through_its_mappings():
 
 def test_a_bundle_built_directly_is_checked_like_a_parsed_one():
     with pytest.raises(FormatError, match="version"):
-        Bundle(format=FORMAT, version=2)  # type: ignore[arg-type]
+        Bundle(format=FORMAT, version=2)
 
 
 def test_the_schema_refuses_names_the_format_refuses():
@@ -268,7 +269,7 @@ NESTED_PATHS = {
     "a field of a series": ({**MINIMAL, "series": {"bass": {**BASS, "rate": 0}}}, "Bundle: series.bass.rate: "),
     "a rule across a series' fields": (
         {**MINIMAL, "series": {"bass": {**BASS, "values": [0.5, 1.5]}}},
-        "Bundle: series.bass.values[1]: 1.5 is outside 0..1",
+        'Bundle: series.bass.values[1]: must be in [0, 1] when unit is "fraction" (got 1.5)',
     ),
     "a field of an event": ({**MINIMAL, "events": {"kick": [{"t": 1}, {"t": -1}]}}, "Bundle: events.kick[1].t: "),
     "a field of the grid": (
@@ -287,3 +288,59 @@ def test_a_problem_inside_a_part_is_reported_under_the_full_path_of_that_part(da
     with pytest.raises(FormatError) as refused:
         Bundle.parse(data)
     assert str(refused.value).startswith(start)
+
+
+KICK = Event(0.5)
+SERIES = Series.parse(BASS)
+
+BUILT_REFUSED = {
+    "a grid that is a mapping": ({"grid": {"beats": [0, 1], "meter": 1, "first_downbeat": 0}}, "grid"),
+    "series that are not a mapping": ({"series": [SERIES]}, "series"),
+    "a series that is a mapping": ({"series": {"bass": BASS}}, "series.bass"),
+    "a series name that is not text": ({"series": {1: SERIES}}, "series"),
+    "events that are one event": ({"events": {"kick": KICK}}, "events.kick"),
+    "an event that is a mapping": ({"events": {"kick": [KICK, {"t": 1}]}}, "events.kick[1]"),
+    "events out of order": ({"events": {"kick": (Event(1), KICK)}}, "events.kick[1]"),
+    "an upper case name": ({"series": {"Bass": SERIES}}, "series.Bass"),
+    "an event past the end": ({"duration": 0.25, "events": {"kick": [KICK]}}, "events.kick[0].t"),
+}
+
+
+@pytest.mark.parametrize(("parts", "named"), BUILT_REFUSED.values(), ids=BUILT_REFUSED.keys())
+def test_a_bundle_built_from_parts_that_are_not_formats_or_break_a_rule_is_refused(parts, named, reports):
+    with pytest.raises(FormatError) as refused:
+        Bundle(format=FORMAT, version=1, **parts)
+    reports(refused.value, named)
+
+
+def test_a_bundle_built_from_parts_lists_every_problem_of_the_document_and_the_parts():
+    with pytest.raises(FormatError) as refused:
+        Bundle(format=FORMAT, version=2, grid={}, series={"Bass": SERIES}, events={"kick": [KICK, 1]})  # type: ignore[arg-type, list-item]  # wrong on purpose: refused at run time
+    assert [path for path, _ in refused.value.problems] == ["version", "grid", "events.kick[1]", "series.Bass"]
+
+
+def test_a_bundle_built_from_parts_keeps_those_parts_by_name_and_events_as_tuples():
+    bundle = Bundle(format=FORMAT, version=1, series={"bass": SERIES}, events={"snare": [KICK], "kick": [KICK]})
+    assert bundle.series["bass"] is SERIES
+    assert list(bundle.events) == ["kick", "snare"]
+    assert bundle.events["kick"] == (KICK,)
+    assert type(bundle.events["kick"]) is tuple
+
+
+def test_to_dict_is_the_bundle_as_a_file_holds_it_and_parses_back():
+    bundle = Bundle(format=FORMAT, version=1, duration=2, series={"bass": SERIES}, events={"kick": [KICK]})
+    assert bundle.to_dict() == {
+        "format": FORMAT,
+        "version": 1,
+        "duration": 2.0,
+        "series": {
+            "bass": {"start": 0.0, "rate": 100.0, "values": [0.0, 0.5, 1.0], "unit": "fraction", "scaling": "peak"}
+        },
+        "events": {"kick": [{"t": 0.5, "strength": 1.0}]},
+    }
+    assert Bundle.parse(bundle.to_dict()) == bundle
+
+
+def test_from_json_reads_the_text_a_file_holds():
+    bundle = Bundle.from_json(f'{{"format": "{FORMAT}", "version": 1, "events": {{"kick": [{{"t": 0.5}}]}}}}')
+    assert bundle.events["kick"] == (KICK,)

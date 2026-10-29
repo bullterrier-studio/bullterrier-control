@@ -30,9 +30,7 @@ from numpy.typing import ArrayLike, NDArray
 
 from ._chain import Chain
 from .errors import SignalError
-from .formats.series import Series
-from .formats.units import Unit
-from .validated import plain
+from .formats import Series, Unit
 
 __all__ = ["Constant", "Signal", "connect_shapers", "from_series", "from_values", "maximum", "minimum"]
 
@@ -212,5 +210,5 @@ def from_values(
 ) -> Signal:
     """The signal that reads `values` as plain ratios, sample *i* at `start + i / rate` seconds (`from_series` of a
     `Series` in unit `ratio`). A `FormatError` names the field that breaks a `Series` rule."""
-    series = Series(start=start, rate=rate, values=tuple(plain(values)), unit=Unit.RATIO)
+    series = Series(start=start, rate=rate, values=values, unit=Unit.RATIO)
     return from_series(series, interpolation=interpolation)

@@ -120,3 +120,47 @@ def test_the_event_that_breaks_a_rule_is_named_by_its_index(given, path, reports
     with pytest.raises(FormatError) as refused:
         events(times, **options)
     reports(refused.value, path)
+
+
+NOTE = Event(0.5, strength=0.7, duration=0.25, label="lead", pitch=69.5)
+
+REPLACED = {
+    "a new time": ({"t": 2}, (2.0, 0.7, 0.25, "lead", 69.5)),
+    "a new strength and label": ({"strength": 0.1, "label": "pad"}, (0.5, 0.1, 0.25, "pad", 69.5)),
+    "the duration removed": ({"duration": None}, (0.5, 0.7, None, "lead", 69.5)),
+    "nothing": ({}, (0.5, 0.7, 0.25, "lead", 69.5)),
+}
+
+
+@pytest.mark.parametrize(("changes", "fields"), REPLACED.values(), ids=REPLACED.keys())
+def test_replace_gives_the_event_with_those_fields_changed_and_leaves_the_original(changes, fields):
+    changed = NOTE.replace(**changes)
+    assert (changed.t, changed.strength, changed.duration, changed.label, changed.pitch) == fields
+    assert (NOTE.t, NOTE.strength, NOTE.duration, NOTE.label, NOTE.pitch) == (0.5, 0.7, 0.25, "lead", 69.5)
+
+
+REPLACE_REFUSED = {
+    "a strength above one": ({"strength": 2}, "strength"),
+    "a negative time": ({"t": -1}, "t"),
+    "a bool time": ({"t": True}, "t"),
+    "an unknown field": ({"colour": "red"}, "colour"),
+}
+
+
+@pytest.mark.parametrize(("changes", "named"), REPLACE_REFUSED.values(), ids=REPLACE_REFUSED.keys())
+def test_replace_checks_the_changed_event_again(changes, named, reports):
+    with pytest.raises(FormatError) as refused:
+        NOTE.replace(**changes)
+    reports(refused.value, named)
+
+
+AS_DICTS = {
+    "a moment": (Event(2), {"t": 2.0, "strength": 1.0}),
+    "a note": (NOTE, {"t": 0.5, "strength": 0.7, "duration": 0.25, "label": "lead", "pitch": 69.5}),
+}
+
+
+@pytest.mark.parametrize(("event", "data"), AS_DICTS.values(), ids=AS_DICTS.keys())
+def test_to_dict_is_the_event_as_a_file_holds_it_and_parses_back(event, data):
+    assert event.to_dict() == data
+    assert Event.parse(event.to_dict()) == event

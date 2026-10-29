@@ -184,7 +184,7 @@ def _sample(args: argparse.Namespace) -> int:
         writer.writerows([float(t), *(float(column[i]) for column in values.values())] for i, t in enumerate(times))
         return 0
     series = {
-        name: Series(start=args.start, rate=args.rate, values=tuple(column.tolist()), unit=Unit.RATIO)
+        name: Series(start=args.start, rate=args.rate, values=column, unit=Unit.RATIO)
         for name, column in values.items()
     }
     source = f"bt-control {__version__} sample {args.patch.name}"

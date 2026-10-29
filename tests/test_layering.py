@@ -12,10 +12,11 @@ import only the layers below it:
                reshaped (easing curves) | where a read falls in a cycle | a seeded hash | how 0 to 1 is put on a range |
                when a time counts as a bound
     _chain     the chain methods `Signal` inherits, one per built-in shaper (generated); `signal` imports it
-    formats    bundle > series | event | grid > model | units (each format builds on the base and the units only)
+    formats    the formats' file input and output and `events` (the classes are the Rust extension's)
     validated  the base of every validated model and its strict value types
-    errors | _native   the exceptions | the home of the Rust extension (`_native._core`); both import nothing from
-               bullterrier_control, so every layer may use them
+    _native    the home of the Rust extension (`_native._core`): the formats' classes and the shapers' kernels; it
+               imports only `errors` (the extension imports its `FormatError` when it first raises one)
+    errors     the exceptions; they import nothing from bullterrier_control, so every layer may raise them
 
 The Rust core keeps the same rule for its built-ins: `crates/core/src/builtin/<name>.rs` never refers to another.
 
@@ -42,12 +43,11 @@ LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-im
 
 LAYERS = (
     "Layers: app > builtin | lib | patch | plotting > plugin > registry > rendered | inputs > signal | params | easing"
-    " | cadence | hashing | scaling | rounding > _chain > formats > validated > errors | _native"
+    " | cadence | hashing | scaling | rounding > _chain > formats > validated > _native > errors"
 )
 SOURCES_APART = "Built-in sources never import each other"
 SOURCES_DOOR = "Built-in sources use only the author API"
-FORMATS = "Formats: bundle > series | event | grid > model | units"
-CONTRACTS = [LAYERS, SOURCES_APART, SOURCES_DOOR, FORMATS]
+CONTRACTS = [LAYERS, SOURCES_APART, SOURCES_DOOR]
 
 
 def lint(cwd: Path, pythonpath: Path | None = None) -> subprocess.CompletedProcess:
@@ -78,15 +78,15 @@ def test_the_package_keeps_every_import_contract():
 FORBIDDEN = {
     "errors to cli": ("errors.py", "import bullterrier_control.cli", "bullterrier_control.errors", LAYERS),
     "formats to params": (
-        "formats/series.py",
+        "formats/event.py",
         "import bullterrier_control.params",
-        "bullterrier_control.formats.series",
+        "bullterrier_control.formats.event",
         LAYERS,
     ),
     "formats to signal": (
-        "formats/series.py",
+        "formats/event.py",
         "import bullterrier_control.signal",
-        "bullterrier_control.formats.series",
+        "bullterrier_control.formats.event",
         LAYERS,
     ),
     "signal to params": ("signal.py", "import bullterrier_control.params", "bullterrier_control.signal", LAYERS),
@@ -188,51 +188,21 @@ FORBIDDEN = {
     ),
     "errors to formats": ("errors.py", "import bullterrier_control.formats", "bullterrier_control.errors", LAYERS),
     "formats to cli": (
-        "formats/series.py",
-        "import bullterrier_control.cli",
-        "bullterrier_control.formats.series",
-        LAYERS,
-    ),
-    "units to series": (
-        "formats/units.py",
-        "import bullterrier_control.formats.series",
-        "bullterrier_control.formats.units",
-        FORMATS,
-    ),
-    "event to grid": (
         "formats/event.py",
-        "import bullterrier_control.formats.grid",
+        "import bullterrier_control.cli",
         "bullterrier_control.formats.event",
-        FORMATS,
-    ),
-    "grid to series": (
-        "formats/grid.py",
-        "import bullterrier_control.formats.series",
-        "bullterrier_control.formats.grid",
-        FORMATS,
-    ),
-    "series to event": (
-        "formats/series.py",
-        "import bullterrier_control.formats.event",
-        "bullterrier_control.formats.series",
-        FORMATS,
-    ),
-    "series to bundle": (
-        "formats/series.py",
-        "import bullterrier_control.formats.bundle",
-        "bullterrier_control.formats.series",
-        FORMATS,
-    ),
-    "model to series": (
-        "formats/model.py",
-        "import bullterrier_control.formats.series",
-        "bullterrier_control.formats.model",
-        FORMATS,
+        LAYERS,
     ),
     "cli to main": ("cli.py", "import bullterrier_control.__main__", "bullterrier_control.cli", LAYERS),
     "the Rust extension's home to signal": (
         "_native/__init__.py",
         "import bullterrier_control.signal",
+        "bullterrier_control._native",
+        LAYERS,
+    ),
+    "the Rust extension's home to validated": (
+        "_native/__init__.py",
+        "import bullterrier_control.validated",
         "bullterrier_control._native",
         LAYERS,
     ),
@@ -256,7 +226,7 @@ def test_a_forbidden_import_breaks_its_contract(module, line, importer, contract
 ALLOWED = {
     "cli to errors": ("cli.py", "import bullterrier_control.errors"),
     "cli to formats": ("cli.py", "import bullterrier_control.formats"),
-    "params to formats": ("params.py", "import bullterrier_control.formats.model"),
+    "params to formats": ("params.py", "import bullterrier_control.formats"),
     "cli to params": ("cli.py", "import bullterrier_control.params"),
     "cli to signal": ("cli.py", "import bullterrier_control.signal"),
     "cli to rendered": ("cli.py", "import bullterrier_control.rendered"),
@@ -271,11 +241,9 @@ ALLOWED = {
     "inputs to easing": ("inputs.py", "import bullterrier_control.easing"),
     "inputs to validated": ("inputs.py", "import bullterrier_control.validated"),
     "rendered to errors": ("rendered.py", "import bullterrier_control.errors"),
-    "signal to formats": ("signal.py", "import bullterrier_control.formats.series"),
-    "series to model": ("formats/series.py", "import bullterrier_control.formats.model"),
-    "event to units": ("formats/event.py", "import bullterrier_control.formats.units"),
-    "bundle to grid": ("formats/bundle.py", "import bullterrier_control.formats.grid"),
-    "grid to model": ("formats/grid.py", "import bullterrier_control.formats.model"),
+    "signal to formats": ("signal.py", "import bullterrier_control.formats"),
+    "formats to the Rust extension": ("formats/bundle.py", "from bullterrier_control._native import _core"),
+    "the Rust extension's home to errors": ("_native/__init__.py", "import bullterrier_control.errors"),
     "rendered to the Rust extension": ("rendered.py", "from bullterrier_control._native import _core"),
     # the one exception to "Built-in sources use only the author API": a built-in may call the Rust core
     "a source to the Rust extension": ("builtin/clip.py", "from bullterrier_control._native import _core"),
@@ -318,7 +286,8 @@ def package_modules_loaded_by(module: str) -> list[str]:
 )
 def test_the_rust_extension_imports_nothing_from_the_package(module, leaf):
     """The import linter checks the extension's home (`_native`) but cannot read the compiled module in it: importing
-    the module shows that it loads nothing else of the package either."""
+    the module shows that it loads nothing else of the package either (it imports `errors` only when it first raises a
+    `FormatError`)."""
     assert (package_modules_loaded_by(module) == []) == leaf
 
 

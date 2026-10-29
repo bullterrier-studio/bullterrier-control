@@ -43,4 +43,4 @@ def quantize(params: QuantizeParams, *, events: tuple[Event, ...], grid: Grid) -
     except FormatError as error:
         raise ParameterError.at("events", f"a time is too far from the grid's beats to snap ({error})") from None
     # the snap never decreases, so events sorted by time stay sorted
-    return tuple(event.model_copy(update={"t": float(time)}) for event, time in zip(events, snapped, strict=True))
+    return tuple(event.replace(t=float(time)) for event, time in zip(events, snapped, strict=True))

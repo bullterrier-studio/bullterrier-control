@@ -1,5 +1,13 @@
-//! `bullterrier_control._native._core`: runs the shapers of the Rust core on numpy series. Generic: it names no shaper,
-//! so porting one never changes it.
+//! `bullterrier_control._native._core`: runs the shapers of the Rust core on numpy series, and gives the core's formats
+//! (`Unit`, `Event`, `Series`, `Grid`, `Bundle`) to Python as the package's classes. Generic: it names no shaper, so
+//! porting one never changes it.
+//!
+//! A format that breaks a rule raises the package's `bullterrier_control.errors.FormatError`, imported when the first
+//! one is raised: importing the extension imports nothing of the package.
+
+mod data;
+mod error;
+mod formats;
 
 use numpy::{PyArray1, PyArrayDescrMethods, PyArrayMethods, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
@@ -7,11 +15,21 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyFloat, PyInt, PyList, PyMapping, PyString};
 use serde_json::Value;
 
-/// The shapers of bullterrier-control's Rust core, run on numpy series.
+/// The shapers of bullterrier-control's Rust core, run on numpy series, and its formats.
 #[pymodule]
 mod _core {
+    use pyo3::prelude::*;
+
+    #[pymodule_export]
+    use super::formats::{PyBundle, PyEvent, PyGrid, PySeries, PyUnit, bundle_schema, dumps, is_bundle_name};
     #[pymodule_export]
     use super::{render, shapers};
+
+    /// Every unit of the core becomes a member of `Unit`.
+    #[pymodule_init]
+    fn init(py: Python<'_>) -> PyResult<()> {
+        super::formats::add_units(py)
+    }
 }
 
 /// Run the shaper called `name` over `inputs` (its input sampled at the shaper's rate from time 0: a 1-D, C-contiguous

@@ -75,6 +75,7 @@ dependencies = [
  "bullterrier-control",
  "numpy",
  "pyo3",
+ "serde",
  "serde_json",
 ]
 

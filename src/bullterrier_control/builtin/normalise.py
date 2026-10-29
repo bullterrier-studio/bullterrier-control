@@ -62,7 +62,7 @@ def normalise(params: NormaliseParams, *, series: Series) -> Series:
     return Series(
         start=series.start,
         rate=series.rate,
-        values=tuple(normalised.tolist()),
+        values=normalised,
         unit=Unit.FRACTION,
         # 12 digits keep any percentage typed and drop the noise of multiplying by 100
         # (0.29 * 100 is 28.999999999999996)

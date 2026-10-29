@@ -181,12 +181,19 @@ pub fn bundle_schema() -> serde_json::Value {
     serde_json::Value::from(schemars::schema_for!(RawBundle))
 }
 
-/// The rules of the name of a series or an event list.
-fn check_name(problems: &mut Vec<Problem>, section: &str, name: &str) {
+/// Whether `name` may name a series or an event list in a bundle: it matches `^[a-z0-9][a-z0-9_.-]*$` (`bass`,
+/// `stem.drums`, `kick`).
+#[must_use]
+pub fn is_name(name: &str) -> bool {
     let mut characters = name.chars();
     let is_start = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit();
     let is_rest = |c: char| is_start(c) || matches!(c, '_' | '.' | '-');
-    if !(characters.next().is_some_and(is_start) && characters.all(is_rest)) {
+    characters.next().is_some_and(is_start) && characters.all(is_rest)
+}
+
+/// The rules of the name of a series or an event list.
+fn check_name(problems: &mut Vec<Problem>, section: &str, name: &str) {
+    if !is_name(name) {
         let rule = format!("name must match {NAME_PATTERN} (got {})", serde_json::Value::from(name));
         push(problems, section, name, rule);
     }

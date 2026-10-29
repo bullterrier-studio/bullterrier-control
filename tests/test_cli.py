@@ -64,9 +64,7 @@ BUNDLE = {"format": "bullterrier-control/bundle", "version": 1}
 def a_valid_bundle(folder: Path, name: str = "good.json") -> Path:
     path = folder / name
     save(
-        Bundle.parse(
-            {**BUNDLE, "series": {"bass": Series(rate=10, values=(0.5,), unit=Unit.RATIO).model_dump(mode="json")}}
-        ),
+        Bundle.parse({**BUNDLE, "series": {"bass": Series(rate=10, values=(0.5,), unit=Unit.RATIO).to_dict()}}),
         path,
     )
     return path

@@ -31,7 +31,7 @@ def shift(params: ShiftParams, *, events: tuple[Event, ...]) -> tuple[Event, ...
     for event in events:
         start = event.t + params.offset
         if at_least(start, 0.0):
-            moved.append(event.model_copy(update={"t": max(start, 0.0)}))
+            moved.append(event.replace(t=max(start, 0.0)))
         elif event.duration is not None and more_than(start + event.duration, 0.0):
-            moved.append(event.model_copy(update={"t": 0.0, "duration": start + event.duration}))
+            moved.append(event.replace(t=0.0, duration=start + event.duration))
     return tuple(moved)

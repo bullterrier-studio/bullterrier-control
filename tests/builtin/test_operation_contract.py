@@ -35,7 +35,7 @@ def call(name, **changed):
 
 
 def as_dicts(events):
-    return [event.model_dump(exclude_none=True) for event in events]
+    return [event.to_dict() for event in events]
 
 
 @pytest.mark.parametrize("kind", sorted({kind for name in OPERATIONS for kind in registry.get(name).inputs}))

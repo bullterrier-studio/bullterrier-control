@@ -207,13 +207,13 @@ def test_every_signal_works_with_all_its_numbers_at_the_same_end_of_their_ranges
 
 def events_are_valid(result):
     assert type(result) is tuple
-    assert tuple(Event.parse(event.model_dump(mode="json")) for event in result) == result
+    assert tuple(Event.parse(event.to_dict()) for event in result) == result
     assert [event.t for event in result] == sorted(event.t for event in result)
 
 
 def series_is_valid(result):
     assert isinstance(result, Series)
-    assert Series.parse(result.model_dump(mode="json")) == result
+    assert Series.parse(result.to_dict()) == result
 
 
 VALID = {"events": events_are_valid, "series": series_is_valid}

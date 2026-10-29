@@ -46,8 +46,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from ._native import _core
 from .errors import FormatError, InvalidError, ParameterError, UnknownNameError
-from .formats import NAME_PATTERN as BUNDLE_NAME_PATTERN
 from .formats import Bundle, Series, read_text
 from .inputs import INPUTS
 from .registry import NAME_PATTERN, NODE_KEYS, get
@@ -98,7 +98,7 @@ def _reference(
     root, _, name = text.partition(".")
     given: str | None
     if root in ("events", "series"):
-        if not re.fullmatch(BUNDLE_NAME_PATTERN, name):
+        if not _core.is_bundle_name(name):
             problems.append((path, f"{text!r} is not a path into a bundle: {root}.<name>, the name in lower case"))
             return None
         given, reference = root, _Reference(text, root, name)

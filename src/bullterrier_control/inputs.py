@@ -24,16 +24,16 @@ Promises:
 - `matching(events, label)`: the events a `label` parameter picks, shared by everything that has one.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from functools import partial
 from itertools import pairwise
 from types import MappingProxyType
 from typing import Annotated, Any, ClassVar, NamedTuple
 
-from pydantic import AfterValidator, BeforeValidator, Field, field_validator, model_validator
+from pydantic import AfterValidator, BeforeValidator, Field, model_validator
 
 from .easing import EASES, curve
-from .errors import InvalidError, ParameterError
+from .errors import FormatError, InvalidError, ParameterError
 from .formats import Event, Grid, Series
 from .validated import Finite, Text, ValidatedModel
 
@@ -79,25 +79,6 @@ class _Points(ValidatedModel):
         return self
 
 
-class _Events(ValidatedModel):
-    """The `events` input as a model, for the same reason as `_Points`."""
-
-    error: ClassVar[type[InvalidError]] = ParameterError
-    events: Annotated[tuple[Event, ...], BeforeValidator(_list_or_tuple)]
-
-    @field_validator("events")
-    @classmethod
-    def _by_time(cls, events: tuple[Event, ...]) -> tuple[Event, ...]:
-        return tuple(sorted(events, key=lambda event: event.t))  # stable: equal times keep the order given
-
-
-class _Grid(ValidatedModel):
-    """The `grid` input as a model, so that a bad grid is a `ParameterError` with its problems at `grid.beats[1]`."""
-
-    error: ClassVar[type[InvalidError]] = ParameterError
-    grid: Grid
-
-
 class _Values(ValidatedModel):
     """The `values` input as a model, for the same reason as `_Points`."""
 
@@ -111,13 +92,6 @@ class _Values(ValidatedModel):
         return self
 
 
-class _Series(ValidatedModel):
-    """The `series` input as a model, for the same reason as `_Grid`."""
-
-    error: ClassVar[type[InvalidError]] = ParameterError
-    series: Series
-
-
 def matching(events: tuple[Event, ...], label: str) -> tuple[Event, ...]:
     """The events whose label is `label`, in their order; every event, unlabelled ones too, when `label` is empty."""
     return tuple(event for event in events if label in ("", event.label))
@@ -129,7 +103,45 @@ def _checked(holder: type[ValidatedModel], field: str, value: object) -> Any:
         return getattr(holder.parse({field: value}), field)
     except ParameterError as error:
         # the model's own message starts with its private name; the registry names the thing that refused instead
-        raise ParameterError("; ".join(f"{path}: {rule}" for path, rule in error.problems), error.problems) from None
+        raise _refused(error.problems) from None
+
+
+def _refused(problems: Sequence[tuple[str, str]]) -> ParameterError:
+    """The `ParameterError` listing `problems` as `path: rule`."""
+    return ParameterError("; ".join(f"{path}: {rule}" for path, rule in problems), tuple(problems))
+
+
+def _under(prefix: str, path: str) -> str:
+    """`path` (of a format's field: `t`, `beats[1]`, or empty for the whole) under `prefix` (`events[2]`, `grid`)."""
+    return f"{prefix}.{path}" if path else prefix
+
+
+def _format[F: (Grid, Series)](kind: type[F], field: str, value: object) -> F:
+    """`value` as the format `kind` (itself, or a mapping parsed into one), or a `ParameterError` with each problem
+    under `field` (`grid.beats[1]`)."""
+    if isinstance(value, kind):
+        return value
+    try:
+        return kind.parse(value)  # type: ignore[arg-type]  # anything else is refused by the format, naming it
+    except FormatError as error:
+        raise _refused([(_under(field, path), rule) for path, rule in error.problems]) from None
+
+
+def _events(value: object) -> tuple[Event, ...]:
+    """`value`, a list or tuple of `Event` or mappings, as events sorted by `t` (equal times keep the order given), or
+    a `ParameterError` listing every problem under its place (`events[1].strength`)."""
+    if not isinstance(value, list | tuple):  # a set or a generator has no order to keep
+        raise _refused([("events", f"must be a list or tuple (got {type(value).__name__})")])
+    found: list[Event] = []
+    problems: list[tuple[str, str]] = []
+    for index, item in enumerate(value):
+        try:
+            found.append(item if isinstance(item, Event) else Event.parse(item))
+        except FormatError as error:
+            problems.extend((_under(f"events[{index}]", path), rule) for path, rule in error.problems)
+    if problems:
+        raise _refused(problems)
+    return tuple(sorted(found, key=lambda event: event.t))  # stable: equal times keep the order given
 
 
 class Input(NamedTuple):
@@ -157,7 +169,7 @@ INPUTS: Mapping[str, Input] = MappingProxyType(
                 "Events: a list of {t, strength, duration, label, pitch}, as in a bundle, in any order (checked into"
                 " time order)."
             ),
-            check=partial(_checked, _Events, "events"),
+            check=_events,
             annotation="Sequence[Event | Mapping[str, object]]",
         ),
         "grid": Input(
@@ -165,7 +177,7 @@ INPUTS: Mapping[str, Input] = MappingProxyType(
                 "A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly increasing,"
                 " at least two). Converts seconds to beats, so a source can follow tempo changes."
             ),
-            check=partial(_checked, _Grid, "grid"),
+            check=partial(_format, Grid, "grid"),
             annotation="Grid | Mapping[str, object]",
         ),
         "values": Input(
@@ -178,7 +190,7 @@ INPUTS: Mapping[str, Input] = MappingProxyType(
                 "A series: {start, rate, values, unit, scaling} as in a bundle (values at a fixed rate in samples per"
                 " second from a start time in seconds)."
             ),
-            check=partial(_checked, _Series, "series"),
+            check=partial(_format, Series, "series"),
             annotation="Series | Mapping[str, object]",
         ),
     }

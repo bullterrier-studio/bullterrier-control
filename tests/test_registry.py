@@ -256,7 +256,7 @@ def test_an_operation_may_return_a_series(throwaway_registry):
         return Series(rate=series.rate, values=tuple(value / 2 for value in series.values), unit=series.unit)
 
     halved = halve(series={"rate": 4, "values": [1.0, 0.5], "unit": "ratio"})
-    assert (halved.rate, halved.values) == (4.0, (0.5, 0.25))
+    assert (halved.rate, halved.values.tolist()) == (4.0, [0.5, 0.25])
 
 
 def test_an_operation_is_listed_apart_from_sources_and_shapers_and_found_through_get_and_lib():

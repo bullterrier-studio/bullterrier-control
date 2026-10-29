@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -155,3 +156,89 @@ def test_a_conversion_whose_result_is_too_large_to_be_a_number_is_refused():
     tiny = Grid.parse({"beats": [0.0, 5e-324], "meter": 1, "first_downbeat": 0})
     with pytest.raises(FormatError, match="finite"):
         tiny.beat_at(1.0)
+
+
+def misaligned(values):
+    """`values` as a float64 view that starts one byte into its buffer: not aligned."""
+    raw = np.zeros(len(values) * 8 + 1, dtype=np.uint8)
+    view = raw[1:].view(np.float64)
+    view[:] = values
+    assert not view.flags.aligned
+    return view
+
+
+# on STEADY_HALF_SECOND, position p is at 1 + 0.5 p seconds, before, between and after its beats
+POSITIONS = {
+    "a list of whole numbers": ([0, 1, 2], [1.0, 1.5, 2.0]),
+    "a mixed list": ([0, 0.5], [1.0, 1.25]),
+    "an integer array": (np.array([-2, 4], dtype=np.int16), [0.0, 3.0]),
+    "a float32 array": (np.array([0.5, 1.5], dtype=np.float32), [1.25, 1.75]),
+    "a strided view": (np.arange(6.0)[::2], [1.0, 2.0, 3.0]),
+    "a misaligned view": (misaligned([0.0, 1.0, 2.0]), [1.0, 1.5, 2.0]),
+    "a 2-D array": (np.array([[0.0, 1.0], [2.0, 3.0]]), [[1.0, 1.5], [2.0, 2.5]]),
+    "a 0-d array": (np.array(2.0), 2.0),
+    "a number": (3, 2.5),
+}
+
+
+@pytest.mark.parametrize(("given", "expected"), POSITIONS.values(), ids=POSITIONS.keys())
+def test_a_conversion_takes_any_array_like_and_gives_float64_of_its_shape(given, expected):
+    seconds = STEADY_HALF_SECOND.seconds_at(given)
+    assert seconds.dtype == np.float64
+    assert seconds.shape == np.shape(given)
+    assert seconds.tolist() == expected
+    assert STEADY_HALF_SECOND.beat_at(seconds).tolist() == np.asarray(given, dtype=np.float64).tolist()
+
+
+REFUSED_POSITIONS = {
+    "a numpy bool array": (np.array([True, False]), "positions[0]"),
+    "a bool among numbers": ([0.0, False], "positions[1]"),
+    "text in an array": (np.array(["1"]), "positions[0]"),
+    "a whole number beyond 2^53": ([2**53 + 1], "positions[0]"),
+    "a nan in a 2-D array, counted row-major": (np.array([[0.0, 1.0], [np.nan, 2.0]]), "positions[2]"),
+    "a ragged list": ([[0.0, 1.0], [2.0]], "positions[0]"),
+}
+
+
+@pytest.mark.parametrize(("given", "named"), REFUSED_POSITIONS.values(), ids=REFUSED_POSITIONS.keys())
+def test_a_conversion_refuses_what_is_not_a_number_naming_where(given, named, reports):
+    with pytest.raises(FormatError) as refused:
+        STEADY_HALF_SECOND.seconds_at(given)
+    reports(refused.value, named)
+
+
+def test_a_conversion_leaves_its_input_as_it_was_and_gives_a_new_array():
+    positions = np.array([0.0, 1.0])
+    seconds = STEADY_HALF_SECOND.seconds_at(positions)
+    seconds[0] = 9.0
+    assert positions.tolist() == [0.0, 1.0]
+    assert STEADY_HALF_SECOND.seconds_at(positions).tolist() == [1.0, 1.5]
+
+
+BEATS_GIVEN = {
+    "a tuple": ((0.5, 1.0), (0.5, 1.0)),
+    "an integer array": (np.array([0, 2]), (0.0, 2.0)),
+    "a strided view": (np.arange(4.0)[::2], (0.0, 2.0)),
+}
+
+
+@pytest.mark.parametrize(("given", "expected"), BEATS_GIVEN.values(), ids=BEATS_GIVEN.keys())
+def test_beats_of_any_array_like_become_a_tuple_of_floats(given, expected):
+    assert Grid(beats=given, meter=1, first_downbeat=0).beats == expected
+
+
+BEATS_REFUSED = {
+    "a numpy bool array": (np.array([False, True]), "beats[0]"),
+    "a 2-D array": (np.zeros((2, 2)), "beats"),
+}
+
+
+@pytest.mark.parametrize(("given", "named"), BEATS_REFUSED.values(), ids=BEATS_REFUSED.keys())
+def test_beats_that_are_not_a_list_of_numbers_are_refused(given, named, reports):
+    with pytest.raises(FormatError) as refused:
+        Grid(beats=given, meter=1, first_downbeat=0)
+    reports(refused.value, named)
+
+
+def test_to_dict_is_the_grid_as_a_file_holds_it():
+    assert Grid.parse(STEADY).to_dict() == {"beats": [0.5, 1.0, 1.5, 2.0, 2.5], "meter": 4, "first_downbeat": 1}

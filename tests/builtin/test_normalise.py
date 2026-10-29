@@ -134,19 +134,19 @@ def test_normalise_gives_zeros_when_the_percentiles_are_equal_and_warns_of_nothi
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         out = lib.normalise(series=ramp(*given), **values)
-    assert out.values == (0.0,) * len(given)
+    assert out.values.tolist() == [0.0] * len(given)
 
 
 def test_normalise_reaches_across_the_whole_range_of_floats():
     out = lib.normalise(series=ramp(-LARGEST, 0.0, LARGEST), lower=0.0, upper=1.0)
-    assert out.values == (0.0, 0.5, 1.0)
+    assert out.values.tolist() == [0.0, 0.5, 1.0]
 
 
 def test_normalise_clips_a_value_far_above_a_tiny_span_to_1_without_overflowing():
     # 97 zeros, two values of 1e-320 (a denormal) and a 1.0: both percentiles lie among the tiny values, the span is
     # 1e-320 and 1.0 / 1e-320 is beyond the floats, so it is clipped to 1
     out = lib.normalise(series=ramp(*([0.0] * 97), 1e-320, 1e-320, 1.0), lower=0.05, upper=0.98)
-    assert out.values == (0.0,) * 97 + (1.0, 1.0, 1.0)
+    assert out.values.tolist() == [0.0] * 97 + [1.0, 1.0, 1.0]
 
 
 def test_normalise_takes_any_unit_and_a_series_that_is_already_a_fraction():
@@ -158,7 +158,7 @@ def test_normalise_takes_any_unit_and_a_series_that_is_already_a_fraction():
 
 def test_normalise_takes_a_series_given_as_a_mapping():
     out = lib.normalise(series={"rate": 2, "values": [1.0, 3.0], "unit": "decibels"}, lower=0.0, upper=1.0)
-    assert (out.rate, out.values) == (2.0, (0.0, 1.0))
+    assert (out.rate, out.values.tolist()) == (2.0, [0.0, 1.0])
 
 
 @settings(max_examples=200)

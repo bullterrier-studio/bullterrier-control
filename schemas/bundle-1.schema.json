@@ -2,65 +2,46 @@
   "$defs": {
     "Event": {
       "additionalProperties": false,
-      "description": "Something at `t` seconds: an onset, a beat, a note (with `duration` and `pitch`), or a section start.",
+      "description": "Something at `t` seconds: an onset, a beat, a note (with `duration` and `pitch`) or a section start.",
       "properties": {
         "duration": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Duration"
+          "exclusiveMinimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "label": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Label"
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "pitch": {
-          "anyOf": [
-            {
-              "maximum": 127,
-              "minimum": 0,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Pitch"
+          "maximum": 127,
+          "minimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "strength": {
-          "default": 1.0,
           "maximum": 1,
           "minimum": 0,
-          "title": "Strength",
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "t": {
           "minimum": 0,
-          "title": "T",
           "type": "number"
         }
       },
       "required": [
         "t"
       ],
-      "title": "Event",
       "type": "object"
     },
     "Grid": {
@@ -73,17 +54,14 @@
             "type": "number"
           },
           "minItems": 2,
-          "title": "Beats",
           "type": "array"
         },
         "first_downbeat": {
-          "ge": 0,
-          "title": "First Downbeat",
+          "minimum": 0,
           "type": "integer"
         },
         "meter": {
-          "ge": 1,
-          "title": "Meter",
+          "minimum": 1,
           "type": "integer"
         }
       },
@@ -92,35 +70,28 @@
         "meter",
         "first_downbeat"
       ],
-      "title": "Grid",
       "type": "object"
     },
     "Series": {
       "additionalProperties": false,
-      "description": "Sample *i* is at `start + i / rate` seconds. A `fraction` series states its `scaling` and stays within 0..1.",
+      "description": "Values at a fixed rate: sample *i* is at `start + i / rate` seconds. A `fraction` series states its `scaling` and stays within 0..1.",
       "properties": {
         "rate": {
           "exclusiveMinimum": 0,
-          "title": "Rate",
           "type": "number"
         },
         "scaling": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Scaling"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "start": {
-          "default": 0.0,
           "minimum": 0,
-          "title": "Start",
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "unit": {
           "$ref": "#/$defs/Unit"
@@ -130,7 +101,6 @@
             "type": "number"
           },
           "minItems": 1,
-          "title": "Values",
           "type": "array"
         }
       },
@@ -139,11 +109,10 @@
         "values",
         "unit"
       ],
-      "title": "Series",
       "type": "object"
     },
     "Unit": {
-      "description": "What a Series' values measure. `FRACTION` values lie in 0..1 and the Series says how that was reached.",
+      "description": "What a Series' values measure. `fraction` values lie in 0..1 and the Series says how that was reached.",
       "enum": [
         "fraction",
         "decibels",
@@ -153,25 +122,19 @@
         "seconds",
         "beats"
       ],
-      "title": "Unit",
       "type": "string"
     }
   },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Everything one producer measured of one piece of material: named Series, named Event lists, a Grid.",
   "properties": {
     "duration": {
-      "anyOf": [
-        {
-          "exclusiveMinimum": 0,
-          "type": "number"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Duration"
+      "exclusiveMinimum": 0,
+      "type": [
+        "number",
+        "null"
+      ]
     },
     "events": {
       "additionalProperties": false,
@@ -183,12 +146,10 @@
           "type": "array"
         }
       },
-      "title": "Events",
       "type": "object"
     },
     "format": {
       "const": "bullterrier-control/bundle",
-      "title": "Format",
       "type": "string"
     },
     "grid": {
@@ -199,8 +160,7 @@
         {
           "type": "null"
         }
-      ],
-      "default": null
+      ]
     },
     "series": {
       "additionalProperties": false,
@@ -209,24 +169,16 @@
           "$ref": "#/$defs/Series"
         }
       },
-      "title": "Series",
       "type": "object"
     },
     "source": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Source"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "version": {
       "const": 1,
-      "title": "Version",
       "type": "integer"
     }
   },

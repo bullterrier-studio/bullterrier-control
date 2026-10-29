@@ -1,6 +1,8 @@
-"""The base of every validated model (the formats, a source's parameters): frozen, strict, one way in from outside.
+"""The base of every validated model (a source's parameters, a keyframe): frozen, strict, one way in from outside.
 
-    series = Series.parse({"rate": 100, "values": [0.1, 0.2], "unit": "ratio"})   # the model, or a FormatError
+    frame = Keyframe.parse({"t": 2.5, "value": -0.75})   # the model, or a ParameterError
+
+The formats (Series, Event, Grid, Bundle) are the Rust core's classes and do not use it.
 
 Promises:
 - A model's fields cannot be rebound and unknown fields are refused. Mappings a model holds are read-only views.
@@ -8,36 +10,28 @@ Promises:
   expected; a `bool`, a numeric string and, for `Whole`, a float are not; `NaN` and the infinities never are; a
   `Switch` is `true` or `false`, not 1. Text (`Text`) must be writable as UTF-8. Sequences may be lists or tuples.
 - Building a model, directly or with `parse`, is the one boundary: it returns the model or raises one error of the
-  model's kind (`FormatError`, `ParameterError`). Field rules are all listed as `path: rule (got value)`; a rule across
-  fields reports the first it finds.
+  model's kind (`ParameterError`). Field rules are all listed as `path: rule (got value)`; a rule across fields reports
+  the first it finds.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Annotated, Any, ClassVar, Self
 
-import numpy as np
-from numpy.typing import NDArray
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, Strict, ValidationError
 
 from .errors import InvalidError
 
-__all__ = ["Finite", "Switch", "Text", "ValidatedModel", "Whole", "plain", "whole_number"]
+__all__ = ["Finite", "Switch", "Text", "ValidatedModel", "Whole"]
 
 # a JSON number: not a bool, not a string, not NaN or an infinity
 Finite = Annotated[float, Strict(), Field(allow_inf_nan=False)]
 
 
-def whole_number(value: object) -> object:
+def _whole_number(value: object) -> object:
     """A `BeforeValidator` for a JSON integer: `int` validation alone accepts `True` and `1.0`, the format does not."""
     if type(value) is not int:
         raise InvalidError(f"must be a whole number (got {value!r})")
     return value
-
-
-def plain[T](values: Sequence[T] | NDArray[np.float64]) -> Sequence[T] | list[float]:
-    """The values as Python numbers for a model to validate: an array is listed, so a numpy bool array is refused
-    instead of being read as 0 and 1. Any other sequence is returned as it is."""
-    return values.tolist() if isinstance(values, np.ndarray) else values
 
 
 def _utf8_text(text: str) -> str:
@@ -51,7 +45,7 @@ def _utf8_text(text: str) -> str:
 # a JSON true or false: not 1, not "true"
 Switch = Annotated[bool, Strict()]
 # a JSON integer: not a bool, not a float
-Whole = Annotated[int, BeforeValidator(whole_number)]
+Whole = Annotated[int, BeforeValidator(_whole_number)]
 # free text that can be saved as UTF-8
 Text = Annotated[str, AfterValidator(_utf8_text)]
 
