@@ -421,3 +421,33 @@ separate ramp. Changed:
   API is missing something. *Consequence:* batch R0.5 (`docs/roadmap.md`) specifies the API in Python and Rust side by
   side and improves the Python one; every batch from R1 on meets it; R4 enforces "the patch uses only the public API" with
   an import contract in Python and module privacy in Rust.
+
+## Code-first API (R0.5)
+
+Taught in `docs/api.md`, Python and Rust side by side; every Python example there runs as a test.
+
+- **Shapers are taught as methods** (`energy.slew(rise=0.2).clip(high=0.8)`), not as nested functions. *Reason:* a
+  signal flows left to right through its shapers, so the code reads as the pipeline, and a method completes its keywords
+  in an editor. `signal.pipe(shaper, **params)` puts any shaper, a plugin's included, into the same chain.
+- **`lib` stays as the registry's uniform entry** (`lib.slew(signal, rise=0.2)`: tooling, plugins, `help()`), typed by a
+  generated stub (`lib.pyi`), and is not taught as a second style. Metadata (description, parameters, summary) comes from
+  `registry.get(name)`; `lib.<name>` is typed as a plain function for calling.
+- **A generated stub plus a connected lookup, not `__getattr__` alone and not a layering exception.** A module-level
+  `__getattr__` types nothing (mypy sees `Any`, no completion of `rise=`). The methods need to call the registered shaper,
+  but `signal` is below `registry` and may not import it, and import-linter forbids sibling imports. So `Chain[S]`, the
+  methods, sits in its own generated layer under `signal` (`rounding > _chain > formats`), generic in the signal type so
+  that it imports nothing of `signal`; `Signal` inherits `Chain["Signal"]`; and the registry hands `signal` its by-name
+  lookup when it is imported (`signal.connect_shapers`). No contract has an exception. `uv run poe api`
+  (`tools/gen_api.py`) writes `lib.pyi` and `_chain.py` from what each built-in publishes, never from its code, and a
+  test fails while either is stale: the second generated exception to open/closed after the gallery. A plugin's shaper
+  has no method; it is reached as `lib.<name>` and through `pipe`. The generator refuses text that does not compile
+  (summaries and parameter docs go into docstrings as written).
+- **`from_values` and `events`.** A measured curve took three concepts (`from_series(Series(rate=..., values=...,
+  unit=Unit.RATIO))`); the common case is one call, and `from_values` pairs with `from_series`, which stays for data from
+  files. `events(times, label=...)` does the same for `Event(...)`, which still works. The names are the plain ones;
+  `curve` and `signal` say less.
+- **The Rust column is the target.** `docs/api.md` shows the Rust API R1 to R5 build to (parameters as a struct with
+  `Default`, validated when the signal is built and returned as `Result`), so the Python API is not shaped by Python
+  alone; the page says it is not implemented, and its Rust blocks become doctests as the crates land.
+- **Patch files come last, and only through the public API.** A patch is a serialisation of the same graph; saving a
+  code-built graph as a patch is R4's.

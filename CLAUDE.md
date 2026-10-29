@@ -18,7 +18,7 @@ uv run poe check                     # the whole gate, before you report or merg
 
 | To ... | Look at |
 |---|---|
-| use a source, shaper or operation | `lib` (`lib.slew(signal, rise=0.2)`; `dir(lib)`, `help(lib.slew)`) |
+| use a source, shaper or operation | `docs/api.md` (the code-first API); shapers are methods (`energy.slew(rise=0.2).clip(high=0.8)`), all three kinds are in `lib` (`lib.slew(signal, rise=0.2)`; `dir(lib)`, `help(lib.slew)`) |
 | add a source, shaper or operation | "Adding a source or shaper" below; one module in `src/bullterrier_control/builtin/`, one test file in `tests/builtin/` |
 | write a shaper's recurrence in Rust | "Rust code" below; `crates/core/src/builtin/slew.rs` and `builtin/slew.py` |
 | see what every source and shaper promises | "The signal contract" below; `tests/builtin/test_contract.py` checks it over all of them |
@@ -30,11 +30,11 @@ uv run poe check                     # the whole gate, before you report or merg
 | see a worked example with numbers | `docs/examples.md` and `examples/` |
 | find what is planned | `docs/roadmap.md`: work goes in small batches, each planned before it starts |
 
-**State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`), inputs (`points`, `events`, `grid`, `values`, `series`), easing, cadence, hashing and scaling, and
+**State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`), the code-first API (`from_values`, `events`, shapers as typed methods and `Signal.pipe`; `docs/api.md`), inputs (`points`, `events`, `grid`, `values`, `series`), easing, cadence, hashing and scaling, and
 the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `noise`, the shapers `clip`, `slew`, `follow`,
 `gate`, `hold`, `remap` and `delay`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`,
 patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. The Rust core's foundation
-(R0) exists: `slew` and `follow` run in Rust, and CI builds the core and a wheel per platform (R0b; first GitHub run pending). Next: R0.5, R1 to R6, then C5, the first release (`docs/roadmap.md`).
+(R0) exists: `slew` and `follow` run in Rust, and CI builds the core and a wheel per platform (R0b; first GitHub run pending). Next: R1 to R6, then C5, the first release (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.
@@ -84,13 +84,14 @@ Layers, imports flow **downward only** (import-linter: contracts in `pyproject.t
 ```
 app        __main__, cli
 builtin    the built-in sources, shapers and operations: one module each, never importing each other, using only `plugin` (and `_native`)
-lib        every registered source, shaper and operation by name (`lib.slew`), with `help()` built from its parameters
+lib        every registered source, shaper and operation by name (`lib.slew`), with `help()` built from its parameters; `lib.pyi` types it
 patch      Patch, load_patch: a graph of them as data (TOML), built against a bundle; the patch schema
 plotting   plot: signals drawn as a PNG (matplotlib, an optional extra, imported when a picture is drawn)
 plugin     the author API: everything a source needs (built-ins use it too); the one door, enforced by a contract
 registry   the table of sources, shapers and operations; `@source`, `@shaper`, `@operation`; entry-point loading
 rendered   Rendered: a signal that needs history, rendered once and read by holding the latest sample  |  inputs   `INPUTS`, Keyframe
-signal     Signal, Constant, from_series, arithmetic  |  params   Params, param, UNITS  |  easing   `curve`: named and Bezier eases  |  cadence   `counter`: a read's position in cycles or steps, per second or beat  |  hashing   `uniform`: seeded random numbers by index  |  scaling   `between`: 0..1 onto `low`..`high`, exactly inside
+signal     Signal, Constant, from_series, arithmetic  |  params   Params, param, UNITS  |  easing   `curve`: named and Bezier eases  |  cadence   `counter`: a read's position in cycles or steps, per second or beat  |  hashing   `uniform`: seeded random numbers by index  |  scaling   `between`: 0..1 onto `low`..`high`, exactly inside  |  rounding   decisions at a time boundary
+_chain     Chain: a typed method per built-in shaper, which Signal inherits (generated; rounding > _chain > formats)
 formats    Bundle > Series | Event | Grid > the format base and Unit
 validated  ValidatedModel and the strict value types (Finite, Whole, Switch, Text)
 errors     BullterrierControlError > InvalidError > FormatError | ParameterError; SignalError; UnknownNameError
@@ -141,8 +142,10 @@ when called again, with events reversed or as dicts; valid, time-ordered events 
    `smoothing`, `noise`), never `utils`/`common`/`helpers`. Extract when a second consumer needs it.
 3. **Parameters are declared once** as a pydantic model (as in bullterrier-image; Rust structs only read them until R2), with unit, range and description, and drive
    validation, defaults and generated docs. Units include `seconds`, `beats` (through a Grid), `hertz`, `cycles`, `fraction`.
-4. **Open/closed:** adding a source, shaper or operation creates files named for it and modifies none. The one exception
-   is `docs/gallery.md`, which lists every source and shaper and is rewritten by `uv run poe gallery`.
+4. **Open/closed:** adding a source, shaper or operation creates files named for it and modifies none. The exceptions are
+   generated: `docs/gallery.md`, which lists every source and shaper and is rewritten by `uv run poe gallery`; and
+   `lib.pyi` (and, for a shaper, `_chain.py`), rewritten by `uv run poe api`. The drift test
+   (`tests/tools/test_gen_api.py`) fails while either is stale.
 5. **No hidden tunables.** Every value that shapes a result is a named, documented parameter in the field's own terms (attack,
    release, rate, depth, phase, slew). Exempt: mathematical and standard constants, each cited in a comment.
 6. **Determinism:** same inputs and `seed` give the same signal on the same machine and library versions; across platforms equal
@@ -230,8 +233,10 @@ load, naming source, field, constraint and value. Not parameters: the fields of 
 3. **Test:** what it promises, each expected number worked out by hand; the contract tests already cover shapes, ranges,
    determinism, read order and causality for every registered one. If `docs/examples.md` names it under **Needs**, that
    example must now pass. Edit the gallery patch so the picture shows what it does (a shaper's has a feeding node).
-4. **Gallery and gate:** `uv run poe gallery` draws its picture and rewrites `docs/gallery.md`; `uv run poe check`, then
-   `uv run lint-imports`. Only the new files, its picture and the page (and docs naming it) appear in `git status`.
+4. **Gallery and gate:** `uv run poe gallery` draws its picture and rewrites `docs/gallery.md`; `uv run poe api` rewrites
+   `lib.pyi` (and `_chain.py` for a shaper); `uv run poe check`, then `uv run lint-imports`. Only the new files, its
+   picture, the page, the two generated files (and docs naming it) appear in `git status`. If `_chain.py` is broken,
+   `git checkout -- src/bullterrier_control/_chain.py` and rerun `uv run poe api`.
 
 ## Fixing defects: structurally, not defensively
 

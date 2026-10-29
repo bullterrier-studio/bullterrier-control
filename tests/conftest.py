@@ -1,5 +1,6 @@
 """What the tests share: the project's root, a scratch copy of it for the tooling tests, the environment `uv run`
-gives a command, and the blanking of Rust comments and strings. A helper one file uses stays in that file."""
+gives a command, the blanking of Rust comments and strings, and the running of a documented example. A helper one
+file uses stays in that file."""
 
 import os
 import re
@@ -52,6 +53,30 @@ def rust_code() -> Callable[[str], str]:
 # property tests are deterministic (the same cases on every run, so a failure reproduces) and never time out
 settings.register_profile("bullterrier", derandomize=True, deadline=None)
 settings.load_profile("bullterrier")
+
+
+@pytest.fixture
+def documented_example(monkeypatch) -> Callable[[str], bool]:
+    """`documented_example(block)` runs the Python `block` of a document in a fresh namespace, from the project's root
+    (as a reader runs it). A block that shows `# array([...])` must also have a line `<name>.sample(...)`: that call
+    must give the shown values, rounded to the digits shown. Returns whether values were compared."""
+
+    def run(block: str) -> bool:
+        monkeypatch.chdir(ROOT)
+        namespace: dict[str, object] = {}
+        exec(block, namespace)  # noqa: S102  (the document is ours: this runs the example a reader would run)
+        shown = re.search(r"# array\(\[(.*?)\]\)", block)
+        if shown is None:
+            return False
+        read = re.search(r"^(\w+\.sample\([^)]*\))", block, re.MULTILINE)
+        assert read is not None, "a block that shows `# array(...)` needs a line `<name>.sample(...)`"
+        values = eval(read.group(1), namespace)  # noqa: S307  (the same document line)
+        numbers = [number.strip() for number in shown.group(1).split(",")]
+        decimals = max(len(number.partition(".")[2]) for number in numbers)
+        assert values.round(decimals).tolist() == [float(number) for number in numbers]
+        return True
+
+    return run
 
 
 @pytest.fixture

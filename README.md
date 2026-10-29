@@ -161,20 +161,19 @@ uv run bt-control --help
 
 ## Quick start
 
-The docs import the package as `btc`. Measurements in, shaped and read at times of your choosing:
+The docs import the package as `btc`. Measurements in, shaped by a chain of methods and read at times of your choosing:
 
 ```python
 import bullterrier_control as btc
 
-energy = btc.from_series(btc.Series(rate=10, values=(0.0, 1.0, 0.2, 0.0), unit=btc.Unit.RATIO))  # a measured curve
-smooth = btc.lib.slew(energy, rise=0.2, fall=0.5)  # climbs and falls no faster than this
-clipped = btc.lib.clip(smooth, low=0.1, high=0.8)  # and stays between 0.1 and 0.8
-clipped.sample([0.0, 0.1, 0.2, 0.3, 1.0])  # values at those times, in seconds
-# array([0.1  , 0.5  , 0.566, 0.366, 0.1  ])
+energy = btc.from_values([0.0, 1.0, 0.2, 0.0], rate=10)  # a measured curve: four values, ten a second
+glow = energy.slew(rise=0.2, fall=0.5).clip(low=0.1, high=0.8)  # climbs and falls no faster than this, stays in a range
+glow.sample([0.0, 0.1, 0.2, 0.3, 1.0])  # values at those times, in seconds
+# array([0.1 , 0.5 , 0.57, 0.37, 0.1 ])
 ```
 
 A consumer can read a whole timeline in one call, since `sample` takes an array; reading one time per call gives the
-same values.
+same values. [docs/api.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/api.md) has the full tour, in Python and in the Rust API it is built toward.
 
 Keyframes: values at chosen times, eased between ([docs/examples.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/examples.md) works this one out by hand):
 
@@ -191,7 +190,8 @@ Envelopes: a flare on each event, here a kick at 0.5 s that fades with a time co
 ```python
 import bullterrier_control as btc
 
-flare = btc.lib.envelope(events=[{"t": 0.5}], decay=0.25)
+kicks = btc.events([0.5], label="kick")
+flare = btc.lib.envelope(events=kicks, decay=0.25)
 flare.sample([0.25, 0.5, 0.75, 1.0])  # 0 before the kick, 1 at it, then e^-1 and e^-2
 # array([0.    , 1.    , 0.3679, 0.1353])
 ```
@@ -199,8 +199,9 @@ flare.sample([0.25, 0.5, 0.75, 1.0])  # 0 before the kick, 1 at it, then e^-1 an
 ## Sources, shapers and operations
 
 **Sources** make a signal from their parameters and, for some, from data such as keyframes, events or a beat grid.
-**Shapers** make a signal from a signal. All three kinds are in `btc.lib`: `dir(btc.lib)` lists them, `help(btc.lib.slew)`
-shows every parameter with its unit and range.
+**Shapers** make a signal from a signal, and are methods of one: `energy.slew(rise=0.2)`. All three kinds are in `btc.lib`
+too (`btc.lib.slew(energy, rise=0.2)`): `dir(btc.lib)` lists them, `help(btc.lib.slew)` shows every parameter with its
+unit and range. A shaper of your own goes into a chain with `signal.pipe(btc.lib.fold, depth=0.5)`.
 
 | Name | Kind | What it makes |
 |---|---|---|
