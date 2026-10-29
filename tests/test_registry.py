@@ -763,6 +763,23 @@ def test_an_isolated_block_entered_before_any_query_gives_back_the_built_ins():
     assert (done.returncode, done.stdout.strip()) == (0, "shaper"), done.stderr
 
 
+def test_isolated_refuses_at_entry_when_a_package_fails_to_load_and_leaves_the_registry_as_it_was(entry_points):
+    @source(params=Nothing)
+    def kept(params: Nothing) -> Signal:
+        return Constant(0.0)
+
+    def bad():
+        raise RuntimeError("no")
+
+    entry_points(FakeEntryPoint("b_bad", bad))
+    ran = []
+    with pytest.raises(BullterrierControlError, match="b_bad"), registry.isolated():
+        ran.append("the block")
+    assert ran == []
+    entry_points()  # the package is repaired
+    assert "kept" in registry.all_registered()
+
+
 def test_leaving_an_isolated_block_gives_back_whether_the_packages_were_loaded(entry_points):
     package = FakeEntryPoint("package", lambda: None)
     entry_points(package)
