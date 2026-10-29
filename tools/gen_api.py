@@ -10,6 +10,11 @@ under its name. Both are made from what each one publishes (`Registered.descript
 defaults, units, ranges, docs, and its inputs), never from its code, and are written as `ruff format` lays them out. A
 plugin's are left out: it is reached as `lib.<name>` and through `signal.pipe`.
 
+`render` refuses (`ValueError` naming the built-in or file) any text that does not compile: summaries and parameter
+docs go into docstrings as they are, so a stray triple quote or a bad escape would otherwise write an invalid file.
+If `_chain.py` is broken, restore it with `git checkout -- src/bullterrier_control/_chain.py` and rerun
+`uv run poe api` (`signal.py` imports it, so the generator cannot start without it).
+
 Interface: `render(registered)` -> {path from the checkout's root: text}; `main(argv)` -> exit code (0 written or
 current, 1 stale).
 """
@@ -80,7 +85,21 @@ def render(registered: Mapping[str, Registered[Any, Any]]) -> dict[Path, str]:
             raise ValueError(
                 f"shaper {name!r}: Signal has an attribute of that name already; name the shaper otherwise"
             )
-    return {LIB: _lib(built_ins), CHAIN: _chain(shapers)}
+    files = {LIB: _lib(built_ins), CHAIN: _chain(shapers)}
+    for path, text in files.items():
+        _check_compiles(path.as_posix(), text)
+    return files
+
+
+def _check_compiles(label: str, text: str) -> None:
+    """`ValueError` naming `label` if `text` is not valid Python."""
+    try:
+        compile(textwrap.dedent(text), label, "exec")
+    except SyntaxError as error:
+        raise ValueError(
+            f"{label}: the generated text does not compile ({error.msg}, line {error.lineno}); "
+            "look for a quote or a backslash in its summary or parameter docs"
+        ) from error
 
 
 def _arguments(one: Registered[Any, Any]) -> list[Argument]:
@@ -190,7 +209,9 @@ def _lib(built_ins: Mapping[str, Registered[Any, Any]]) -> str:
         returns = RETURNS[one.returns]
         annotations += [returns, *(argument.annotation for argument in arguments), *(["Signal"] if signal else [])]
         signature = _signature("", f"def {name}", [*signal, *_keywords(arguments)], returns)
-        functions.append([*signature, *_docstring("    ", one.summary, arguments)])
+        function = [*signature, *_docstring("    ", one.summary, arguments)]
+        _check_compiles(f"{one.kind} {name!r}", "\n".join(function))
+        functions.append(function)
     lines = [
         HEADER,
         '"""The typed functions of `lib`: one per built-in source, shaper and operation; any other name (an installed',
@@ -214,7 +235,9 @@ def _chain(shapers: Mapping[str, Registered[Any, Any]]) -> str:
         call = _bracketed(
             "        ", "return self._apply(", [json.dumps(name), *(f"{a.name}={a.name}" for a in arguments)], ")"
         )
-        methods.append([*signature, *_docstring("        ", one.summary, arguments), *call])
+        method = [*signature, *_docstring("        ", one.summary, arguments), *call]
+        _check_compiles(f"shaper {name!r}", "\n".join(method))
+        methods.append(method)
     lines = [
         HEADER,
         '"""The chain methods of `Signal`: one per built-in shaper (`energy.slew(rise=0.2)`), each applying the shaper',

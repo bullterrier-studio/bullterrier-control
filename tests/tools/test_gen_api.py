@@ -169,6 +169,23 @@ def test_a_built_in_shaper_named_like_an_attribute_of_signal_is_refused_naming_i
         gen_api.render(registry.all_registered())
 
 
+@pytest.mark.parametrize(
+    "summary",
+    [
+        pytest.param('Bends a signal """ and then some.', id="a triple quote ends the docstring early"),
+        pytest.param("Bends a signal like C:\\Nope.", id="a backslash can start an escape that is no escape"),
+    ],
+)
+def test_a_summary_that_would_write_an_invalid_file_is_refused_naming_the_built_in(empty_registry, summary):
+    def crooked(signal: Signal, params: WarpParams) -> Signal:
+        return signal
+
+    crooked.__doc__ = summary
+    shaper(params=WarpParams)(built_in(crooked))
+    with pytest.raises(ValueError, match="crooked"):
+        gen_api.render(registry.all_registered())
+
+
 def test_check_passes_on_the_files_just_written_and_fails_naming_one_that_differs(tmp_path, capsys):
     assert gen_api.main(["--root", str(tmp_path)]) == 0
     assert gen_api.main(["--check", "--root", str(tmp_path)]) == 0
