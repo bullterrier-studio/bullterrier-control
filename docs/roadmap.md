@@ -181,7 +181,7 @@ unit=Unit.RATIO))`).
 - Python: a typed `lib` through a generated stub (`lib.pyi` from the parameter models: every source, shaper and operation
   with its keyword parameters, defaults and docstring; a drift test: regenerated equals committed); chaining (built-in
   shapers as typed methods on `Signal` from the same generator, `signal.pipe(shaper, **params)` for any shaper including
-  plugins); a one-call entry for a curve from values (for example `btc.series(values, rate=10)`), keeping `Series` and
+  plugins); a one-call entry for a curve from values (`btc.from_values(values, rate=10)`), keeping `Series` and
   `from_series` for data from files. The final shape is decided in the batch's plan, from the spec.
 - The README's quick start uses the code-first API first; patch files come later, as the extra.
 

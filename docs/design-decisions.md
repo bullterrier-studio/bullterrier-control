@@ -354,8 +354,8 @@ separate ramp. Changed:
   `examples/gallery/<name>.toml` (its node `<name>` is the thing, its other nodes feed it), drawn over four seconds into
   `docs/gallery/<name>.png`; `poe new-source` writes the patch. No picture is compared (it depends on the drawing library);
   tests check that every built-in has a patch that builds and moves, a picture exists, and the page's text is current.
-  *Cost:* `docs/gallery.md` lists every source, so adding one modifies it (the exception to rule 4), and two branches that
-  add sources conflict in it; regenerating it resolves that. Operations have no picture: they give no signal.
+  *Cost:* `docs/gallery.md` lists every source, so adding one modifies it (one of the two exceptions to rule 4: the generated API files are the other, see "Code-first API (R0.5)"), and two
+  branches that add sources conflict in it; regenerating it resolves that. Operations have no picture: they give no signal.
 
 ## The Rust core (batch R0)
 
@@ -451,3 +451,8 @@ Taught in `docs/api.md`, Python and Rust side by side; every Python example ther
   alone; the page says it is not implemented, and its Rust blocks become doctests as the crates land.
 - **Patch files come last, and only through the public API.** A patch is a serialisation of the same graph; saving a
   code-built graph as a patch is R4's.
+- **Costs of the method style.** (1) A built-in shaper's name is a reserved attribute name on every `Signal` subclass
+  (`energy.clip` is the shaper): a plugin author keeps their own attributes private (`_name`); the generator refuses a
+  built-in shaper named like an attribute `Signal` has already. (2) The chain methods take keyword parameters only. A
+  future built-in shaper that takes an input such as `points` would need `_chain` to import the input's type from a layer
+  above it, which the contract forbids; it must be typed differently (for example by taking its data through `pipe`).

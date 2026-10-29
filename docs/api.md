@@ -20,6 +20,20 @@ Shapers are taught as methods (`energy.slew(...)`). `btc.lib.<name>` is the same
 (`lib.slew(signal, rise=0.2)`), typed by a generated stub. What a thing is (its description, parameters, units, ranges
 and summary) comes from the registry: `registry.get("slew")`.
 
+## Rules the Rust API follows (target)
+
+Decided in R0.5's review (controller ruling); revisit when R1 is planned. They clarify the owner's decision that
+parameters are structs with `Default`.
+
+1. **Argument order:** required inputs first, then the parameter struct, then optional inputs
+   (`envelope(&kicks, Envelope { .. })`; `lfo(Lfo { .. }, Some(&grid))`, where the grid is optional). A source or shaper
+   without parameters takes no struct (`keyframes(&points)`).
+2. **Struct literals always end in `..Default::default()`**, so a field added later breaks no call.
+3. **`events` and `from_values` take an options struct and return `Result`**, like everything else; no builders.
+4. **`sample` returns a `Vec<f64>`** for a slice of times. The Python binding restores the input's shape (a 0-d result
+   for a scalar).
+5. **A `Signal` is a cheap-to-clone handle**: shaper methods take `&self`, so one signal can feed several chains.
+
 ## 1. A curve from measured values
 
 One call; the value between two samples is interpolated linearly, and the first and last hold beyond the ends.
@@ -35,7 +49,7 @@ energy.sample([0.0, 0.05, 0.1, 0.25, 0.3, 1.0])  # halfway up, the peak, halfway
 ```rust
 use bullterrier_control as btc;
 
-let energy = btc::from_values(&[0.0, 1.0, 0.2, 0.0], 10.0)?;
+let energy = btc::from_values(&[0.0, 1.0, 0.2, 0.0], 10.0, FromValues::default())?;
 ```
 
 From a file: `btc.from_series(bundle.series["bass"])` and `btc::from_series(&bundle.series["bass"])`.
@@ -44,7 +58,9 @@ From a file: `btc.from_series(bundle.series["bass"])` and `btc::from_series(&bun
 
 A shaper is a method; each returns a new signal, so shapers chain. `slew` limits how fast the signal moves (`rise`
 and `fall` are seconds to move by 1; it works in steps of 1 ms, which is why its values here are shown to two
-decimals), `clip` keeps it in a range.
+decimals), `clip` keeps it in a range. The chain methods are for typed literal calls: a misspelt keyword is a type
+error (and a `TypeError` when run). Parameters that come from data, such as a config dict, go through `lib.<name>` or
+`signal.pipe(lib.<name>, **params)`, which raise `ParameterError` naming the field.
 
 ```python
 import bullterrier_control as btc
@@ -58,7 +74,7 @@ glow.sample([0.0, 0.05, 0.1, 0.2, 0.3, 1.0])  # climbs 5 a second, falls 2 a sec
 ```rust
 let glow = energy
     .slew(Slew { rise: 0.2, fall: 0.5, ..Default::default() })?
-    .clip(Clip { low: 0.1, high: 0.8 })?;
+    .clip(Clip { low: 0.1, high: 0.8, ..Default::default() })?;
 ```
 
 ## 3. Read it
@@ -94,7 +110,7 @@ flare.sample([0.5, 0.75, 1.0, 1.25])  # 1 at a kick, e^-1 a quarter second later
 ```
 
 ```rust
-let kicks = btc::events(&[0.5, 1.0, 1.5]).label("kick");
+let kicks = btc::events(&[0.5, 1.0, 1.5], Events { label: Some("kick".into()), ..Default::default() })?;
 let flare = btc::lib::envelope(&kicks, Envelope { decay: 0.25, ..Default::default() })?;
 ```
 
@@ -226,7 +242,7 @@ folded.sample([0.05, 0.1, 0.2, 0.3])  # 0.25 and 0.5 are below the fold; 0.57 fo
 
 ```rust
 // a type implementing the shaper trait; `pipe` takes it the same way
-let folded = glow.pipe(Fold { depth: 0.5 })?;
+let folded = glow.pipe(Fold { depth: 0.5, ..Default::default() })?;
 ```
 
 ## 10. The same look as a file (the extra)
