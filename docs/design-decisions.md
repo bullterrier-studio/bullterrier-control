@@ -449,6 +449,17 @@ Taught in `docs/api.md`, Python and Rust side by side; every Python example ther
 - **The Rust column is the target.** `docs/api.md` shows the Rust API R1 to R5 build to (parameters as a struct with
   `Default`, validated when the signal is built and returned as `Result`), so the Python API is not shaped by Python
   alone; the page says it is not implemented, and its Rust blocks become doctests as the crates land.
+- **The Rust API rules** (`docs/api.md`) follow the Rust API Guidelines: a cheap-clone `Signal`, parameter structs with
+  `Default` (the cost: a struct literal without `..Default::default()` stops compiling when a field is added, which is why
+  the page always teaches it; `#[non_exhaustive]` with setters is decided before 1.0), one `#[non_exhaustive]` error enum,
+  and a sampling API with an allocation-free form for a live loop. *Concurrency:* atomics are used only through `Arc`; the
+  one mutable shared thing, the history cache of a stateful signal, is a `Mutex` over an `Arc` snapshot (a reader locks
+  briefly, grows the cache if needed, clones the `Arc`, and reads without the lock). Miri checks `unsafe` code, and the
+  core forbids it (the borrow checker and `Send`/`Sync` already exclude data races in safe code), so it is not run;
+  `loom` only if lock-free code is ever hand-written, which it should not be. *The real hazard is a deadlock between a
+  Rust lock and the Python GIL* (a signal written in Python is called from Rust): a Rust lock is never held while calling
+  into Python; compute outside the lock, install the result under it, and let the loser of a race drop its copy. R3 tests
+  this with threads and Python-written signals.
 - **Patch files come last, and only through the public API.** A patch is a serialisation of the same graph; saving a
   code-built graph as a patch is R4's.
 - **Costs of the method style.** (1) A built-in shaper's name is a reserved attribute name on every `Signal` subclass

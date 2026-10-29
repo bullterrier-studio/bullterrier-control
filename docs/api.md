@@ -22,17 +22,31 @@ and summary) comes from the registry: `registry.get("slew")`.
 
 ## Rules the Rust API follows (target)
 
-Decided in R0.5's review (controller ruling); revisit when R1 is planned. They clarify the owner's decision that
-parameters are structs with `Default`.
+Decided by the owner on 2026-10-29. They clarify the earlier decision that parameters are structs with `Default`.
 
-1. **Argument order:** required inputs first, then the parameter struct, then optional inputs
+1. **A `Signal` is a newtype over `Arc<dyn Node + Send + Sync>`**: cheap to clone, `Debug`, `Send` and `Sync`, with `Node`
+   sealed. Shaper methods take `&self`, so one signal can feed several chains.
+2. **Argument order:** required inputs first, then the parameter struct, then optional inputs
    (`envelope(&kicks, Envelope { .. })`; `lfo(Lfo { .. }, Some(&grid))`, where the grid is optional). A source or shaper
-   without parameters takes no struct (`keyframes(&points)`).
-2. **Struct literals always end in `..Default::default()`**, so a field added later breaks no call.
-3. **`events` and `from_values` take an options struct and return `Result`**, like everything else; no builders.
-4. **`sample` returns a `Vec<f64>`** for a slice of times. The Python binding restores the input's shape (a 0-d result
-   for a scalar).
-5. **A `Signal` is a cheap-to-clone handle**: shaper methods take `&self`, so one signal can feed several chains.
+   without parameters takes no struct (`keyframes(&points)`). Inputs are borrowed (`&[Event]`, `&Grid`) and cloned inside.
+3. **Parameters are a plain struct per thing**: public fields, `Default`, `Clone`, `Debug`, `PartialEq`, serde behind a
+   feature, checked when passed in (the call returns `Result`). Struct literals always end in `..Default::default()`, so a
+   field added later breaks no call. Before 1.0, decide between keeping this and `#[non_exhaustive]` with generated
+   setters; `cargo-semver-checks` runs from the first publish.
+4. **`events` and `from_values` take an options struct and return `Result`**, like everything else. No builders.
+5. **One `#[non_exhaustive] enum Error`**, `std::error::Error + Send + Sync`, carrying the thing, field, rule and value
+   with the same message as Python's. No panics, no `unwrap` or `expect`.
+6. **Sampling:** `sample(&self, &[f64]) -> Result<Vec<f64>>`; `sample_into(&self, &[f64], &mut [f64]) -> Result<()>`,
+   which allocates nothing, for a live loop; `at(&self, f64) -> Result<f64>`. Time is a plain `f64` in seconds, with no
+   unit newtypes. The Python binding restores the input's shape (a 0-d result for a scalar).
+7. **Combining:** `+`, `-`, `*` and negation work on `Signal` and `&Signal` with `f64`. `maximum` and `minimum` are
+   infallible.
+8. **Entry points:** sources are free functions under `lib::`; shapers are methods, and `pipe` takes any shaper. Plugins
+   implement the public `Source` and `Shaper` traits.
+9. **The core crate** forbids `unsafe`, does no I/O, builds for wasm32, uses `libm` for the same result on every target,
+   documents every public item, and carries these examples as doctests.
+10. **Concurrency:** no hand-written atomics. The only shared mutable state is the history cache of a stateful signal. A
+    Rust lock is never held while calling into Python.
 
 ## 1. A curve from measured values
 
