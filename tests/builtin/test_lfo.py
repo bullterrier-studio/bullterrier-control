@@ -3,7 +3,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from bullterrier_control import Grid, ParameterError, SignalError, lib
+from bullterrier_control import Grid, ParameterError, SignalError, lib, registry
 
 # a steady 120 BPM: a beat every half second
 STEADY = Grid(beats=tuple(index * 0.5 for index in range(40)), meter=4, first_downbeat=0)
@@ -210,7 +210,7 @@ def test_the_phase_wraps_so_a_rotating_phase_needs_none_of_its_own():
 
 
 def test_the_phase_is_described_as_cyclic_for_a_consumer_mapping_onto_it():
-    phase = lib.lfo.params_model.model_json_schema()["properties"]["phase"]
+    phase = registry.get("lfo").params_model.model_json_schema()["properties"]["phase"]
     assert (phase["unit"], phase["minimum"], phase["maximum"], phase["cyclic"]) == ("cycles", 0, 1, True)
 
 

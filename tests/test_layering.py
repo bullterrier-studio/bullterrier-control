@@ -11,6 +11,7 @@ import only the layers below it:
                what a signal is and how it is read | how a source or shaper declares its parameters | how progress is
                reshaped (easing curves) | where a read falls in a cycle | a seeded hash | how 0 to 1 is put on a range |
                when a time counts as a bound
+    _chain     the chain methods `Signal` inherits, one per built-in shaper (generated); `signal` imports it
     formats    bundle > series | event | grid > model | units (each format builds on the base and the units only)
     validated  the base of every validated model and its strict value types
     errors | _native   the exceptions | the home of the Rust extension (`_native._core`); both import nothing from
@@ -41,7 +42,7 @@ LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-im
 
 LAYERS = (
     "Layers: app > builtin | lib | patch | plotting > plugin > registry > rendered | inputs > signal | params | easing"
-    " | cadence | hashing | scaling | rounding > formats > validated > errors | _native"
+    " | cadence | hashing | scaling | rounding > _chain > formats > validated > errors | _native"
 )
 SOURCES_APART = "Built-in sources never import each other"
 SOURCES_DOOR = "Built-in sources use only the author API"
@@ -51,7 +52,7 @@ CONTRACTS = [LAYERS, SOURCES_APART, SOURCES_DOOR, FORMATS]
 
 def lint(cwd: Path, pythonpath: Path | None = None) -> subprocess.CompletedProcess:
     # a wide terminal, so that a contract's name is on one line however long it is
-    environment = {**os.environ, "COLUMNS": "200", **({"PYTHONPATH": str(pythonpath)} if pythonpath else {})}
+    environment = {**os.environ, "COLUMNS": "1000", **({"PYTHONPATH": str(pythonpath)} if pythonpath else {})}
     return subprocess.run(
         [str(LINT_IMPORTS), "--no-cache"], cwd=cwd, env=environment, capture_output=True, encoding="utf-8", check=False
     )
@@ -90,6 +91,12 @@ FORBIDDEN = {
     ),
     "signal to params": ("signal.py", "import bullterrier_control.params", "bullterrier_control.signal", LAYERS),
     "params to signal": ("params.py", "import bullterrier_control.signal", "bullterrier_control.params", LAYERS),
+    "the chain methods to signal": (
+        "_chain.py",
+        "import bullterrier_control.signal",
+        "bullterrier_control._chain",
+        LAYERS,
+    ),
     "signal to rendered": ("signal.py", "import bullterrier_control.rendered", "bullterrier_control.signal", LAYERS),
     "params to rendered": ("params.py", "import bullterrier_control.rendered", "bullterrier_control.params", LAYERS),
     "rendered to registry": (

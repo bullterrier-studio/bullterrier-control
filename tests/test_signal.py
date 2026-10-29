@@ -1,9 +1,11 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from bullterrier_control import FormatError, Series, SignalError, Unit, lib
+from bullterrier_control import FormatError, Series, SignalError, Unit, lib, load_patch, registry
 from bullterrier_control.signal import Constant, Signal, from_series, from_values, maximum, minimum
 
 
@@ -317,3 +319,29 @@ def test_pipe_refuses_a_callable_that_does_not_return_a_signal_naming_it():
 
     with pytest.raises(TypeError, match="gives_a_number"):
         RAMP.pipe(gives_a_number)
+
+
+GALLERY = Path(__file__).resolve().parents[1] / "examples" / "gallery"
+BUILT_IN_SHAPERS = sorted(
+    name
+    for name, thing in registry.shapers().items()
+    if thing.function.__module__.startswith("bullterrier_control.builtin.")
+)
+
+
+@pytest.mark.parametrize("name", BUILT_IN_SHAPERS)
+def test_every_built_in_shaper_is_a_method_of_a_signal_giving_what_the_lib_function_gives(name):
+    # each one's gallery patch feeds it a moving input and sets its parameters off their defaults
+    patch = load_patch(GALLERY / f"{name}.toml")
+    node = patch.nodes[name]
+    assert node.signal is not None
+    signal = patch.build()[node.signal.name]
+    times = np.linspace(0.0, 4.0, 81)
+    chained = getattr(signal, name)(**node.inputs, **node.parameters)
+    called = getattr(lib, name)(signal, **node.inputs, **node.parameters)
+    assert chained.sample(times).tolist() == called.sample(times).tolist()
+
+
+def test_a_chain_method_takes_its_parameters_by_keyword_only():
+    with pytest.raises(TypeError):
+        RAMP.clip(0.25, 0.75)  # type: ignore[call-arg]  # positional on purpose: the call is refused

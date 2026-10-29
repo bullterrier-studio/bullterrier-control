@@ -205,4 +205,4 @@ def test_normalise_refuses_a_bad_series_naming_it(reports):
 
 def test_normalise_needs_a_series():
     with pytest.raises(TypeError, match="series"):
-        lib.normalise()
+        lib.normalise()  # type: ignore[call-arg]  # left out on purpose: refused at run time too

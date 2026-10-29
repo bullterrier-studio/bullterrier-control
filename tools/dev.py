@@ -5,7 +5,8 @@
 writes `src/bullterrier_control/builtin/NAME.py` and `tests/builtin/test_NAME.py` from `tools/templates/`: a working
 source (or shaper, or operation) with one example parameter and one example test, which pass the gate as written.
 A source or shaper also gets `examples/gallery/NAME.toml`, the patch its gallery picture is drawn from. Replace the
-parameter, the body, the test and the patch with the real ones (CLAUDE.md, "Adding a source or shaper").
+parameter, the body, the test and the patch with the real ones (CLAUDE.md, "Adding a source or shaper"), then run
+`uv run poe api`, which writes its typed function in `lib.pyi` (and a shaper's method in `_chain.py`).
 
 Interface: main(argv) -> exit code: 0 written, 1 refused (the reason on stderr), 2 wrong usage (argparse explains).
 """
@@ -60,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     for path in written:
         print(f"wrote {path.relative_to(ROOT).as_posix()}")
+    gallery = "" if args.kind == "operation" else "`uv run poe gallery` and "
+    print(f"next: fill it in, then run {gallery}`uv run poe api` (it types `lib`, and a shaper's method of Signal)")
     return 0
 
 

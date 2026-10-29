@@ -26,10 +26,6 @@ ALLOWED: dict[tuple[str, str], str] = {
     ("tools/test_vulture_whitelist.py", "bullterrier_control._native"): (
         "the whitelist names the fields of exactly the shapers the Rust core implements; only the core can say which"
     ),
-    ("test_registry.py", "._apply"): (
-        "architecture test of the lookup the registry connects to `Signal`: the generated chain methods call `_apply` "
-        "by shaper name, and no public name reaches a throwaway shaper by name"
-    ),
 }
 
 _PATCHERS = ("monkeypatch.setattr", "monkeypatch.delattr", "monkeypatch.setitem", "monkeypatch.delitem")

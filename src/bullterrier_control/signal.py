@@ -28,6 +28,7 @@ from typing import Literal, final
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from ._chain import Chain
 from .errors import SignalError
 from .formats.series import Series
 from .formats.units import Unit
@@ -55,7 +56,7 @@ def connect_shapers(lookup: Callable[[str], Callable[..., "Signal"]]) -> None:
     _SHAPERS.find = lookup
 
 
-class Signal(ABC):
+class Signal(Chain["Signal"], ABC):
     """A value that changes over time, readable at any moment in seconds. Subclasses implement `compute`."""
 
     # numpy defers to the operators below: an array times a signal is an error, not an array of signals

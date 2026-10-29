@@ -80,7 +80,7 @@ def test_selecting_the_downbeats_of_the_beats_gives_the_first_beat_of_each_bar()
 
 def test_beats_needs_a_grid():
     with pytest.raises(TypeError, match="grid"):
-        lib.beats()
+        lib.beats()  # type: ignore[call-arg]  # left out on purpose: refused at run time too
 
 
 @pytest.mark.parametrize("division", [0, 65])

@@ -145,7 +145,7 @@ def test_quantize_of_no_events_is_no_events():
 
 def test_quantize_needs_a_grid():
     with pytest.raises(TypeError, match="grid"):
-        lib.quantize(events=[])
+        lib.quantize(events=[])  # type: ignore[call-arg]  # left out on purpose: refused at run time too
 
 
 def test_quantize_far_from_the_beats_still_gives_a_finite_time():

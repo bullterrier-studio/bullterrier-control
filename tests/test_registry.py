@@ -761,11 +761,12 @@ def test_leaving_an_isolated_block_gives_back_whether_the_packages_were_loaded(e
 
 
 def test_a_source_describes_itself_as_data_for_a_consumer():
-    description = lib.envelope.description()
+    envelope = registry.get("envelope")
+    description = envelope.description()
     assert (description["kind"], description["returns"], description["summary"]) == (
         "source",
         "signal",
-        lib.envelope.summary,
+        envelope.summary,
     )
     assert description["inputs"]["events"]["required"] is True
     assert "Events" in description["inputs"]["events"]["doc"]
@@ -773,9 +774,9 @@ def test_a_source_describes_itself_as_data_for_a_consumer():
 
 
 def test_a_shaper_without_inputs_and_an_operation_describe_what_they_take_and_give():
-    assert lib.slew.description()["inputs"] == {}
-    assert lib.slew.description()["kind"] == "shaper"
-    select = lib.select.description()
+    assert registry.get("slew").description()["inputs"] == {}
+    assert registry.get("slew").description()["kind"] == "shaper"
+    select = registry.get("select").description()
     assert (select["kind"], select["returns"]) == ("operation", "events")
     assert select["inputs"].keys() == {"events"}
 
@@ -801,21 +802,30 @@ def test_a_shaper_registered_in_isolation_can_be_piped_and_is_gone_after():
         registry.get("scaled")
 
 
-def test_the_chain_lookup_finds_shapers_in_the_live_registry_only():
-    """Architecture test: it uses `_apply`, the entry that generated chain methods call, because no public name
-    reaches a throwaway shaper by name."""
+class Bounds(Params):
+    """Two levels, named as clip's are."""
+
+    low: Finite = param(0.0, doc="The lower level.", unit="ratio", min=-10, max=10)
+    high: Finite = param(1.0, doc="The upper level.", unit="ratio", min=-10, max=10)
+
+
+def test_a_chain_method_applies_whatever_the_live_registry_holds_under_its_name():
     with registry.isolated():
+        with pytest.raises(UnknownNameError, match="clip"):
+            Constant(4.0).clip()
 
-        @shaper(params=Level)
-        def scaled(signal: Signal, params: Level) -> Signal:
-            return signal * params.value
+        @shaper(params=Bounds)
+        def clip(signal: Signal, params: Bounds) -> Signal:
+            return signal * params.low + params.high
 
-        @source(params=Level)
-        def level(params: Level) -> Signal:
-            return Constant(params.value)
+        assert Constant(4.0).clip(low=0.25, high=2.0).sample(0.0).tolist() == 3.0
+        registry.unregister("clip")
 
-        assert Constant(4.0)._apply("scaled", value=0.25).sample(0.0).tolist() == 1.0  # noqa: SLF001  (generated-code entry)
+        def level(params: Bounds) -> Signal:
+            return Constant(params.low)
+
+        level.__name__ = "clip"  # the name, now a source's
+        source(params=Bounds)(level)
         with pytest.raises(TypeError, match="not a shaper"):
-            Constant(4.0)._apply("level")  # noqa: SLF001  (generated-code entry)
-    with pytest.raises(UnknownNameError, match="scaled"):
-        Constant(4.0)._apply("scaled")  # noqa: SLF001  (generated-code entry)
+            Constant(4.0).clip()
+    assert Constant(4.0).clip(low=0.25, high=2.0).sample(0.0).tolist() == 2.0  # the built-in again

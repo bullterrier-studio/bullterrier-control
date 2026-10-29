@@ -66,7 +66,7 @@ def test_events_are_checked_like_every_events_input():
     with pytest.raises(ParameterError, match="events"):
         lib.hold(CLOCK, events=[{"t": -1}])
     with pytest.raises(TypeError, match="events"):
-        lib.hold(CLOCK)
+        lib.hold(CLOCK)  # type: ignore[call-arg]  # left out on purpose: refused at run time too
 
 
 @settings(max_examples=200)

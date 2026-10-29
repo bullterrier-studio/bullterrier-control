@@ -37,6 +37,7 @@ def test_a_new_source_shaper_or_operation_passes_its_tests_the_contract_and_the_
     made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", kind)
     assert made.returncode == 0, made.stderr
     assert "src/bullterrier_control/builtin/fresh_one.py" in made.stdout
+    assert "uv run poe api" in made.stdout  # lib.pyi (and a shaper's method) are generated
     tests = run(
         checkout,
         "-m",

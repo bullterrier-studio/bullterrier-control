@@ -78,5 +78,5 @@ def test_the_shape_of_the_input_is_kept():
 
 def test_a_label_that_is_not_text_is_refused_naming_the_field(reports):
     with pytest.raises(ParameterError) as refused:
-        lib.latch(events=DROP, label=3)
+        lib.latch(events=DROP, label=3)  # type: ignore[arg-type]  # not text on purpose: refused at run time too
     reports(refused.value, "label")
