@@ -505,7 +505,8 @@ Taught in `docs/api.md`, Python and Rust side by side; every Python example ther
   `model_*` methods, and the Python side reads Python objects with its own deserializer (below).
 - **Every broken rule is listed, not the first** (owner, 2026-10-29). A `FormatError` carries a `Problem` (path and rule) per
   rule. *Reason:* a producer fixes a file in one pass. *Cost:* a reader cannot stop at the first problem; the rules
-  that depend on a value that was not read (a wrong JSON type) stop at that field.
+  that depend on a value that was not read (a wrong JSON type, an unknown field or unit, a non-whole number, an integer
+  beyond 2^53) stop at that value.
 - **The schema is generated from the Rust types** (owner, 2026-10-29), as the `schemars` entry says; no Python model is
   involved.
 - **`_native` imports `errors`, lazily.** The extension raises `FormatError`, a Python class in `errors`, and imports it the

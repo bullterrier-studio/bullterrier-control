@@ -88,6 +88,9 @@ languages. It states the shapes, types, ranges and names. A schema cannot state,
 `meter` and `len(beats)`, `scaling` and the 0..1 range of a `fraction` series, repeated keys, integers written as `1.0`
 (JSON Schema counts `1.0` as an integer), non-finite numbers, and UTF-8 text.
 
+A refusal lists every broken rule. A value of the wrong JSON type, an unknown field or unit, a non-whole
+number for an integer, or an integer beyond 2^53 stops the reading at that value, with one problem.
+
 ## Patch
 
 A look of signals as data: sources, shapers and operations with their values, as a TOML file or as a table inside another

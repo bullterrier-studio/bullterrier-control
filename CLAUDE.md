@@ -105,7 +105,8 @@ _native    home of the Rust extension `_native._core`      (imports `errors` onl
 `bullterrier_control._native._core`; generic, names no shaper). The formats are `crates/core/src/formats/` (rules, JSON
 reading and writing, schema); the bindings are `crates/python/src/{formats,data,error}.rs`. They read a Python object with
 their own deserializer over Python objects (`data.rs`), so a NaN reaches the core and is listed with every other problem,
-and `FormatError.problems` holds all of them. A ported shaper keeps its Python model, docstring and
+and `FormatError.problems` lists every broken rule (a value of the wrong JSON type, an unknown field and the like stop
+the reading at that value). A ported shaper keeps its Python model, docstring and
 `@shaper`; its body is a `Rendered` whose `run` is `partial(_core.render, "<name>", params=params.model_dump())`
 (`from bullterrier_control._native import _core`). `_core.render(name, inputs, params)` is the one boundary: it takes the
 input sampled at the shaper's rate (1-D, C-contiguous float64, read in place), releases the GIL, and returns a new float64
