@@ -17,7 +17,9 @@ use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyBytes, PyDict, PyList, PyMapping, PyString, PyTuple, PyType};
 use serde::Serialize;
 
-use bullterrier_control::formats::{Bundle, BundleOptions, Event, Grid, Problem, Series, Unit};
+use bullterrier_control::formats::{
+    BUNDLE_FORMAT, BUNDLE_VERSION, Bundle, BundleOptions, Event, Grid, Problem, Series, Unit,
+};
 
 use crate::data::{Data, NOT_UTF8, Numbers, numbers};
 use crate::error::{format_error, raise};
@@ -837,6 +839,20 @@ impl PyBundle {
     /// optional field only when set.
     fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         loads(py, &self.inner.to_json(false))
+    }
+
+    /// What the file states as its format: `"bullterrier-control/bundle"`.
+    #[getter]
+    #[expect(clippy::unused_self, reason = "an attribute of every bundle, the same for all")]
+    const fn format(&self) -> &'static str {
+        BUNDLE_FORMAT
+    }
+
+    /// The version of the format: 1, the one there is.
+    #[getter]
+    #[expect(clippy::unused_self, reason = "an attribute of every bundle, the same for all")]
+    const fn version(&self) -> u32 {
+        BUNDLE_VERSION
     }
 
     /// What produced the data, if said.

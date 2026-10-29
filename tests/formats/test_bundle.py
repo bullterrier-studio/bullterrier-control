@@ -1,4 +1,5 @@
 import json
+import pickle
 from typing import Final
 
 import jsonschema
@@ -344,3 +345,17 @@ def test_to_dict_is_the_bundle_as_a_file_holds_it_and_parses_back():
 def test_from_json_reads_the_text_a_file_holds():
     bundle = Bundle.from_json(f'{{"format": "{FORMAT}", "version": 1, "events": {{"kick": [{{"t": 0.5}}]}}}}')
     assert bundle.events["kick"] == (KICK,)
+
+
+@pytest.mark.parametrize(
+    "made",
+    [
+        pytest.param(lambda: Bundle(format=FORMAT, version=1), id="built"),
+        pytest.param(lambda: Bundle.parse(MINIMAL), id="parsed"),
+        pytest.param(lambda: Bundle.from_json(json.dumps(MINIMAL)), id="read"),
+        pytest.param(lambda: pickle.loads(pickle.dumps(Bundle.parse(MINIMAL))), id="unpickled"),  # noqa: S301
+    ],
+)
+def test_a_bundle_states_its_format_and_version(made):
+    bundle = made()
+    assert (bundle.format, bundle.version) == ("bullterrier-control/bundle", 1)

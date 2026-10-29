@@ -18,10 +18,10 @@ use super::grid::{Grid, RawGrid};
 use super::series::{RawSeries, Series};
 
 /// What a bundle file states its `format` as.
-const FORMAT: &str = "bullterrier-control/bundle";
+pub const BUNDLE_FORMAT: &str = "bullterrier-control/bundle";
 
-/// The one version of the format there is.
-const VERSION: i128 = 1;
+/// The one version of the bundle format there is: a reader refuses any other.
+pub const BUNDLE_VERSION: u32 = 1;
 
 /// A series or an event list is named by a string of this shape (`bass`, `stem.drums`, `kick`).
 const NAME_PATTERN: &str = "^[a-z0-9][a-z0-9_.-]*$";
@@ -154,8 +154,8 @@ impl Bundle {
     #[must_use]
     pub fn to_json(&self, ascii_only: bool) -> String {
         let written = Written {
-            format: FORMAT,
-            version: 1,
+            format: BUNDLE_FORMAT,
+            version: BUNDLE_VERSION,
             source: self.source.as_deref(),
             duration: self.duration,
             grid: self.grid.as_ref(),
@@ -268,7 +268,7 @@ struct RawBundle {
 }
 
 fn format_schema(_: &mut SchemaGenerator) -> Schema {
-    json_schema!({"type": "string", "const": FORMAT})
+    json_schema!({"type": "string", "const": BUNDLE_FORMAT})
 }
 
 fn version_schema(_: &mut SchemaGenerator) -> Schema {
@@ -280,16 +280,21 @@ impl RawBundle {
     fn read(self, problems: &mut Vec<Problem>) -> Option<Bundle> {
         match self.format.as_deref() {
             None => required(problems, "", "format"),
-            Some(FORMAT) => {}
+            Some(BUNDLE_FORMAT) => {}
             Some(other) => {
-                let rule = format!("must be {FORMAT:?} (got {})", serde_json::Value::from(other));
+                let rule = format!("must be {BUNDLE_FORMAT:?} (got {})", serde_json::Value::from(other));
                 push(problems, "", "format", rule);
             }
         }
         match self.version {
             None => required(problems, "", "version"),
-            Some(Whole(VERSION)) => {}
-            Some(Whole(other)) => push(problems, "", "version", format!("must be {VERSION} (got {other})")),
+            Some(Whole(version)) if version == i128::from(BUNDLE_VERSION) => {}
+            Some(Whole(other)) => push(
+                problems,
+                "",
+                "version",
+                format!("must be {BUNDLE_VERSION} (got {other})"),
+            ),
         }
         let duration = self.duration.map(|number| number.0);
         let limit = check_duration(problems, duration);
@@ -391,7 +396,7 @@ impl<T: JsonSchema> JsonSchema for Names<T> {
 #[derive(Serialize)]
 struct Written<'a> {
     format: &'static str,
-    version: u8,
+    version: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     source: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]

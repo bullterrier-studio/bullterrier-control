@@ -17,7 +17,7 @@ mod series;
 mod test_support;
 mod unit;
 
-pub use bundle::{Bundle, BundleOptions, bundle_schema, is_name};
+pub use bundle::{BUNDLE_FORMAT, BUNDLE_VERSION, Bundle, BundleOptions, bundle_schema, is_name};
 pub use error::{FormatError, Problem};
 pub use event::{Event, EventOptions};
 pub use grid::Grid;
