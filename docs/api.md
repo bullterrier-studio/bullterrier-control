@@ -43,7 +43,8 @@ From a file: `btc.from_series(bundle.series["bass"])` and `btc::from_series(&bun
 ## 2. Shape it: a chain
 
 A shaper is a method; each returns a new signal, so shapers chain. `slew` limits how fast the signal moves (`rise`
-and `fall` are seconds to move by 1), `clip` keeps it in a range.
+and `fall` are seconds to move by 1; it works in steps of 1 ms, which is why its values here are shown to two
+decimals), `clip` keeps it in a range.
 
 ```python
 import bullterrier_control as btc
