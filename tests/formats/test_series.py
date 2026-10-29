@@ -146,6 +146,18 @@ def test_values_are_a_read_only_array_of_the_series_own():
         series.values.setflags(write=True)
 
 
+def test_no_array_under_the_values_can_be_made_writeable():
+    series = a_series([0.5, 1.5])
+    array = series.values
+    while isinstance(array, np.ndarray):  # the values, and every array they are a view of
+        with pytest.raises(ValueError, match="WRITEABLE"):
+            array.setflags(write=True)
+        array = array.base
+    with pytest.raises(ValueError, match="read-only"):
+        series.values[0] = 99.0
+    assert series.values.tolist() == [0.5, 1.5] == series.to_dict()["values"]
+
+
 UNIT_NAMES = ["fraction", "decibels", "hertz", "midi", "ratio", "seconds", "beats"]
 
 

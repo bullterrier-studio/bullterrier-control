@@ -14,7 +14,7 @@ use pyo3::IntoPyObjectExt;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
-use pyo3::types::{PyDict, PyList, PyMapping, PyString, PyTuple, PyType};
+use pyo3::types::{PyBytes, PyDict, PyList, PyMapping, PyString, PyTuple, PyType};
 use serde::Serialize;
 
 use bullterrier_control::formats::{Bundle, BundleOptions, Event, Grid, Problem, Series, Unit};
@@ -357,12 +357,12 @@ pub(crate) struct PySeries {
 
 impl PySeries {
     fn wrap(py: Python<'_>, inner: Series) -> PyResult<Self> {
-        // a read-only view of a read-only array: numpy refuses to make the view writeable again
-        let owner = PyArray1::from_slice(py, inner.values());
-        let flags = PyDict::new(py);
-        flags.set_item("write", false)?;
-        owner.call_method("setflags", (), Some(&flags))?;
-        let values = owner.call_method0("view")?.cast_into::<PyArray1<f64>>()?;
+        // over an immutable `bytes` copy: numpy cannot make such an array writeable, nor reach the memory another way
+        let bytes: Vec<u8> = inner.values().iter().flat_map(|value| value.to_ne_bytes()).collect();
+        let values = py
+            .import("numpy")?
+            .call_method1("frombuffer", (PyBytes::new(py, &bytes), "float64"))?
+            .cast_into::<PyArray1<f64>>()?;
         Ok(Self {
             inner,
             values: values.unbind(),
