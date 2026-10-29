@@ -40,11 +40,15 @@ __all__ = ["Constant", "Signal", "connect_shapers", "from_series", "from_values"
 _ROUNDING = 1e-9
 
 
+def _not_connected(name: str) -> Callable[..., "Signal"]:
+    raise RuntimeError("no shaper lookup connected: import bullterrier_control (its registry connects it)")
+
+
 @dataclass
 class _Shapers:
     """The lookup that finds a shaper by name, connected by the registry (this module cannot import it)."""
 
-    find: Callable[[str], Callable[..., "Signal"]] | None = None
+    find: Callable[[str], Callable[..., "Signal"]] = _not_connected
 
 
 _SHAPERS = _Shapers()
@@ -94,8 +98,6 @@ class Signal(Chain["Signal"], ABC):
     def _apply(self, name: str, /, **params: object) -> "Signal":
         """The registered shaper `name` applied to this signal with `params`. Only the generated chain methods call it
         (hence the underscore); `pipe` is the public way."""
-        if _SHAPERS.find is None:
-            raise RuntimeError("no shapers are connected: import bullterrier_control (its registry connects them)")
         return _SHAPERS.find(name)(self, **params)
 
     def __add__(self, other: "Signal | float") -> "Signal":
