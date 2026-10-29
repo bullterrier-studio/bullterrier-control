@@ -96,6 +96,25 @@ impl Bundle {
     /// `"bullterrier-control/bundle"` and `version` the integer `1`, the top level is one object, the text ends with
     /// it, and no key is written twice in one object. `NaN` and the infinities are not JSON and are refused.
     ///
+    /// ```
+    /// use bullterrier_control::formats::Bundle;
+    ///
+    /// let bundle = Bundle::from_json(r#"{
+    ///     "format": "bullterrier-control/bundle", "version": 1, "duration": 2.0,
+    ///     "grid": {"beats": [0.0, 0.5, 1.0], "meter": 4, "first_downbeat": 0},
+    ///     "series": {"bass": {"rate": 10.0, "values": [0.0, 1.0], "unit": "ratio"}},
+    ///     "events": {"kick": [{"t": 0.5}, {"t": 1.0, "strength": 0.5}]}
+    /// }"#)?;
+    /// assert_eq!(bundle.events()["kick"].len(), 2);
+    /// assert!(bundle.series().contains_key("bass"));
+    ///
+    /// // an event after `duration` is listed at its place in the document
+    /// let error = Bundle::from_json(r#"{"format": "bullterrier-control/bundle", "version": 1, "duration": 1.0,
+    ///     "events": {"kick": [{"t": 2.0}]}}"#).unwrap_err();
+    /// assert_eq!(error.problems[0].path, "events.kick[0].t");
+    /// # Ok::<(), bullterrier_control::formats::FormatError>(())
+    /// ```
+    ///
     /// # Errors
     /// A [`FormatError`]: the one problem that stopped the reading (not JSON, a wrong type for a field, an unknown or
     /// repeated field or name, a whole number beyond 2^53 and within 64 bits), or, when the document was read, every

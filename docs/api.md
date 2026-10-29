@@ -3,8 +3,9 @@
 The programmatic API is the product. A patch file is a serialisation of the same graph, built only through this API
 (task 10, last, as the extra it is). Each task below is shown in Python, which exists today, and in Rust, the language
 of the core. The Python blocks run as tests (`tests/test_api_doc.py`); a `# array([...])` comment is the result of the
-`.sample(...)` call above it. The Rust blocks are the target API for the Rust core (not implemented yet); R1 to R5
-build to them.
+`.sample(...)` call above it. The Rust blocks are the target API for the Rust core (not implemented yet), except the formats: `Event::new`,
+`Series::new`, `Grid::new` and `Bundle::from_json` exist, and their rustdoc examples (`crates/core/src/formats/`) run with
+`cargo test --doc -p bullterrier-control`. R2 to R5 build to the rest.
 
 ## Principles
 
@@ -66,7 +67,8 @@ use bullterrier_control as btc;
 let energy = btc::from_values(&[0.0, 1.0, 0.2, 0.0], 10.0, FromValues::default())?;
 ```
 
-From a file: `btc.from_series(bundle.series["bass"])` and `btc::from_series(&bundle.series["bass"])`.
+From a file: `btc.from_series(bundle.series["bass"])` and `btc::from_series(&bundle.series["bass"])`; the bundle is
+`Bundle::from_json(&text)?` in Rust (run as the doctest of `Bundle::from_json`).
 
 ## 2. Shape it: a chain
 
@@ -190,7 +192,7 @@ wobble.sample([0.125, 0.375, 1.1, 1.3])  # beat 0.25 and 0.75, then beat 2.25 an
 ```
 
 ```rust
-let grid = Grid::new(beat_times, 4, 0)?;
+let grid = Grid::new(beat_times, 4, 0)?; // run as the doctest of `Grid::new`
 let wobble = btc::lib::lfo(Lfo { rate: 1.0, per: Per::Beat, ..Default::default() }, Some(&grid))?;
 ```
 

@@ -47,6 +47,18 @@ impl Default for EventOptions {
 impl Event {
     /// The event at `t` seconds with `options`.
     ///
+    /// ```
+    /// use bullterrier_control::formats::{Event, EventOptions};
+    ///
+    /// let kick = Event::new(0.5, EventOptions { label: Some("kick".into()), ..Default::default() })?;
+    /// assert_eq!((kick.t(), kick.strength(), kick.label()), (0.5, 1.0, Some("kick")));
+    ///
+    /// // every broken rule is listed, not the first
+    /// let error = Event::new(-1.0, EventOptions { strength: 2.0, ..Default::default() }).unwrap_err();
+    /// assert_eq!(error.problems.len(), 2);
+    /// # Ok::<(), bullterrier_control::formats::FormatError>(())
+    /// ```
+    ///
     /// # Errors
     /// A [`FormatError`] listing every rule broken: `t` is below 0, `strength` outside `[0, 1]`, `duration` not above 0,
     /// `label` empty, `pitch` outside `[0, 127]`, or any number not finite.

@@ -32,6 +32,17 @@ pub struct SeriesOptions {
 impl Series {
     /// The series of `values` sampled `rate` times per second, measuring `unit`.
     ///
+    /// ```
+    /// use bullterrier_control::formats::{Series, SeriesOptions, Unit};
+    ///
+    /// let energy = Series::new(10.0, vec![0.0, 1.0, 0.2, 0.0], Unit::Fraction, SeriesOptions {
+    ///     scaling: Some("5th to 98th percentile of the song".into()),
+    ///     ..Default::default()
+    /// })?;
+    /// assert_eq!((energy.rate(), energy.values().len(), energy.unit()), (10.0, 4, Unit::Fraction));
+    /// # Ok::<(), bullterrier_control::formats::FormatError>(())
+    /// ```
+    ///
     /// # Errors
     /// A [`FormatError`] listing every rule broken, in the order of the fields: `start` below 0, `rate` not above 0,
     /// `values` empty, any number not finite, and for a `fraction` series a value outside `[0, 1]` and a missing or

@@ -34,7 +34,8 @@ uv run poe check                     # the whole gate, before you report or merg
 the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `noise`, the shapers `clip`, `slew`, `follow`,
 `gate`, `hold`, `remap` and `delay`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`,
 patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. The Rust core's foundation
-(R0) exists: `slew` and `follow` run in Rust, and CI builds the core and a wheel per platform (R0b; first GitHub run pending). Next: R1 to R6, then C5, the first release (`docs/roadmap.md`).
+(R0) exists: `slew` and `follow` run in Rust, and CI builds the core and a wheel per platform (R0b; first GitHub run pending).
+The formats are in Rust (R1): `Series`, `Event`, `Grid`, `Bundle` and `Unit` are classes of the extension. Next: R2 to R6, then C5, the first release (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.
@@ -62,11 +63,12 @@ picture or sound in a signal, a parameter or a format (the chart `bt-control plo
 exception). A reader asks for a value at a time; the consumer chooses the times. Musical time is
 a parameter unit, not a second clock: a value in `beats` is turned into seconds through a Grid.
 
-**Formats this package owns** (plain data, documented and versioned here; changing one is a breaking release): **Series** (values at
+**Formats this package owns** (plain data, documented and versioned here; changing one is a breaking release; carried by Rust-backed
+classes, `crates/core/src/formats/`, the one definition of every rule): **Series** (values at
 a fixed rate from a start time, with a unit and a documented scaling), **Event** (a moment in seconds, a strength, an optional
 duration, label and pitch: one type for onsets, beats, notes and sections), **Grid** (beat times, meter and first downbeat;
 converts beat positions and seconds), carried in one file, the **Bundle**; the rules are in `docs/formats.md`, the machine-readable form is
-`schemas/bundle-1.schema.json`. `bullterrier-audio` writes them **without importing this package**:
+`schemas/bundle-1.schema.json`, generated from the Rust types. `bullterrier-audio` writes them **without importing this package**:
 the schema is a file here, audio checks its output against a copy. A format is never shared as code.
 
 ## Names
@@ -92,20 +94,23 @@ registry   the table of sources, shapers and operations; `@source`, `@shaper`, `
 rendered   Rendered: a signal that needs history, rendered once and read by holding the latest sample  |  inputs   `INPUTS`, Keyframe
 signal     Signal, Constant, from_series, arithmetic  |  params   Params, param, UNITS  |  easing   `curve`: named and Bezier eases  |  cadence   `counter`: a read's position in cycles or steps, per second or beat  |  hashing   `uniform`: seeded random numbers by index  |  scaling   `between`: 0..1 onto `low`..`high`, exactly inside  |  rounding   decisions at a time boundary
 _chain     Chain: a typed method per built-in shaper, which Signal inherits (generated; rounding > _chain > formats)
-formats    Bundle > Series | Event | Grid > the format base and Unit
+formats    Bundle > Series | Event | Grid > Unit: the Rust-backed classes of the extension, re-exported; `load`, `save`, `events`
 validated  ValidatedModel and the strict value types (Finite, Whole, Switch, Text)
 errors     BullterrierControlError > InvalidError > FormatError | ParameterError; SignalError; UnknownNameError
-_native    home of the Rust extension `_native._core`, beside errors      (imports nothing from bullterrier_control)
+_native    home of the Rust extension `_native._core`      (imports `errors` only, lazily, to raise `FormatError`)
 ```
 
 **Rust core:** `crates/core` (pure Rust: no PyO3, no numpy, safe code, builds for `wasm32-unknown-unknown`; one
 `src/builtin/<name>.rs` per shaper, found by `build.rs`) and `crates/python` (PyO3 bindings building
-`bullterrier_control._native._core`; generic, names no shaper). A ported shaper keeps its Python model, docstring and
+`bullterrier_control._native._core`; generic, names no shaper). The formats are `crates/core/src/formats/` (rules, JSON
+reading and writing, schema); the bindings are `crates/python/src/{formats,data,error}.rs`. They read a Python object with
+their own deserializer over Python objects (`data.rs`), so a NaN reaches the core and is listed with every other problem,
+and `FormatError.problems` holds all of them. A ported shaper keeps its Python model, docstring and
 `@shaper`; its body is a `Rendered` whose `run` is `partial(_core.render, "<name>", params=params.model_dump())`
 (`from bullterrier_control._native import _core`). `_core.render(name, inputs, params)` is the one boundary: it takes the
 input sampled at the shaper's rate (1-D, C-contiguous float64, read in place), releases the GIL, and returns a new float64
-array of the same length. A wrong name, parameter set, dtype or shape is a `ValueError`. `_native` is the lowest
-layer, so any layer may call it; built-ins may too, an explicit exception to the author-API door ("Built-in sources use
+array of the same length. A wrong name, parameter set, dtype or shape is a `ValueError`. `_native` is below every layer but
+`errors`, so any layer may call it; built-ins may too, an explicit exception to the author-API door ("Built-in sources use
 only the author API" contract). Today only `slew` and `follow` call it. Rust built-ins never refer to each other.
 
 A source is `def name(params) -> Signal`, a shaper `def name(signal, params) -> Signal`, each registered with `@source` or

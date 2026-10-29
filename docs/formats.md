@@ -8,8 +8,9 @@ The plain-data formats bullterrier-control owns and every package in the ecosyst
 Conventions: JSON, UTF-8, one object per file. Times are **seconds** from the start of the material, never frames. Every
 number is finite (`NaN`, `Infinity`, `-Infinity` are rejected). A number is a JSON number: a whole number is fine where a
 decimal is expected, `true` and a string are not (an integer-valued field such as `version` or `meter` also refuses
-`1.0`). Strings must be writable as UTF-8 (no lone surrogates). An optional field is absent when unset; a reader also accepts it
-written as `null`.
+`1.0`). A whole number beyond 2^53 is refused where a decimal is expected, since a decimal cannot hold it exactly. The one gap:
+a JSON integer beyond 64 bits is read like a decimal. Python refuses any `int` beyond 2^53. Strings must be writable as UTF-8 (no lone surrogates). An optional field is absent when unset; a reader also accepts
+it written as `null`. `series` and `events` are objects, never `null`.
 
 ## Bundle
 

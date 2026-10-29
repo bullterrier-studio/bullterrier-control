@@ -19,6 +19,17 @@ pub struct Grid {
 impl Grid {
     /// The grid of `beats` (seconds), with `meter` beats per bar, whose first bar starts at `beats[first_downbeat]`.
     ///
+    /// ```
+    /// use bullterrier_control::formats::Grid;
+    ///
+    /// // the beats slow down at 1 s: 0.5 s apart, then 0.4 s
+    /// let grid = Grid::new(vec![0.0, 0.5, 1.0, 1.4, 1.8], 4, 0)?;
+    /// let seconds = grid.seconds_at(&[0.5, 2.5, 5.0])?; // a half beat, then past the last beat at its length
+    /// assert!((seconds[0] - 0.25).abs() < 1e-12 && (seconds[1] - 1.2).abs() < 1e-12 && (seconds[2] - 2.2).abs() < 1e-12);
+    /// assert_eq!(grid.downbeats(), vec![0.0, 1.8]);
+    /// # Ok::<(), bullterrier_control::formats::FormatError>(())
+    /// ```
+    ///
     /// # Errors
     /// A [`FormatError`] listing every rule broken, in the order of the fields: fewer than 2 beats, a beat below 0 or
     /// not finite, a beat that does not come after the one before it, `meter` below 1, and `first_downbeat` not below

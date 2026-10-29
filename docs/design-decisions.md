@@ -383,7 +383,7 @@ separate ramp. Changed:
   `SignalError`, as for a Python recurrence. *Reason:* the signal contract is kept in one place (`sample`), not in each
   kernel.
 - **`_native` is the lowest layer; built-ins may import it directly.** It is a package of its own at the bottom, beside
-  `errors`, and imports nothing from `bullterrier_control`: the import linter cannot read a compiled module but sees the
+  `errors`, and imports only `errors` (below, R1): the import linter cannot read a compiled module but sees the
   package. Any layer may therefore call it. The contract "Built-in sources use only the author API" leaves it out of its
   forbidden list, an explicit exception to the author-API door (a built-in would otherwise reach it only through `plugin`).
   *Reason:* a built-in runs its body in Rust, and `plugin` stays what a third-party author needs. Today only `slew` and
@@ -498,3 +498,45 @@ Taught in `docs/api.md`, Python and Rust side by side; every Python example ther
   `ensure_ascii=True` does (UTF-16 units, DEL too), so a file written by either side is read by the other and the
   output of the old and the new writer can be compared. Floats are written by `serde_json` (shortest round-trip form,
   `1e22` where Python writes `1e+22`).
+- **The formats are Rust-backed classes, not Pydantic models or wrappers** (owner, 2026-10-29). `Series`, `Event`, `Grid`
+  and `Bundle` are classes of the extension, re-exported by `bullterrier_control.formats`. *Reason:* every rule is
+  defined once, in Rust; the core loads, checks and saves a bundle with no Python (video's render worker, the web app); a
+  Pydantic model, or a wrapper over a Rust type, would keep a second statement of each rule that can drift. *Cost:* no
+  `model_*` methods, and the Python side reads Python objects with its own deserializer (below).
+- **Every broken rule is listed, not the first** (owner, 2026-10-29). A `FormatError` carries a `Problem` (path and rule) per
+  rule. *Reason:* a producer fixes a file in one pass. *Cost:* a reader cannot stop at the first problem; the rules
+  that depend on a value that was not read (a wrong JSON type) stop at that field.
+- **The schema is generated from the Rust types** (owner, 2026-10-29), as the `schemars` entry says; no Python model is
+  involved.
+- **`_native` imports `errors`, lazily.** The extension raises `FormatError`, a Python class in `errors`, and imports it the
+  first time it raises one. *Reason:* `FormatError` stays in the one hierarchy callers catch (`BullterrierControlError`).
+  *Cost:* `_native` is no longer an import-free leaf; the layers read `formats > validated > _native > errors`, and the
+  extension must not import anything else of the package.
+- **`Unit` is defined once, in Rust, and the Python members are created from it.** `Unit.FRACTION`, ... are made from
+  `Unit::ALL` when the extension loads; a member copies, pickles and hashes as itself. *Reason:* the list of units cannot
+  differ between the schema, the core and Python. *Cost:* `Unit` is no longer a `str`, so `Unit.RATIO == "ratio"` is false:
+  compare `.value`, or use the member. A constructor still accepts the text (`unit="ratio"`).
+- **No `pythonize`: a deserializer over Python objects of about 300 lines in the bindings (`data.rs`).** The release of
+  `pythonize` that fits the current `pyo3` is not out (it needs the previous one), and `deny.toml` still bans it. Going
+  through `serde_json::Value` instead would not do: it cannot hold NaN, which must be listed as a problem beside the
+  others, not refused alone first. *Cost:* the bindings carry the deserializer and its tests; it can be replaced by
+  `pythonize` once a release fits.
+- **What Python can hold that JSON cannot is refused or turned into JSON's form at the boundary.** A `bool` is not a number
+  (also in a numpy bool array); a `str` with a lone surrogate is refused; an `int` beyond 2^53 is refused in a float field
+  (the core refuses the same JSON integer, so two integers never read as one value), and one beyond 64 bits anywhere.
+  numpy scalars are accepted as numbers. Any array is copied once at the boundary (`tolist()`), never read through
+  a reference into the caller's memory: the lesson of R0, where a plugin kept and changed a view. *Cost:* one copy.
+- **`Series.values` is a read-only float64 array over an immutable copy** (a tuple before), made once. *Reason:* a
+  consumer reads the values as an array, and a Series is a value (`==`, `hash`) that must not change under its holder.
+  `Bundle.series` and `Bundle.events` are read-only mappings in name order (events as tuples). *Cost:* an array view cannot be
+  made writeable by the caller, only copied.
+- **The Python error message shows the first 20 problems and `... and N more`; `FormatError.problems` has all.** *Reason:*
+  a message stays readable when a whole list of events is wrong. *Cost:* the message alone may not say it all.
+- **Wording and API changed from the Pydantic version** (a break, accepted before the first release):
+  - Messages: a value is shown as JSON (`got -1.0`, `"a"`), type errors read in serde's words (`invalid type: string "a",
+    expected a number`), a missing field reads `is required`, an event after `duration` is reported at
+    `events.<name>[i].t`, and a grid conversion error at the argument (`positions[2]: must be finite`).
+  - `model_dump`, `model_copy`, `model_validate` and `model_json_schema` are replaced by `to_dict()`, `Event.replace()`,
+    `parse()` (a decoded mapping) and `bundle_schema()`.
+  - `Grid.seconds_at(positions)` is renamed from `beats`, since a position is a fraction of a beat.
+  - `Bundle(...)` takes `Grid`, `Series` and `Event` objects; a decoded mapping goes through `Bundle.parse`.

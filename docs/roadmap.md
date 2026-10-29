@@ -20,7 +20,7 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | R0 | Rust core: workspace, gates, `slew` and `follow` in Rust | M | done |
 | R0b | Rust core: CI and a wheel per platform | S | done (first GitHub run pending) |
 | R0.5 | Code-first API: the spec in Python and Rust, then the Python improvements | M | done |
-| R1 | Rust core: the formats | M | |
+| R1 | Rust core: the formats | M | done |
 | R2 | Rust core: parameters | M | |
 | R3 | Rust core: the signal graph | L | |
 | R4 | Rust core: registry, inputs, `lib`, patches | M | |
@@ -156,7 +156,11 @@ The Python suite runs unchanged against the Rust core throughout.
 - **R0b CI and wheels (done; first GitHub run pending).** Every workflow that imports the package builds the core; a wheel per
   platform (Linux x86_64 and aarch64, macOS arm64 and x86_64, Windows x86_64), each installed and run before release.
 - **R0.5 Code-first API.** The programmatic API is the product; see the section below.
-- **R1 Formats.** Series, Event, Grid, Bundle in Rust; the schema generated from Rust, its meaning unchanged.
+- **R1 Formats (done).** `Series`, `Event`, `Grid` and `Bundle` are Rust types (`crates/core/src/formats/`) that load, check
+  and save a bundle with no Python; the Python classes are the extension's own, not Pydantic models. Every broken rule is
+  listed. The schema is generated from the Rust types, its meaning unchanged (`meter` and `first_downbeat` now state
+  `minimum`, which validators enforce). The Python API changed where noted in
+  [design-decisions.md](design-decisions.md), "The formats in Rust".
 - **R2 Parameters.** Declared once in Rust (unit, range, doc, `advanced`, `cyclic`); Python models, `help()` and
   `list --json` built from that declaration.
 - **R3 Signal graph.** `Signal`, arithmetic, `from_series`, `Rendered`, `sample` and the numeric helpers in Rust; a
