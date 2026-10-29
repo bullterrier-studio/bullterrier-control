@@ -104,12 +104,9 @@ def throwaway_registry():
 
 @pytest.fixture
 def empty_registry():
-    """The registry as if nothing had been registered or loaded; afterwards it holds what it held before (the
-    built-ins are loaded first: they register once, when their modules are first imported, so importing them inside the
-    block would lose them for the rest of the session)."""
+    """The registry as if nothing had been registered or loaded; afterwards it holds what it held before."""
     from bullterrier_control import registry
 
-    registry.all_registered()
     with registry.isolated():
         yield
 

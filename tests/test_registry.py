@@ -1,4 +1,6 @@
 import importlib.util
+import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -747,6 +749,18 @@ def test_an_isolated_registry_starts_empty_and_gives_back_what_it_took(throwaway
 
         assert list(registry.all_registered()) == ["inside"]
     assert dict(registry.all_registered()) == before
+
+
+def test_an_isolated_block_entered_before_any_query_gives_back_the_built_ins():
+    """In a fresh process: the built-ins register when first imported, which must not happen inside the block."""
+    code = (
+        "from bullterrier_control import registry\n"
+        "with registry.isolated():\n"
+        "    assert registry.all_registered() == {}\n"
+        "print(registry.get('slew').kind)\n"
+    )
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", check=False)
+    assert (done.returncode, done.stdout.strip()) == (0, "shaper"), done.stderr
 
 
 def test_leaving_an_isolated_block_gives_back_whether_the_packages_were_loaded(entry_points):

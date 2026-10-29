@@ -303,6 +303,7 @@ def isolated() -> Iterator[None]:
     """Inside the block nothing is registered and the packages count as not loaded; afterwards the registry is as it
     was. For tests. A package already imported does not register again when loaded again, so use throwaway
     registrations or packages that are made new each time."""
+    _load_packages()  # first, so the packages register now and are among what is given back, not lost inside the block
     with _LOADING.lock:
         saved, was_done = dict(_TABLE), _LOADING.done
         _TABLE.clear()
