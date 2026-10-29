@@ -97,6 +97,12 @@ def test_the_path_check_finds_a_path_outside_the_repository(block, outside):
             True,
             id="values that agree are compared",
         ),
+        pytest.param(
+            "import bullterrier_control as btc\ns = btc.from_values([1, 0], rate=1)\n"
+            "s.sample([0.0, 1.0])  # array([1., 0.])\n",
+            True,
+            id="whole numbers that agree are compared",
+        ),
     ],
 )
 def test_the_checker_accepts_a_block_whose_values_agree(documented_example, block, outcome):
@@ -110,6 +116,11 @@ def test_the_checker_accepts_a_block_whose_values_agree(documented_example, bloc
             "import bullterrier_control as btc\ns = btc.from_values([0, 1], rate=1)\n"
             "s.sample([0.5, 1.0])  # array([0.6, 1. ])\n",
             id="a shown value that differs",
+        ),
+        pytest.param(
+            "import bullterrier_control as btc\ns = btc.from_values([0.6, 0], rate=1)\n"
+            "s.sample([0.0, 1.0])  # array([1., 0.])\n",
+            id="a whole number shown where the value is 0.6",
         ),
         pytest.param("# array([1.0])\nx = 1\n", id="values shown for a block that reads nothing"),
         pytest.param("raise KeyError('x')\n", id="a block that does not run"),
