@@ -99,7 +99,7 @@ impl Event {
     ///
     /// # Errors
     /// A [`FormatError`]: the one problem that stopped the reading (a wrong type for a field, an unknown or repeated
-    /// field, something that is not an object, a whole number beyond 2^53), or, when the data was read, every rule it
+    /// field, something that is not an object, a whole number beyond 2^53 and within 64 bits; a larger integer is read like a decimal), or, when the data was read, every rule it
     /// breaks.
     pub fn from_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Self, FormatError> {
         let raw: RawEvent = decode(deserializer)?;
@@ -320,13 +320,20 @@ mod tests {
         let fine: RawEvent = serde_json::from_value(json!({"t": 1.5}))?;
         let broken: RawEvent = serde_json::from_value(json!({"t": -1, "strength": 2, "label": "ok"}))?;
         let also_broken: RawEvent = serde_json::from_value(json!({"strength": 0.5, "pitch": 128}))?;
+        let fine_after: RawEvent = serde_json::from_value(json!({"t": 4, "label": "kick"}))?;
 
         assert!(fine.read("events.kick[2]", &mut problems).is_some());
         assert!(problems.is_empty(), "{problems:?}");
         assert!(broken.read("events.kick[3]", &mut problems).is_none());
         assert!(also_broken.read("events.snare[0]", &mut problems).is_none());
+        // a good item after broken ones is still an event, and leaves what was collected as it was
+        let kept = fine_after.read("events.snare[1]", &mut problems);
+        assert_eq!(
+            kept.map(|event| (event.t(), event.label().map(str::to_owned))),
+            Some((4.0, Some("kick".to_owned())))
+        );
         check_problems(
-            "two items, the second added after the first",
+            "two items, the second added after the first, and a good one after both",
             &problems,
             &[
                 ("events.kick[3].t", ">= 0 (got -1.0)"),

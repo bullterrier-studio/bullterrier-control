@@ -107,7 +107,7 @@ impl Series {
     ///
     /// # Errors
     /// A [`FormatError`]: the one problem that stopped the reading (a wrong type for a field, an unknown or repeated
-    /// field, something that is not an object, a whole number beyond 2^53), or, when the data was read, every rule it
+    /// field, something that is not an object, a whole number beyond 2^53 and within 64 bits; a larger integer is read like a decimal), or, when the data was read, every rule it
     /// breaks.
     pub fn from_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Self, FormatError> {
         let raw: RawSeries = decode(deserializer)?;
@@ -321,9 +321,16 @@ mod tests {
         let mut problems = Vec::new();
         let raw: RawSeries =
             serde_json::from_value(json!({"start": -1, "values": [0.5, 2, 0.1, 3], "unit": "fraction"}))?;
+        let fine_after: RawSeries = serde_json::from_value(json!({"rate": 2, "values": [1, 2], "unit": "hertz"}))?;
         assert!(raw.read("series.bass", &mut problems).is_none());
+        // a good series after a broken one is still a series, and leaves what was collected as it was
+        let kept = fine_after.read("series.drums", &mut problems);
+        assert_eq!(
+            kept.map(|series| (series.rate(), series.values().to_vec())),
+            Some((2.0, vec![1.0, 2.0]))
+        );
         check_problems(
-            "values and scaling under the series' name",
+            "values and scaling under the series' name, and a good series after it",
             &problems,
             &[
                 ("series.bass.start", ">= 0"),
