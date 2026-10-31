@@ -23,6 +23,8 @@ pytestmark = pytest.mark.xdist_group("rust-gates")
 WORKSPACE_FILES = ["pyproject.toml", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml", "deny.toml"]
 CORE = "crates/core/src/lib.rs"
 CORE_MANIFEST = "crates/core/Cargo.toml"
+MACROS = "crates/macros/src/lib.rs"
+MACROS_MANIFEST = "crates/macros/Cargo.toml"
 CARGO_TASKS = ["rust-fmt", "rust-lint", "rust-doc", "rust-shear", "rust-deny", "rust-wasm", "rust-test"]
 
 
@@ -175,6 +177,12 @@ OFFENCES = {
         ),
         ["allow(unsafe_code)", "forbid", CORE],
     ),
+    "an unwrap in the derives": (
+        "rust-lint",
+        MACROS,
+        appended("\nfn probe(text: &str) -> u8 {\n    text.parse().unwrap()\n}\n"),
+        ["unwrap_used", MACROS],
+    ),
     "a pedantic lint": (
         "rust-lint",
         CORE,
@@ -192,6 +200,12 @@ OFFENCES = {
         CORE_MANIFEST,
         replaced("[dependencies]\n", '[dependencies]\nlibc = "0.2"\n'),
         ["unused dependency `libc`", CORE_MANIFEST],
+    ),
+    "a dependency the derives do not use": (
+        "rust-shear",
+        MACROS_MANIFEST,
+        replaced("[dependencies]\n", '[dependencies]\nlibc = "0.2"\n'),
+        ["unused dependency `libc`", MACROS_MANIFEST],
     ),
     "PyO3 in the pure-Rust core": (
         "rust-deny",

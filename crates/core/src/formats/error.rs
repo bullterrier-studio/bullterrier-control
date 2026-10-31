@@ -81,6 +81,26 @@ impl Problems {
     pub fn into_error(self) -> Option<FormatError> {
         (!self.is_empty()).then(|| FormatError::new(self))
     }
+
+    /// The problems kept and how many more were only counted, for an error type outside the formats to hold.
+    pub(crate) fn into_parts(self) -> (Vec<Problem>, usize) {
+        (self.stored, self.omitted)
+    }
+}
+
+/// Write `problems` as an error's message: `path: rule` each, joined by `; `, then `; ... and N more` when `omitted`
+/// is not 0.
+pub(crate) fn write_problems(formatter: &mut fmt::Formatter<'_>, problems: &[Problem], omitted: usize) -> fmt::Result {
+    for (index, problem) in problems.iter().enumerate() {
+        if index > 0 {
+            formatter.write_str("; ")?;
+        }
+        write!(formatter, "{problem}")?;
+    }
+    match omitted {
+        0 => Ok(()),
+        omitted => write!(formatter, "; ... and {omitted} more"),
+    }
 }
 
 /// The data does not follow the format: the rules it breaks, in field order. Never empty.
@@ -104,10 +124,8 @@ impl FormatError {
 
     /// The error for `problems`, which hold at least one.
     pub(crate) fn new(problems: Problems) -> Self {
-        Self {
-            problems: problems.stored,
-            omitted: problems.omitted,
-        }
+        let (problems, omitted) = problems.into_parts();
+        Self { problems, omitted }
     }
 
     /// An error with the single rule `rule` broken at `path`.
@@ -142,16 +160,7 @@ impl FormatError {
 
 impl fmt::Display for FormatError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (index, problem) in self.problems.iter().enumerate() {
-            if index > 0 {
-                formatter.write_str("; ")?;
-            }
-            write!(formatter, "{problem}")?;
-        }
-        match self.omitted {
-            0 => Ok(()),
-            omitted => write!(formatter, "; ... and {omitted} more"),
-        }
+        write_problems(formatter, &self.problems, self.omitted)
     }
 }
 

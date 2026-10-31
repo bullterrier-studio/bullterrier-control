@@ -1,5 +1,7 @@
 //! The numeric core of bullterrier-control: the shapers implemented in Rust and the primitives they share, and the
 //! plain-data [`formats`] (Unit, Event, Series, Grid, Bundle) that every package of the ecosystem reads and writes.
+//! A thing's parameters are declared as a [`params`] table (in Rust by `#[derive(Params)]`), which holds every rule
+//! they follow.
 //!
 //! Pure Rust, no Python: the `bullterrier-control-python` crate binds it to the package. A shaper's parameters arrive
 //! already validated by the Python package, which declares them; the core trusts them and does not check their ranges
@@ -7,11 +9,16 @@
 
 #![forbid(unsafe_code)]
 
+// the derives write `::bullterrier_control::..` paths, which resolve inside this crate too
+extern crate self as bullterrier_control;
+
 mod builtin;
 mod error;
 pub mod formats;
+pub mod params;
 
 pub use error::Error;
+pub use params::{Choice, Params};
 
 /// Run the shaper called `name` over `inputs` (its input signal sampled at the shaper's rate from time 0) with `params`
 /// (an object with exactly the shaper's parameters); a new series of the same length, output `i` depending on inputs

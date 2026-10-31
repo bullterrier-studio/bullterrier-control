@@ -61,11 +61,21 @@ dependencies = [
 name = "bullterrier-control"
 version = "0.0.0"
 dependencies = [
+ "bullterrier-control-macros",
  "proptest",
  "schemars",
  "serde",
  "serde_json",
  "serde_path_to_error",
+]
+
+[[package]]
+name = "bullterrier-control-macros"
+version = "0.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

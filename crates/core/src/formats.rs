@@ -19,8 +19,13 @@ mod test_support;
 mod unit;
 
 pub use bundle::{BUNDLE_FORMAT, BUNDLE_VERSION, Bundle, BundleOptions, bundle_schema, is_name};
+pub(crate) use error::write_problems;
 pub use error::{FormatError, Problem, Problems};
 pub use event::{Event, EventOptions};
 pub use grid::Grid;
 pub use series::{Series, SeriesOptions};
 pub use unit::Unit;
+
+pub(crate) use field::show;
+#[cfg(test)]
+pub(crate) use test_support::check_problems;

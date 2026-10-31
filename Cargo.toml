@@ -3,7 +3,7 @@
 # live here, except what a tool cannot read from this file: rust-toolchain.toml, rustfmt.toml, deny.toml.
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/python"]
+members = ["crates/core", "crates/macros", "crates/python"]
 
 [workspace.package]
 version = "0.0.0"  # never published on its own: the Python package's version (pyproject.toml) is the release's
@@ -15,8 +15,12 @@ publish = false
 
 [workspace.dependencies]
 bullterrier-control = { path = "crates/core" }
+bullterrier-control-macros = { path = "crates/macros" }
 numpy = "0.30"
+# proc-macro2, quote, syn: the derives of crates/macros read a struct or an enum and write its impls with them
+proc-macro2 = "1"
 proptest = "1.12"
+quote = "1"
 # abi3-py312: one wheel per platform serves every Python from 3.12 (the oldest the package supports)
 pyo3 = { version = "0.30", features = ["abi3-py312"] }
 # schemars: the bundle schema is generated from the structs that read the file
@@ -26,6 +30,7 @@ serde = { version = "1", features = ["derive"] }
 # render the same on every read)
 serde_json = { version = "1", features = ["float_roundtrip"] }
 serde_path_to_error = "0.1"
+syn = "3"
 
 # Warnings, not errors, so a newer compiler's new lint never breaks a user's install; the gate (`poe check`) runs clippy
 # and rustdoc with `-D warnings`, so every one fails it.
