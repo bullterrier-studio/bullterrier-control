@@ -78,7 +78,6 @@ pub(crate) use repr::quoted;
 use thing::Identity;
 pub use thing::Thing;
 pub(crate) use thing::shaped;
-#[cfg_attr(not(test), expect(unused_imports, reason = "as `sourced` is"))]
 pub(crate) use thing::sourced;
 pub use traits::{Inputs, Operation, Shaper, Source};
 
@@ -401,7 +400,7 @@ impl Registry {
     /// use bullterrier_control::Registry;
     ///
     /// let names: Vec<&str> = Registry::builtin().things().map(|thing| thing.name()).collect();
-    /// assert_eq!(names, ["follow", "slew"]);
+    /// assert_eq!(names, ["constant", "follow", "select", "slew"]);
     /// let mine = Registry::builtin().clone(); // to register more in
     /// assert!(mine.get("slew").is_ok());
     /// ```

@@ -641,13 +641,6 @@ pub(crate) fn shaped<T: Shaper>(shaper: T, input: &Signal) -> Result<Signal, Err
     clippy::needless_pass_by_value,
     reason = "a door takes its thing as the caller writes it, a literal: `lib::constant(constant::Params { .. })`"
 )]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the `lib` function of the first source the core runs calls it (R4b, `constant`)"
-    )
-)]
 pub(crate) fn sourced<T: Source>(source: T) -> Result<Signal, Error> {
     typed(&Thing::source::<T>(About::default())?, Vec::new(), (), &source)
 }

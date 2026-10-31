@@ -96,7 +96,15 @@ mod tests {
         let mut registry = crate::Registry::new();
         super::register(&mut registry)?;
         let things: Vec<(&str, Kind)> = registry.things().map(|thing| (thing.name(), thing.kind())).collect();
-        assert_eq!(things, [("follow", Kind::Shaper), ("slew", Kind::Shaper)]);
+        assert_eq!(
+            things,
+            [
+                ("constant", Kind::Source),
+                ("follow", Kind::Shaper),
+                ("select", Kind::Operation),
+                ("slew", Kind::Shaper)
+            ]
+        );
         Ok(())
     }
 
