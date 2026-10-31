@@ -23,7 +23,7 @@ uv run poe check                     # the whole gate, before you report or merg
 | write a shaper's recurrence in Rust | "Rust code" below; `crates/core/src/builtin/slew.rs` and `builtin/slew.py` |
 | see what every source and shaper promises | "The signal contract" below; `tests/builtin/test_contract.py` checks it over all of them |
 | declare parameters | a built-in's: the `Params` struct in `crates/core/src/builtin/<name>.rs`; a plugin's: `params.py` (`Params`, `param`); the rules in "Parameters" below |
-| write a signal that needs history | `rendered.py` (`Rendered`) |
+| write a signal that needs history | `rendered.py` (`Rendered`); in Rust `Signal::rendered` |
 | read or write a file | `formats/` (`load`, `save`, `Bundle`); `docs/formats.md` |
 | write or read a patch (sources, shapers and operations as data) | `patch.py` (`Patch`, `load_patch`); `docs/formats.md`, "Patch"; `examples/glow.toml` |
 | see what a source or shaper looks like | `docs/gallery.md`; `uv run poe gallery` redraws it from `examples/gallery/` |
@@ -35,7 +35,7 @@ the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `no
 `gate`, `hold`, `remap` and `delay`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`,
 patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. The Rust core's foundation
 (R0) exists: `slew` and `follow` run in Rust, and CI builds the core and a wheel per platform (R0b; first GitHub run pending).
-The formats are in Rust (R1): `Series`, `Event`, `Grid`, `Bundle` and `Unit` are classes of the extension. Parameters are in Rust (R2): every built-in declares them there (`#[derive(Params)]`), and the core checks every parameter, a plugin's too. Next: R3 to R6, then C5, the first release (`docs/roadmap.md`).
+The formats are in Rust (R1): `Series`, `Event`, `Grid`, `Bundle` and `Unit` are classes of the extension. Parameters are in Rust (R2): every built-in declares them there (`#[derive(Params)]`), and the core checks every parameter, a plugin's too. The signal graph is in Rust (R3): `Signal`, arithmetic, `Rendered`, `slew` and `follow` (as Rust `Signal` shapers) and easing, cadence, hashing, scaling and rounding run in the core, and Python's `Signal` is a handle over it. Next: R4 to R6, then C5, the first release (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.
@@ -91,30 +91,32 @@ patch      Patch, load_patch: a graph of them as data (TOML), built against a bu
 plotting   plot: signals drawn as a PNG (matplotlib, an optional extra, imported when a picture is drawn)
 plugin     the author API: everything a source needs (built-ins use it too); the one door, enforced by a contract
 registry   the table of sources, shapers and operations; `@source`, `@shaper`, `@operation`; entry-point loading
-rendered   Rendered: a signal that needs history, rendered once and read by holding the latest sample  |  inputs   `INPUTS`, Keyframe
-signal     Signal, Constant, from_series, arithmetic  |  params   Params, param: a plugin's declaration, built into the core's `ParamTable`  |  easing   `curve`: named and Bezier eases  |  cadence   `counter`: a read's position in cycles or steps, per second or beat  |  hashing   `uniform`: seeded random numbers by index  |  scaling   `between`: 0..1 onto `low`..`high`, exactly inside  |  rounding   decisions at a time boundary
+rendered   Rendered: a signal that needs history, rendered on a grid and read by holding the latest sample  |  inputs   `INPUTS`, Keyframe
+signal     Signal (a handle over the Rust graph), Constant, from_series, from_values, minimum, maximum  |  params   Params, param: a plugin's declaration, built into the core's `ParamTable`  |  easing   `curve`: named and Bezier eases  |  cadence   `counter`: a read's position in cycles or steps, per second or beat  |  hashing   `uniform`: seeded random numbers by index  |  scaling   `between`: 0..1 onto `low`..`high`, exactly inside  |  rounding   decisions at a time boundary
 _chain     Chain: a typed method per built-in shaper, which Signal inherits (generated; rounding > _chain > formats)
 formats    Bundle > Series | Event | Grid > Unit: the Rust-backed classes of the extension, re-exported; `load`, `save`, `events`
-validated  ValidatedModel and the strict value types (Finite, Whole, Switch, Text): pydantic, for `Keyframe` and the inputs' models until R3
+validated  ValidatedModel and the strict value types (Finite, Whole, Switch, Text): pydantic, for `Keyframe` and the inputs' models until R4
 errors     BullterrierControlError > InvalidError > FormatError | ParameterError; SignalError; UnknownNameError
 _native    home of the Rust extension `_native._core`      (imports `errors` only, lazily, to raise `FormatError`)
 ```
 
 **Rust core:** `crates/core` (pure Rust: no PyO3, no numpy, safe code, builds for `wasm32-unknown-unknown`; one
-`src/builtin/<name>.rs` per built-in, found by `build.rs`), `crates/macros` (the `Params` and `Choice` derives; the core
+`src/builtin/<name>.rs` per built-in, found by `build.rs`; `signal.rs` and `signal/` the graph; `easing`, `cadence`, `hashing`, `scaling`, `rounding` the primitives), `crates/macros` (the `Params` and `Choice` derives; the core
 re-exports them; they only write code) and `crates/python` (PyO3 bindings building
-`bullterrier_control._native._core`; generic, names no shaper). The formats are `crates/core/src/formats/` (rules, JSON
+`bullterrier_control._native._core`; generic, names no shaper; `signal.rs` is the `SignalBase` handle, `callback.rs` the nodes that call Python). The formats are `crates/core/src/formats/` (rules, JSON
 reading and writing, schema); the bindings are `crates/python/src/{formats,params,data,error}.rs`. They read a Python object with
 their own deserializer over Python objects (`data.rs`), so a NaN reaches the core and is listed with every other problem,
 and `FormatError.problems` lists the broken rules, the first 100 (`FormatError::omitted()` counts the others; a value of the wrong JSON type, an unknown field and the like stop
-the reading at that value). A ported shaper keeps its Python docstring and
-`@shaper`; its params class is `class SlewParams(Params, builtin="slew")` (a docstring only; the fields are the core's) and its body is a
-`Rendered` whose `run` is `partial(_core.render, "<name>", params=params.to_dict())`
-(`from bullterrier_control._native import _core`). `_core.render(name, inputs, params)` is the one boundary: it takes the
-input sampled at the shaper's rate (1-D, C-contiguous float64, read in place), releases the GIL, and returns a new float64
-array of the same length. A wrong name, parameter set (a left-out parameter takes its default), dtype or shape is a `ValueError`. `_native` is below every layer but
-`errors`, so any layer may call it; built-ins may too, an explicit exception to the author-API door ("Built-in sources use
-only the author API" contract). Today only `slew` and `follow` run in Rust; all 21 built-ins declare their parameters there. Rust built-ins never refer to each other.
+the reading at that value). A ported shaper keeps its Python docstring and `@shaper`; its params class is `class SlewParams(Params, builtin="slew")` (a
+docstring only; the fields are the core's) and its body is `cast("Signal", _core.shape("<name>", signal, params.to_dict()))`
+(`from bullterrier_control._native import _core`). `_core.shape(name, signal, params)` runs the Rust `shape` of the built-in
+over a signal and returns a signal; a wrong name or parameter set (a left-out parameter takes its default) is a `ValueError`.
+There is no other boundary: a Rust `Signal` is sampled without Python or the GIL, and Python code is a node in the graph only
+where a plugin wrote a `compute` or a `Rendered(run=...)`. A Python `compute` is called with 1-D float64 times; its exception
+reaches `sample`'s caller unchanged. `Constant` and `Rendered` list their native base first
+(`class Rendered(_core.Rendered, Signal)`). `_native` is below every layer but `errors`, so any layer may call it; built-ins may
+too, an explicit exception to the author-API door ("Built-in sources use only the author API" contract). Today only `slew`
+and `follow` run in Rust; all 21 built-ins declare their parameters there. Rust built-ins never refer to each other.
 
 A source is `def name(params) -> Signal`, a shaper `def name(signal, params) -> Signal`, each registered with `@source` or
 `@shaper` and its `Params` class; packages are entry points of the group `bullterrier_control.sources`. Pipes-and-filters: a
@@ -126,9 +128,9 @@ beat), which a signal may not. Each thing arrives with its first consumer (`poe 
 
 Every signal, and so every source and shaper, promises this (`tests/builtin/test_contract.py` checks every registered one):
 - **Total:** a value at every time. A time before 0 reads as time 0; a Series-backed signal holds its first and last value.
-- **`sample(times)`** (final: never overridden) takes a number or an array of any shape, refuses what is not a finite number
+- **`sample(times)`** (never overridden) takes a number or an array of any shape, refuses what is not a finite number
   (text, a bool, NaN, an infinity) with `SignalError`, and returns float64 in the same shape. A signal implements
-  `compute(times)`, which only ever sees finite times from 0 up.
+  `compute(times)`, which only ever sees a 1-D float64 array of finite times from 0 up.
 - **Finite:** a value that is not finite (an overflow) is a `SignalError`, never returned. At any time a signal gives a finite
   value or raises `SignalError` (a stateful shaper refuses a time that needs more samples than its limit).
 - **Deterministic and read-independent:** the same times give the same values, whatever the order, size or number of earlier
@@ -175,9 +177,13 @@ rustdoc and `help()`) and `#[param(default = .., unit = .., min = .., max = .., 
 (`#[choice(name = "saw-down")]` renames a variant). A rule between fields is a function `fn(&Params) -> Vec<Problem>` named by
 `#[param(rule = path)]` on the struct; it runs only once every field is valid. The table checks the declaration
 (`ParamTable::new`) and reads the values (`parse`, strict, listing every broken rule), so the kernel gets typed values already
-valid. A shaper that runs in Rust also has `pub(crate) fn run(inputs: &[f64], params: &Params) -> Vec<f64>`, a causal
-recurrence (output *i* depends on inputs 0 to *i*) whose behaviour is documented once, on the Python shaper; `build.rs`
-lists every file in `PARAMS` and those with a `run` in `SHAPERS`. No hidden tunables (rule 5): a number is a `Params`
+valid. A shaper that runs in Rust also has `pub(crate) fn shape(input: &Signal, params: &Params) -> Result<Signal, Error>`; a
+stateful one builds it with `Signal::rendered` over a private causal `run(inputs: &[f64], params: &Params) -> Vec<f64>`
+(output *i* depends on inputs 0 to *i*), and a stateless one combines signals (`input * params.depth`). Its behaviour is
+documented once, on the Python shaper. A typed `Signal::<name>(&self, Params)` method may call `Params::check` and `shape`.
+`build.rs` lists every file in `PARAMS` and those with a `shape` in `SHAPERS`. A signal is `Arc<dyn Node>` with `Node`
+sealed; code outside the crate adds nodes with `Signal::from_fn` and `Signal::rendered`; no Rust lock is held while a
+callback into Python runs. No hidden tunables (rule 5): a number is a `Params`
 field, trivial, or a cited constant. No `unwrap`, `expect`, `panic!`, `todo!` or printing (clippy fails them): return an
 `Error`; an error in the core is a bug in the caller, mapped to `ValueError`. `pub` only for what the bindings use, else
 `pub(crate)`. A NaN in the input comes through (`sample` reports it as `SignalError`); the kernel never panics on it. A
@@ -244,9 +250,10 @@ load, naming source, field, constraint and value. Not parameters: the fields of 
 1. **Scaffold:** `uv run poe new-source <name> --kind source|shaper|operation` writes `src/bullterrier_control/builtin/<name>.py` and
    `tests/builtin/test_<name>.py`, working as written (the package imports every module it holds: no list to edit). A source
    or shaper also gets `examples/gallery/<name>.toml`, the patch its gallery picture is drawn from.
-2. **Fill in** (a Rust kernel is optional until R3: `poe new-source` writes Python, and a shaper with history gets its
-   kernel by hand, as "Rust code" says; its `Params` struct goes in the same Rust file, and the Python class becomes
-   `class XParams(Params, builtin="x")`): the `Params` class (the field's own terms, unit, range, description: "Parameters"), the body (analytic where it
+2. **Fill in** (`poe new-source --kind shaper` writes `crates/core/src/builtin/<name>.rs` (the `Params` struct, `shape`, tests)
+   and a one-line Python shaper over `_core.shape`; a source or operation is still Python until R5. A new built-in turns three
+   hand-kept pins red in the tests of `crates/core/src/builtin.rs`: the names and their count, the shapers list and a
+   `declared_fields` row per parameter. Edit them in the same commit): the `Params` class (the field's own terms, unit, range, description: "Parameters"), the body (analytic where it
    can be; a causal recurrence through `Rendered` where it needs history), the docstring's first sentence (what
    `help(lib.<name>)` shows). Data that is not a parameter (keyframes, events, a grid) is a keyword-only argument after
    `params`, named in `inputs.INPUTS` (`def name(params, *, points)`; `= None` makes it optional); the registry checks it and
