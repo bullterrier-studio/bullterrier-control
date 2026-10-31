@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value};
 
-use super::repr::{quoted, shown};
+use super::repr::{listed, quoted, shown};
 use super::{FORMAT, Given, Node, Patch, PatchError, RESERVED, Reference, VERSION};
 use crate::Error;
 use crate::formats::Problem;
@@ -349,11 +349,7 @@ fn reference(text: &str, key: &str, nodes: &Nodes<'_>) -> Result<Reference, Stri
             quoted(text)
         ));
     } else {
-        let known = if nodes.order.is_empty() {
-            "none".to_owned()
-        } else {
-            nodes.order.join(", ")
-        };
+        let known = listed(nodes.order.iter().copied());
         return Err(format!(
             "{} is no node above this one (nodes above: {known}) and no bundle path (events.<name>, series.<name>, grid)",
             quoted(text)

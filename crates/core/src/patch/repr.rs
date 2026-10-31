@@ -55,6 +55,25 @@ pub(super) fn cut(text: &str) -> String {
     }
 }
 
+/// `names` joined by `, ` (`none` when there are none), [`cut`] short; only the characters shown are read, so a
+/// message about a patch of a million nodes costs no more than one about a patch of ten.
+pub(super) fn listed<'a>(names: impl IntoIterator<Item = &'a str>) -> String {
+    let mut shown = String::new();
+    let mut count = 0;
+    for (index, name) in names.into_iter().enumerate() {
+        let gap = if index == 0 { "" } else { ", " };
+        for character in gap.chars().chain(name.chars()) {
+            if count == SHOWN {
+                shown.push_str("...");
+                return shown;
+            }
+            shown.push(character);
+            count += 1;
+        }
+    }
+    if shown.is_empty() { "none".to_owned() } else { shown }
+}
+
 /// `value` as Python's `repr` writes it, in full but for its strings (each [`quoted`]).
 fn python(value: &Value) -> String {
     match value {

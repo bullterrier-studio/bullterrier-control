@@ -1286,6 +1286,46 @@ fn hostile_text_is_refused_without_trouble() -> Outcome {
     Ok(())
 }
 
+#[test]
+fn the_nodes_above_a_broken_reference_are_listed_cut_short() {
+    // (row, how many nodes above, the names a message lists): a name of 8 characters and `, ` are 10, so 80 characters
+    // hold 8 names; past them the list ends in `...`
+    let rows = [
+        (
+            "eight names fit",
+            8,
+            "level_00, level_01, level_02, level_03, level_04, level_05, level_06, level_07",
+        ),
+        (
+            "a ninth is cut",
+            9,
+            "level_00, level_01, level_02, level_03, level_04, level_05, level_06, level_07, ...",
+        ),
+    ];
+    for (row, above, listed) in rows {
+        let mut nodes: Vec<(String, Value)> = (0..above).map(|index| (format!("level_{index:02}"), level())).collect();
+        nodes.push(("a".to_owned(), json!({"use": "hits", "events": "zz"})));
+        let nodes: Vec<(&str, Value)> = nodes.iter().map(|(name, node)| (name.as_str(), node.clone())).collect();
+        let found = problems(&parse(&patch_of(&nodes)));
+        let expected = format!(
+            "'zz' is no node above this one (nodes above: {listed}) and no bundle path (events.<name>, series.<name>, grid)"
+        );
+        assert_eq!(found, [("a.events".to_owned(), expected)], "{row}");
+    }
+    // so a patch of many nodes, each a broken reference, keeps its message small
+    let nodes: Vec<(String, Value)> = (0..20_000)
+        .map(|index| (format!("n{index}"), json!({"use": "hits", "events": "zz"})))
+        .collect();
+    let nodes: Vec<(&str, Value)> = nodes.iter().map(|(name, node)| (name.as_str(), node.clone())).collect();
+    let found = problems(&parse(&patch_of(&nodes)));
+    let longest = found.iter().map(|(_, rule)| rule.len()).max().unwrap_or(0);
+    assert!(
+        found.len() == 100 && longest < 200,
+        "{} problems, the longest {longest} bytes",
+        found.len()
+    );
+}
+
 // ---------------------------------------------------------------- the schema
 
 #[test]
