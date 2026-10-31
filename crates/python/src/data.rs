@@ -7,8 +7,11 @@
 //! the rules a file is: a `bool` is `true` or `false` (never a number), a `str` that cannot be written as UTF-8 (a lone
 //! surrogate) is refused, a key is text, an integer beyond 64 bits is refused (one beyond 2^53 is refused by the core
 //! where a number is wanted). A `float` NaN or infinity is passed on, so the core lists it beside the other rules broken.
-//! A numpy array is read as its own copy (`tolist()`), never as a view of the caller's memory. A value nested more
-//! than 128 lists or mappings deep (one that holds itself) is refused, never read until the stack overflows.
+//! A numpy array is read as its own copy (`tolist()`), never as a view of the caller's memory. One of the package's
+//! objects (an `Event`, a `Keyframe`, a `Grid`, a `Series`) is read as the data a file holds for it. A value nested
+//! more than 128 lists or mappings deep (one that holds itself) is refused, never read until the stack overflows. An
+//! exception a value raises while read (a mapping's `__getitem__`) is a refusal with its message, or, through
+//! [`read`], raised unchanged.
 
 use std::cell::RefCell;
 use std::fmt;

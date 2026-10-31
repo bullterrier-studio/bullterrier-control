@@ -557,6 +557,7 @@ class Unlistable(np.ndarray):
         pytest.param("grid", Raising(), "no t", id="a grid's raising __getitem__"),
         pytest.param("series", Unlisted(), "no keys", id="a series' raising __iter__"),
         pytest.param("events", [{"t": 0}, Unlisted(), {"t": -1}], "no keys", id="beside broken items, the raise wins"),
+        pytest.param("events", [Raising(), Unlisted()], "no t", id="the first of two raises"),
         pytest.param("values", np.zeros(2).view(Unlistable), "no list", id="an array's raising tolist"),
         pytest.param("grid", {**STEADY, "beats": np.zeros(2).view(Unlistable)}, "no list", id="inside a field"),
     ],
