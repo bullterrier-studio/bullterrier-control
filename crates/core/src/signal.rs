@@ -420,8 +420,11 @@ impl Signal {
     }
 
     /// `signal` with the recipe the registry made it by.
-    pub(crate) fn recorded(recipe: Recipe, signal: Signal) -> Self {
-        Self::of(Recorded { recipe, inner: signal })
+    ///
+    /// # Errors
+    /// [`Error::Depth`] if it would be deeper than [`MAX_DEPTH`] (see [`Recorded`]).
+    pub(crate) fn recorded(recipe: Recipe, signal: Signal) -> Result<Self, Error> {
+        Self::checked(Recorded::new(recipe, signal))
     }
 
     /// The signal holding `node`, which has no inputs.

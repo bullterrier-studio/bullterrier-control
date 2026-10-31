@@ -408,13 +408,16 @@ impl Thing {
     /// The thing's body then gets the call with the values as the table read them (every field, a cyclic one
     /// wrapped); what it gives must be what it [`returns`](Self::returns). A signal it gives carries its
     /// [`Recipe`] ([`Signal::recipe`]): this thing's name, the values as read, the inputs in its order and the signal
-    /// it shaped. It reads as the body's signal and is as deep.
+    /// it shaped. It reads as the body's signal and is as deep, but at least one deeper than the signal it shaped, so
+    /// a chain of calls whose bodies make no node (one that gives its input back) is bounded by
+    /// [`MAX_DEPTH`](crate::MAX_DEPTH) as a chain of nodes is.
     ///
     /// # Errors
     /// [`Error::Call`] naming the thing (`shaper 'slew' takes 1 signal(s), not 0`; `operation 'select' takes no input
     /// 'grid'`; `... needs the input 'events'`; `... the input 'events' holds values`; `... gave events, not the
-    /// series it returns`); [`Error::Params`] under its name listing every rule the values break; and whatever error
-    /// its body gives, unchanged.
+    /// series it returns`); [`Error::Params`] under its name listing every rule the values break; [`Error::Depth`] if
+    /// the signal it gives would be deeper than [`MAX_DEPTH`](crate::MAX_DEPTH); and whatever error its body gives,
+    /// unchanged.
     ///
     /// ```
     /// use bullterrier_control::registry::{Call, Registry};
@@ -499,7 +502,7 @@ impl Thing {
                 .collect(),
             signal: signals.into_iter().next(),
         };
-        Ok(Output::Signal(Signal::recorded(recipe, signal)))
+        Ok(Output::Signal(Signal::recorded(recipe, signal)?))
     }
 
     /// Who defined it.

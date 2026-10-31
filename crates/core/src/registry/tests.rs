@@ -1340,3 +1340,86 @@ fn a_chain_of_recorded_signals_as_deep_as_there_may_be_reads_on_a_test_thread() 
     assert_eq!(lifted.sample(&[0.0, 5.0])?, [999.0, 999.0]);
     Ok(())
 }
+
+/// A callback thing of `kind` called `name` without parameters or inputs, whose body is `run`.
+fn bare(
+    name: &str,
+    kind: Kind,
+    run: impl Fn(&Call) -> Result<Output, Error> + Send + Sync + 'static,
+) -> Result<Thing, Error> {
+    let about = About {
+        name: name.to_owned(),
+        ..About::default()
+    };
+    let declared = Declared {
+        kind,
+        identity: format!("tests.{name}"),
+        table: ParamTable::new(vec![]).map_err(|error| Error::params(name, error))?,
+        inputs: vec![],
+        returns: Returns::Signal,
+    };
+    Thing::custom(about, declared, run)
+}
+
+#[test]
+fn a_chain_of_calls_that_add_no_node_is_as_deep_as_one_that_does() -> Result<(), Error> {
+    // a read and a drop recurse through each recorded signal and the signal its recipe keeps, so each call counts as
+    // a node does: 999 calls on a constant are the 1000 deep there may be (as 999 `+ 1.0` are), the next is refused
+    let identity = bare("identity", Kind::Shaper, |call| match call.signals.as_slice() {
+        [input] => Ok(Output::Signal(input.clone())),
+        _ => Err(Error::Signal {
+            message: "one signal".to_owned(),
+        }),
+    })?;
+    let mute = bare("mute", Kind::Shaper, |_call| Ok(Output::Signal(Signal::constant(0.0)?)))?;
+    // a source whose body gives the signal its last call gave: recorded signals inside recorded ones
+    let last = Arc::new(Mutex::new(Signal::constant(0.0)?));
+    let kept = Arc::clone(&last);
+    let again = bare("again", Kind::Source, move |_call| {
+        kept.lock()
+            .map(|signal| Output::Signal(signal.clone()))
+            .map_err(|_| Error::Signal {
+                message: "poisoned".to_owned(),
+            })
+    })?;
+    for (row, thing, value) in [
+        ("identity", &identity, 1.0),
+        ("mute", &mute, 0.0),
+        ("again", &again, 0.0),
+    ] {
+        let mut chain = Signal::constant(1.0)?;
+        if let Ok(mut first) = last.lock() {
+            *first = Signal::constant(0.0)? + 0.0; // 2 deep, as a constant shaped once is
+        }
+        for _ in 1..crate::MAX_DEPTH {
+            let signals = if thing.kind() == Kind::Shaper {
+                vec![chain]
+            } else {
+                vec![]
+            };
+            chain = signal(thing.call(&Call {
+                signals,
+                ..Call::default()
+            }))?;
+            if let Ok(mut kept) = last.lock() {
+                *kept = chain.clone();
+            }
+        }
+        assert_eq!(chain.sample(&[0.0, 5.0])?, [value, value], "{row}");
+        let signals = if thing.kind() == Kind::Shaper {
+            vec![chain]
+        } else {
+            vec![]
+        };
+        let refused = thing.call(&Call {
+            signals,
+            ..Call::default()
+        });
+        assert!(
+            matches!(&refused, Err(Error::Depth { .. })),
+            "{row}: {:?}",
+            refused.map(|_| "a signal")
+        );
+    }
+    Ok(())
+}
