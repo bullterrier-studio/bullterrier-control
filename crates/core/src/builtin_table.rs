@@ -1,9 +1,11 @@
 //! The Rust source of the built-in table, as a function of the built-in files: the build script writes it, and the
 //! crate's tests (which include this file) check it on made-up files.
 //!
-//! The convention, textual on purpose (a build script cannot ask the compiler): a file whose text holds one of
-//! [`KINDS`]' markers (`impl Shaper for Params`) is a thing the core runs, of that kind; one without only declares
-//! its parameters (its thing still runs in Python). Its name is the file's; its doc (what `help()` shows) is the
+//! The convention, read from the text on purpose (a build script cannot ask the compiler): a file whose code
+//! implements one of [`KINDS`]' traits for `Params` (`impl Shaper for Params`; the trait by any path,
+//! `crate::Shaper`, the struct as `Params` or `self::Params`, with or without generics) is a thing the core runs, of
+//! that kind; one without only declares its parameters (its thing still runs in Python). Comments, docs, string and
+//! character literals and `macro_rules!` bodies are not its code. Its name is the file's; its doc (what `help()` shows) is the
 //! file's leading `//!` lines; its parameters' doc is the `///` lines above `pub struct Params`, and their title the
 //! name in title case with `Params` (`every_n` is `EveryNParams`), as the Python classes are named.
 
@@ -28,12 +30,8 @@ pub(crate) struct Generated {
     pub(crate) lib: String,
 }
 
-/// The kinds of thing a file can be: the text that marks it, the `Thing` constructor that registers it and its trait.
-const KINDS: [(&str, &str, &str); 3] = [
-    ("impl Source for Params", "source", "Source"),
-    ("impl Shaper for Params", "shaper", "Shaper"),
-    ("impl Operation for Params", "operation", "Operation"),
-];
+/// The kinds of thing a file can be: the `Thing` constructor that registers it and its trait.
+const KINDS: [(&str, &str); 3] = [("source", "Source"), ("shaper", "Shaper"), ("operation", "Operation")];
 
 /// The Rust of the table of `files` (sorted by name), or the error naming a file whose text marks it as more than one
 /// kind.
@@ -43,10 +41,10 @@ pub(crate) fn table(files: &[File<'_>]) -> Result<Generated, String> {
     let mut registered = String::new();
     let mut checks = String::new();
     for file in files {
+        let implemented = implemented(&tokens(file.source));
         let kinds: Vec<(&str, &str)> = KINDS
-            .iter()
-            .filter(|(marker, ..)| file.source.contains(marker))
-            .map(|(_, kind, named)| (*kind, *named))
+            .into_iter()
+            .filter(|(_, named)| implemented.contains(named))
             .collect();
         let kind = match kinds.as_slice() {
             [] => None,
@@ -166,6 +164,183 @@ fn title(name: &str) -> String {
     title + "Params"
 }
 
+/// The traits (by their last name) that `tokens` implement for `Params` (or `self::Params`): `impl`, generics if any,
+/// a path, `for`, the struct's path.
+fn implemented<'a>(tokens: &[&'a str]) -> Vec<&'a str> {
+    let mut traits = Vec::new();
+    for (at, _) in tokens.iter().enumerate().filter(|(_, token)| **token == "impl") {
+        let mut at = at + 1;
+        if tokens.get(at) == Some(&"<") {
+            at = after_balanced(tokens, at, "<", ">");
+        }
+        let (named, after) = path(tokens, at);
+        if tokens.get(after) != Some(&"for") {
+            continue;
+        }
+        let (target, end) = path(tokens, after + 1);
+        let whole = &tokens[after + 1..end];
+        if target == Some("Params")
+            && (whole == ["Params"] || whole == ["self", "::", "Params"])
+            && let Some(named) = named
+        {
+            traits.push(named);
+        }
+    }
+    traits
+}
+
+/// The last name of the path (`a::b::C`) at `at` in `tokens`, and where it ends; `None` if there is none.
+fn path<'a>(tokens: &[&'a str], mut at: usize) -> (Option<&'a str>, usize) {
+    let mut last = None;
+    while let Some(token) = tokens.get(at).filter(|token| is_word(token)) {
+        last = Some(*token);
+        at += 1;
+        if tokens.get(at) != Some(&"::") {
+            break;
+        }
+        at += 1;
+    }
+    (last, at)
+}
+
+/// Where the group opened by `open` at `at` in `tokens` ends: after its matching `close`.
+fn after_balanced(tokens: &[&str], mut at: usize, open: &str, close: &str) -> usize {
+    let mut depth = 0_usize;
+    while let Some(token) = tokens.get(at) {
+        at += 1;
+        if *token == open {
+            depth += 1;
+        } else if *token == close {
+            depth -= 1;
+            if depth == 0 {
+                break;
+            }
+        }
+    }
+    at
+}
+
+/// Whether `token` is a word: an identifier, a keyword or a number.
+fn is_word(token: &str) -> bool {
+    token
+        .chars()
+        .all(|character| character == '_' || character.is_alphanumeric())
+}
+
+/// The tokens of `source`'s code: words, `::` and single marks, without comments (line and nested block, docs
+/// included), string literals (raw and byte ones too), character literals and the bodies of `macro_rules!`.
+fn tokens(source: &str) -> Vec<&str> {
+    let characters: Vec<(usize, char)> = source.char_indices().collect();
+    let at = |index: usize| characters.get(index).map(|(_, character)| *character);
+    let offset = |index: usize| characters.get(index).map_or(source.len(), |(offset, _)| *offset);
+    let mut tokens = Vec::new();
+    let mut index = 0;
+    while let Some(character) = at(index) {
+        let next = at(index + 1);
+        if character.is_whitespace() {
+            index += 1;
+        } else if character == '/' && next == Some('/') {
+            while at(index).is_some_and(|character| character != '\n') {
+                index += 1;
+            }
+        } else if character == '/' && next == Some('*') {
+            let mut depth = 0_usize;
+            while let Some(character) = at(index) {
+                match (character, at(index + 1)) {
+                    ('/', Some('*')) => (depth, index) = (depth + 1, index + 2),
+                    ('*', Some('/')) => (depth, index) = (depth - 1, index + 2),
+                    _ => index += 1,
+                }
+                if depth == 0 {
+                    break;
+                }
+            }
+        } else if character == '"' {
+            index = after_string(&at, index + 1, None);
+        } else if let Some((opening, hashes)) = raw_string(&at, index) {
+            index = after_string(&at, index + opening, Some(hashes));
+        } else if character == '\'' && next == Some('\\') {
+            index += 3; // an escaped character literal (`'\''`, `'\u{7}'`): past the escaped one, to its closing quote
+            while at(index).is_some_and(|character| character != '\'') {
+                index += 1;
+            }
+            index += 1;
+        } else if character == '\'' && at(index + 2) == Some('\'') {
+            index += 3; // a character literal (`'"'`), not a lifetime (`'a`)
+        } else if character == ':' && next == Some(':') {
+            tokens.push("::");
+            index += 2;
+        } else if character == '_' || character.is_alphanumeric() {
+            let start = index;
+            while at(index).is_some_and(|character| character == '_' || character.is_alphanumeric()) {
+                index += 1;
+            }
+            tokens.push(&source[offset(start)..offset(index)]);
+        } else {
+            tokens.push(&source[offset(index)..offset(index + 1)]);
+            index += 1;
+        }
+    }
+    without_macro_bodies(&tokens)
+}
+
+/// `tokens` without the bodies of the `macro_rules!` they define.
+fn without_macro_bodies<'a>(tokens: &[&'a str]) -> Vec<&'a str> {
+    let mut kept = Vec::new();
+    let mut at = 0;
+    while let Some(token) = tokens.get(at) {
+        if *token == "macro_rules" && tokens.get(at + 1) == Some(&"!") {
+            let open = at + 3; // after the macro's name
+            at = match tokens.get(open) {
+                Some(&"{") => after_balanced(tokens, open, "{", "}"),
+                Some(&"(") => after_balanced(tokens, open, "(", ")"),
+                Some(&"[") => after_balanced(tokens, open, "[", "]"),
+                _ => at + 1,
+            };
+        } else {
+            kept.push(*token);
+            at += 1;
+        }
+    }
+    kept
+}
+
+/// If a raw string starts at `index` (`r"`, `r#"`, `br##"`, ...): how many characters its opening takes and how many
+/// `#` close it.
+fn raw_string(at: &impl Fn(usize) -> Option<char>, index: usize) -> Option<(usize, usize)> {
+    let before = index.checked_sub(1).and_then(at);
+    if before.is_some_and(|character| character == '_' || character.is_alphanumeric()) {
+        return None; // inside a word (`for"`), not a prefix
+    }
+    let mut opening = match (at(index), at(index + 1)) {
+        (Some('r'), _) => 1,
+        (Some('b'), Some('r')) => 2,
+        _ => return None,
+    };
+    let mut hashes = 0;
+    while at(index + opening) == Some('#') {
+        (opening, hashes) = (opening + 1, hashes + 1);
+    }
+    (at(index + opening) == Some('"')).then_some((opening + 1, hashes))
+}
+
+/// Where a string whose text starts at `index` ends: after its closing `"`, and for a raw string (`raw` holding how
+/// many `#` close it) after those, with no escapes inside.
+fn after_string(at: &impl Fn(usize) -> Option<char>, mut index: usize, raw: Option<usize>) -> usize {
+    while let Some(character) = at(index) {
+        index += 1;
+        match raw {
+            None if character == '\\' => index += 1,
+            None if character == '"' => return index,
+            Some(hashes) if character == '"' && (index..index + hashes).all(|after| at(after) == Some('#')) => {
+                return index + hashes;
+            }
+            _ => {}
+        }
+    }
+    index
+}
+
 /// Writes `text` into `code` (writing into a `String` cannot fail).
 fn write(code: &mut String, text: std::fmt::Arguments<'_>) {
     let _ = code.write_fmt(text);
@@ -240,6 +415,91 @@ mod tests {
         );
         for name in ["plain", "recurs", "shapes", "picks"] {
             assert!(!code.lib.contains(&format!("fn {name}(")), "{name}: {}", code.lib);
+        }
+    }
+
+    #[test]
+    fn a_file_is_a_thing_only_where_its_code_implements_a_trait_for_params() {
+        // (row, the file's text, the kind it is registered as)
+        let rows: [(&str, &str, Option<&str>); 22] = [
+            ("plain", "impl Shaper for Params {}", Some("shaper")),
+            (
+                "by the crate's path",
+                "impl crate::Shaper for Params {}",
+                Some("shaper"),
+            ),
+            (
+                "by the module's path",
+                "impl crate::registry::Operation for self::Params {}",
+                Some("operation"),
+            ),
+            (
+                "by the package's path",
+                "impl bullterrier_control::Source for Params {}",
+                Some("source"),
+            ),
+            ("with generics", "impl<'a> Source for Params {}", Some("source")),
+            ("over lines", "impl\n    Shaper\n    for Params\n{}", Some("shaper")),
+            (
+                "after a quote as a character",
+                "const Q: char = '\"';\nimpl Shaper for Params {}",
+                Some("shaper"),
+            ),
+            (
+                "after an escaped quote",
+                "const Q: char = '\\'';\nimpl Shaper for Params {}",
+                Some("shaper"),
+            ),
+            (
+                "after a raw string ending in a backslash",
+                "const S: &str = r\"\\\";\nimpl Shaper for Params {}",
+                Some("shaper"),
+            ),
+            (
+                "a comment marking another kind",
+                "// impl Source for Params\nimpl Shaper for Params {}",
+                Some("shaper"),
+            ),
+            ("in a comment", "// impl Shaper for Params\n", None),
+            ("in a module doc", "//! impl Shaper for Params\n", None),
+            (
+                "in a doc",
+                "/// ```\n/// impl Shaper for Params {}\n/// ```\npub struct Params {}\n",
+                None,
+            ),
+            (
+                "in a nested block comment",
+                "/* a /* b */ impl Shaper for Params {} */",
+                None,
+            ),
+            ("in a string", "const S: &str = \"impl Shaper for Params\";", None),
+            (
+                "in a string after an escaped quote",
+                "const S: &str = \"a \\\" impl Shaper for Params\";",
+                None,
+            ),
+            (
+                "in a raw string",
+                "const S: &str = r#\"impl \"Shaper\" for Params\"#;",
+                None,
+            ),
+            (
+                "in a macro",
+                "macro_rules! made { () => { impl Shaper for Params {} }; }",
+                None,
+            ),
+            ("for another struct", "impl Shaper for Other {}", None),
+            ("for another module's", "impl Shaper for other::Params {}", None),
+            ("for a longer name", "impl Shaper for ParamsTwo {}", None),
+            ("of another trait", "impl MyShaper for Params {}", None),
+        ];
+        for (row, source, kind) in rows {
+            let code = built(&[file("it", source)]);
+            let registered = code.builtin.split("fn register").nth(1).unwrap_or_default();
+            let found = ["source", "shaper", "operation"]
+                .into_iter()
+                .find(|kind| registered.contains(&format!("Thing::{kind}::<it::Params>")));
+            assert_eq!(found, kind, "{row}: {}", code.builtin);
         }
     }
 
