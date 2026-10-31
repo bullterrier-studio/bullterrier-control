@@ -58,6 +58,8 @@
 //!   [`Patch::parse`].
 
 mod build;
+#[cfg(test)]
+mod privacy;
 mod read;
 mod repr;
 #[cfg(test)]
