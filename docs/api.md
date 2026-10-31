@@ -53,8 +53,9 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
 8. **Entry points:** sources are free functions under `lib::`; shapers are methods, and `pipe` takes any shaper. Plugins
    implement the public `Source` and `Shaper` traits (R4); until then `Signal::from_fn` and `Signal::rendered` are how
    code outside the crate adds a node.
-9. **The core crate** forbids `unsafe`, does no I/O, builds for wasm32, uses `libm` for the same result on every target,
-   documents every public item, and carries these examples as doctests.
+9. **The core crate** forbids `unsafe`, does no I/O, builds for wasm32, gives the same result on every target (no
+   platform math in easing or hashing; `follow` still calls std `exp`, which `libm` replaces before 1.0), documents
+   every public item, and carries these examples as doctests.
 10. **Concurrency** (implemented): no hand-written atomics. The only shared mutable state is the history cache of a
     stateful signal. A Rust lock is never held while calling into Python. A graph is at most `MAX_DEPTH` (1000) nodes
     deep.

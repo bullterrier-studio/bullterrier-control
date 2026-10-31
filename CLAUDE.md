@@ -97,7 +97,7 @@ _chain     Chain: a typed method per built-in shaper, which Signal inherits (gen
 formats    Bundle > Series | Event | Grid > Unit: the Rust-backed classes of the extension, re-exported; `load`, `save`, `events`
 validated  ValidatedModel and the strict value types (Finite, Whole, Switch, Text): pydantic, for `Keyframe` and the inputs' models until R4
 errors     BullterrierControlError > InvalidError > FormatError | ParameterError; SignalError; UnknownNameError
-_native    home of the Rust extension `_native._core`      (imports `errors` only, lazily, to raise `FormatError`)
+_native    home of the Rust extension `_native._core`      (imports `errors` only, lazily, to raise its errors)
 ```
 
 **Rust core:** `crates/core` (pure Rust: no PyO3, no numpy, safe code, builds for `wasm32-unknown-unknown`; one

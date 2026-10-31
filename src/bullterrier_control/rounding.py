@@ -12,7 +12,7 @@ Promises:
   is held, and one a millionth of a second off is not.
 - Time at the edge of the floats is not covered: beyond about 1e7 s the spacing of floats exceeds the tolerance, and
   a comparison is as exact as the numbers are.
-- Not for positions in samples: `signal` and `rendered` have a tolerance in shares of a sample for those.
+- Not for positions in samples: the signal core has a tolerance in shares of a sample for those.
 """
 
 from ._native import _core
