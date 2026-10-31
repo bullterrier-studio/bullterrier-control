@@ -4,8 +4,10 @@ The programmatic API is the product. A patch file is a serialisation of the same
 (task 10, last, as the extra it is). Each task below is shown in Python, which exists today, and in Rust, the language
 of the core. The Python blocks run as tests (`tests/test_api_doc.py`); a `# array([...])` comment is the result of the
 `.sample(...)` call above it. The Rust blocks are the target API for the Rust core (not implemented yet), except the formats: `Event::new`,
-`Series::new`, `Grid::new` and `Bundle::from_json` exist, and their rustdoc examples (`crates/core/src/formats/`) run with
-`cargo test --doc -p bullterrier-control`. R2 to R5 build to the rest.
+`Series::new`, `Grid::new` and `Bundle::from_json` exist, and so do the parameters: `#[derive(Params)]` structs
+(sections 2 and 9), `ParamTable`, `ParamUnit`, `parameters(name)` and `builtins()`. Their rustdoc examples
+(`crates/core/src/formats/`, `crates/core/src/params.rs`) run with `cargo test --doc -p bullterrier-control`. R3 to R5 build
+to the rest.
 
 ## Principles
 
@@ -30,13 +32,15 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
 2. **Argument order:** required inputs first, then the parameter struct, then optional inputs
    (`envelope(&kicks, Envelope { .. })`; `lfo(Lfo { .. }, Some(&grid))`, where the grid is optional). A source or shaper
    without parameters takes no struct (`keyframes(&points)`). Inputs are borrowed (`&[Event]`, `&Grid`) and cloned inside.
-3. **Parameters are a plain struct per thing**: public fields, `Default`, `Clone`, `Debug`, `PartialEq`, serde behind a
-   feature, checked when passed in (the call returns `Result`). Struct literals always end in `..Default::default()`, so a
+3. **Parameters are a plain struct per thing**, declared with `#[derive(Params)]`: public fields, a doc comment and a
+   `#[param(..)]` attribute each; the derive writes `Default` and the `ParamTable` that checks values (`Params::parse`,
+   strict, every broken rule listed). Checked when passed in (the call returns `Result`). Struct literals always end in `..Default::default()`, so a
    field added later breaks no call. Before 1.0, decide between keeping this and `#[non_exhaustive]` with generated
    setters; `cargo-semver-checks` runs from the first publish.
 4. **`events` and `from_values` take an options struct and return `Result`**, like everything else. No builders.
-5. **One `#[non_exhaustive] enum Error`**, `std::error::Error + Send + Sync`, carrying the thing, field, rule and value
-   with the same message as Python's. No panics, no `unwrap` or `expect`.
+5. **One error type per module family** (`Error` for rendering, `FormatError` for files, `ParamError` for a parameter
+   table), each `#[non_exhaustive]`, `std::error::Error + Send + Sync`, carrying the problems (field and rule, with the
+   value) with the same message as Python's. No panics, no `unwrap` or `expect`.
 6. **Sampling:** `sample(&self, &[f64]) -> Result<Vec<f64>>`; `sample_into(&self, &[f64], &mut [f64]) -> Result<()>`,
    which allocates nothing, for a live loop; `at(&self, f64) -> Result<f64>`. Time is a plain `f64` in seconds, with no
    unit newtypes. The Python binding restores the input's shape (a 0-d result for a scalar).
@@ -91,6 +95,24 @@ glow.sample([0.0, 0.05, 0.1, 0.2, 0.3, 1.0])  # climbs 5 a second, falls 2 a sec
 let glow = energy
     .slew(Slew { rise: 0.2, fall: 0.5, ..Default::default() })?
     .clip(Clip { low: 0.1, high: 0.8, ..Default::default() })?;
+```
+
+The parameters of `slew` as the core declares them (`bullterrier_control::builtin::slew::Params`):
+
+```rust
+/// How fast the output may climb and fall.
+#[derive(Clone, Debug, PartialEq, Params)]
+pub struct Params {
+    /// Seconds the output takes to climb by 1; larger is slower. 0 follows a rise at once.
+    #[param(default = 0.1, unit = Seconds, min = 0, max = 3600)]
+    pub rise: f64,
+    /// Seconds the output takes to fall by 1; larger is slower. 0 follows a fall at once.
+    #[param(default = 0.1, unit = Seconds, min = 0, max = 3600)]
+    pub fall: f64,
+    /// Internal samples per second; the output is exact to one sample. Raising it is more exact and slower.
+    #[param(default = 1000.0, unit = Hertz, min = 10, max = 48000, advanced)]
+    pub rate: f64,
+}
 ```
 
 ## 3. Read it
@@ -218,7 +240,9 @@ let drift = btc::lib::noise(Noise { rate: 4.0, seed: 7, shape: NoiseShape::Smoot
 
 A shaper is a function from a signal to a signal with declared parameters. `pipe` puts any shaper, built-in or yours,
 into a chain. (A package of shapers names its module as an entry point and they appear in `btc.lib`; here the shaper is
-registered by being defined.)
+registered by being defined.) The class becomes a parameter table of the Rust core when it is made, and the values pass
+through that table: the declaration rules and the value checks are Rust's, so a broken declaration or a bad value raises
+`ParameterError` naming the field.
 
 ```python
 import numpy as np
@@ -257,7 +281,17 @@ folded.sample([0.05, 0.1, 0.2, 0.3])  # 0.25 and 0.5 are below the fold; 0.57 fo
 ```
 
 ```rust
-// a type implementing the shaper trait; `pipe` takes it the same way
+use bullterrier_control::Params;
+
+/// Where the signal folds back.
+#[derive(Clone, Debug, PartialEq, Params)]
+pub struct Fold {
+    /// How far down from 1 the fold is.
+    #[param(default = 0.5, unit = Fraction, min = 0, max = 1)]
+    pub depth: f64,
+}
+
+// the shaper trait (target) takes it; `pipe` takes any shaper the same way
 let folded = glow.pipe(Fold { depth: 0.5, ..Default::default() })?;
 ```
 

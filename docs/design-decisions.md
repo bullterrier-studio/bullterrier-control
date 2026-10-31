@@ -31,8 +31,9 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
 
 - **numpy and pydantic are the runtime dependencies, each added with the first code that imports it** (deptry fails on a
   dependency nothing imports, so none is declared in the scaffold). *Reason:* control must install in a second on a machine
-  with no media libraries, and `bullterrier-audio` carries the heavy ones (librosa, torch). pydantic declares parameters the
-  way bullterrier-image does, so one parameter description has one shape across the ecosystem.
+  with no media libraries, and `bullterrier-audio` carries the heavy ones (librosa, torch). pydantic declared parameters the
+  way bullterrier-image does; since R2 parameters are Rust's, and pydantic remains only for `Keyframe` and the inputs'
+  models until R3.
 
 ## Agreed with the owner (2026-10-26)
 
@@ -45,7 +46,7 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
   followers and other stateful shapers render on an internal grid at a declared rate and are read by holding the latest
   sample at or before the time (C1: interpolating would let a read depend on input after the time read).
   *Reason:* random access in seconds with no hidden history, without forbidding the shapers every DAW has.
-- **Parameters are pydantic models, as in bullterrier-image.**
+- **Parameters are declared once, with unit, range and description.** Pydantic models until R2; Rust tables since ("Parameters in Rust").
 - **Offline only in v1.** Real-time output (a live clock to MIDI or OSC) is later, as an optional extra.
 - **Order:** formats first (C0), then control's core and audio's analysis in parallel (`docs/roadmap.md`).
 
@@ -388,13 +389,9 @@ separate ramp. Changed:
   forbidden list, an explicit exception to the author-API door (a built-in would otherwise reach it only through `plugin`).
   *Reason:* a built-in runs its body in Rust, and `plugin` stays what a third-party author needs. Today only `slew` and
   `follow` call it.
-- **Pydantic stays the one declaration of parameters until R2.** The Python shaper keeps its model, docstring and
-  `@shaper`; its body hands `params.model_dump()` to the core. The Rust `Params` has the same fields, no defaults, and
-  refuses unknown ones, so a struct that drifts from the model fails the first call naming the field. *Reason:* units,
-  ranges, `help()` and `list --json` already come from the model, and the core gets values already checked and trusts
-  them. Declaring parameters in Rust is R2. Vulture cannot see that the core reads a field by name, so `poe dead-code`
-  writes a whitelist of the fields of the shapers `_core.shapers()` names when it runs (porting edits no shared file),
-  and rustc's dead-code lint checks the Rust side.
+- **Until R2, pydantic was the one declaration of parameters.** The Rust `Params` repeated the fields and the core
+  trusted the values; vulture could not see the core read a field by name, so `poe dead-code` wrote a whitelist. R2
+  removes all three (below).
 - **The Rust gates match the Python ones**, each in `poe check` with a known-bad test (`tests/tools/test_rust_gates.py`):
   rustfmt; clippy (pedantic, no `unwrap`, `expect`, `panic` or printing; dead code, missing docs and unreachable `pub` as
   errors); rustdoc; cargo-shear; cargo-deny (bans, licences, sources; advisories in `poe audit`); a `wasm32` build of the
@@ -421,6 +418,54 @@ separate ramp. Changed:
   API is missing something. *Consequence:* batch R0.5 (`docs/roadmap.md`) specifies the API in Python and Rust side by
   side and improves the Python one; every batch from R1 on meets it; R4 enforces "the patch uses only the public API" with
   an import contract in Python and module privacy in Rust.
+
+## Parameters in Rust (batch R2)
+
+Owner decisions (2026-10-31):
+- **A Python plugin keeps `class P(Params)` with `param()`; Rust does the checking.** The class builds a `ParamTable` of the
+  core when it is made; `P(**values)` reads values through it. *Reason:* what an author writes does not change, and every
+  rule (declaration and values) has one definition that Rust, the web app and the CLI share. *Cost:* pydantic's wording
+  of a refusal is gone (`ParameterError` lists `path: rule` for every broken rule), and so is inheriting fields from
+  another `Params` class.
+- **The units a parameter may have are a Rust enum of their own, `ParamUnit`, not the format `Unit`.** *Reason:* the two
+  lists differ (a series is measured in `midi`, which no parameter is; a parameter is in `cycles`, `semitones` or `count`,
+  which no series is) and one type for both would let a file or a parameter name a unit it cannot have. Each is defined
+  once, in Rust; Python holds neither list.
+- **All 21 built-ins declare their parameters in Rust now; only `slew` and `follow` have a Rust body.** *Reason:* the
+  declaration is the part everything else (help, `list --json`, `lib.pyi`, the check) reads, so it cannot wait for a body.
+  `build.rs` lists every built-in in `PARAMS` and those with a `run` function in `SHAPERS`; R3 deletes the difference.
+
+Rulings:
+- **`Error` and `FormatError` stay two types, both `#[non_exhaustive]`, both carrying a list of problems.** `docs/api.md`
+  now says one error type per module family. *Reason:* a render error (unknown shaper, parameters) and a format error (a
+  file) are handled differently; one enum would force a caller to match variants that cannot occur. `ParamError` is
+  the third, for declarations and values of a table alone.
+- **A rule between fields is a function named on the struct (`#[param(rule = path)]`), run after the field rules** (clip's
+  `high` not below `low`, gate, every, normalise, remap). *Reason:* these rules were pydantic validators; in Rust they
+  live beside the fields they compare, and a field that is already broken is not compared. A Python plugin has no such hook.
+- **`remap.ease` is text, and its curve names are listed in Rust and in Python (`easing.py`).** A drift test fails when
+  they differ. *Reason:* easing moves to Rust in R3; a second copy until then costs less than a Rust easing now. The
+  test is one-directional (a name only Rust knows is not caught).
+- **At the Python boundary** an integer beyond 64 bits and a non-finite float are refused (also for a cyclic field, which
+  pydantic wrapped); a value nested deeper than 128 containers is refused, in the one conversion shared by parameters
+  and formats. *Reason:* JSON cannot hold the first two, and a self-containing or very deep value crashed the
+  interpreter. A decimal's values are always `float` (a default written `1` reads `1.0`).
+- **At most 100 problems are kept and the total is exact** (`ParamError::omitted()`; the Python message shows the first 20
+  and `... and N more`). *Reason:* the cap of the formats applied to parameters: a hostile value must not cost memory
+  per broken item.
+- **`describe()` gives the properties pydantic's JSON Schema gave** (`type` or `enum`, `default`, `description`, `title`,
+  `minimum`, `maximum`) plus `unit`, `advanced`, `cyclic`, basic fields first. The Python registry adds the model-level
+  keys (`additionalProperties`, `title`, `type`), so `list --json` is unchanged; `lib.pyi` and the generated chain
+  are unchanged too. Python's `P.describe()` adds `range`, the range text `help()` prints.
+- **`help()` prints a whole number's range in full** (`0 to 4294967295` for `noise.seed`, was `4.29497e+09`); `lib.pyi`
+  still prints `:g`.
+- **A parameter left out of `render` takes its default** (it was an error); Python always sends all of them.
+- **`UNITS`, `DISCOURAGED`, `_check`, `fields_doc` and the vulture whitelist are gone.** Declaration rules are
+  `ParamTable::new`'s, and with no Python fields left plain vulture sees no field the core reads by name.
+
+Breaking for plugin authors: a broken declaration is `ParameterError` (was `ValueError`); `fields_doc()` and `model_*`
+are replaced by `describe()` and `to_dict()`; fields are not inherited from a parent `Params` class; an annotation that
+is none of float, int, bool, str or `Literal` is refused.
 
 ## Code-first API (R0.5)
 

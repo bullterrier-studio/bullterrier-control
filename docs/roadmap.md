@@ -21,7 +21,7 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | R0b | Rust core: CI and a wheel per platform | S | done (first GitHub run pending) |
 | R0.5 | Code-first API: the spec in Python and Rust, then the Python improvements | M | done |
 | R1 | Rust core: the formats | M | done |
-| R2 | Rust core: parameters | M | |
+| R2 | Rust core: parameters | M | done |
 | R3 | Rust core: the signal graph | L | |
 | R4 | Rust core: registry, inputs, `lib`, patches | M | |
 | R5 | Rust core: the built-in sources, shapers and operations | L | |
@@ -58,7 +58,7 @@ copyable by audio for its conformance test.
 - Signal from a Series (interpolation: linear, hold); `Rendered` for causal stateful shapers (a read holds the latest sample).
 - Built-ins that give the contract tests every kind of subject: source `constant`; shapers `clip` (stateless) and `slew`
   (stateful), moved here from C3.
-- Parameters declared once with pydantic (as bullterrier-image): unit, range, description, default. Unit `beats` is
+- Parameters declared once (pydantic until R2, Rust tables since): unit, range, description, default. Unit `beats` is
   resolved through a Grid.
 - Registry of sources and shapers by name, entry-point group `bullterrier_control.sources`.
 
@@ -161,11 +161,17 @@ The Python suite runs unchanged against the Rust core throughout.
   listed. The schema is generated from the Rust types, its meaning unchanged (`meter` and `first_downbeat` now state
   `minimum`, which validators enforce). The Python API changed where noted in
   [design-decisions.md](design-decisions.md), "The formats in Rust".
-- **R2 Parameters.** Declared once in Rust (unit, range, doc, `advanced`, `cyclic`); Python models, `help()` and
-  `list --json` built from that declaration.
+- **R2 Parameters (done).** All 21 built-ins declare their parameters in Rust (`#[derive(Params)]`: unit, range, doc,
+  `advanced`, `cyclic`, rules between fields); the Rust `ParamTable` checks every declaration and every value, a Python
+  plugin's included (its `class P(Params)` is unchanged); `help()`, `list --json` and `lib.pyi` read the table; pydantic
+  is gone from `Params`. The Python API changed where noted in [design-decisions.md](design-decisions.md), "Parameters in
+  Rust".
 - **R3 Signal graph.** `Signal`, arithmetic, `from_series`, `Rendered`, `sample` and the numeric helpers in Rust; a
   Python `Signal` is a handle; Python `compute` and `Rendered(run=...)` stay possible for plugins. `poe new-source`
-  writes a Rust-backed shaper.
+  writes a Rust-backed shaper. Also removes what R2 left transitional: `Params.__getattr__` (a misspelt field is not yet a
+  type error), the copy of the `remap` ease names (easing moves to Rust), pydantic for `Keyframe` and the inputs'
+  models, the `Finite`/`Whole`/`Switch`/`Text` aliases that exist twice (plain in `params`, validated in `validated`),
+  the `PARAMS`/`SHAPERS` split of `build.rs`, and `gen_api`'s own range text.
 - **R4 Registry and patches.** Registry, inputs, `lib` and the patch in Rust: a patch is loaded and sampled with no
   Python.
 - **R5 Built-ins.** Every other source, shaper and operation ported.
