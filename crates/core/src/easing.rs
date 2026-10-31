@@ -23,6 +23,7 @@
 //!   curve: 0 gives 0.0 and 1 gives 1.0.
 //! - The same bits on every target: the curves use only `+ - * /` (no `powi`, `powf` or libm call).
 
+use std::fmt;
 use std::str::FromStr;
 
 use crate::Error;
@@ -220,6 +221,32 @@ impl FromStr for Ease {
             None => Err(Error::Ease {
                 message: format!("unknown ease '{name}': use {}", forms()),
             }),
+        }
+    }
+}
+
+impl fmt::Display for Ease {
+    /// The text that names the curve, which [`Ease::from_str`](FromStr) parses back to it exactly: its name, or
+    /// `cubic-bezier(x1, y1, x2, y2)` with each number in its shortest exact decimal form.
+    ///
+    /// ```
+    /// use bullterrier_control::easing::Ease;
+    ///
+    /// assert_eq!(Ease::InOut.to_string(), "in-out");
+    /// let css = Ease::Bezier { x1: 0.25, y1: 0.1, x2: 0.25, y2: 1.0 };
+    /// assert_eq!(css.to_string(), "cubic-bezier(0.25, 0.1, 0.25, 1)");
+    /// ```
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Bezier { x1, y1, x2, y2 } => write!(formatter, "cubic-bezier({x1}, {y1}, {x2}, {y2})"),
+            named => {
+                // every curve but a Bezier is named in `NAMED`
+                let name = NAMED
+                    .iter()
+                    .find(|(_, curve)| curve == named)
+                    .map_or("", |(name, _)| *name);
+                formatter.write_str(name)
+            }
         }
     }
 }
@@ -449,6 +476,25 @@ mod tests {
     }
 
     #[test]
+    fn a_curve_is_written_as_the_text_that_names_it() {
+        for (curve, text) in [
+            (Ease::Linear, "linear"),
+            (Ease::Hold, "hold"),
+            (Ease::In, "in"),
+            (Ease::Out, "out"),
+            (Ease::InOut, "in-out"),
+            (Ease::CubicIn, "cubic-in"),
+            (Ease::CubicOut, "cubic-out"),
+            (Ease::CubicInOut, "cubic-in-out"),
+            (Ease::Overshoot, "overshoot"),
+            (bezier(0.1, -2.0, 0.9, 3.0), "cubic-bezier(0.1, -2, 0.9, 3)"),
+            (bezier(0.25, 0.1, 0.25, 1.0), "cubic-bezier(0.25, 0.1, 0.25, 1)"),
+        ] {
+            assert_eq!(curve.to_string(), text);
+        }
+    }
+
+    #[test]
     fn a_text_that_is_no_curve_is_refused_with_the_valid_forms_listed() {
         for (text, wanted, rule) in [
             (
@@ -648,6 +694,21 @@ mod tests {
         fn a_bezier_with_mirrored_handles_is_symmetric_about_the_centre(p in 0.0_f64..=1.0) {
             let curve = bezier(0.42, 0.0, 0.58, 1.0);
             prop_assert!((curve.apply(p) + curve.apply(1.0 - p) - 1.0).abs() <= 1e-9);
+        }
+
+        // whatever a bezier's numbers, its text parses back to the same curve, bit for bit
+        #[test]
+        fn a_bezier_written_out_parses_back_to_itself(
+            x1 in 0.0_f64..=1.0,
+            y1 in prop::num::f64::NORMAL | prop::num::f64::SUBNORMAL | prop::num::f64::ZERO,
+            x2 in 0.0_f64..=1.0,
+            y2 in prop::num::f64::NORMAL | prop::num::f64::ZERO,
+        ) {
+            let curve = bezier(x1, y1, x2, y2);
+            let Ok(Ease::Bezier { x1: a, y1: b, x2: c, y2: d }) = curve.to_string().parse::<Ease>() else {
+                return Err(TestCaseError::fail(format!("{curve} does not parse")));
+            };
+            prop_assert_eq!([a, b, c, d].map(f64::to_bits), [x1, y1, x2, y2].map(f64::to_bits));
         }
 
         #[test]
