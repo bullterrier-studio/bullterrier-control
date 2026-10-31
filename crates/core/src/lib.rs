@@ -21,9 +21,11 @@ pub mod hashing;
 pub mod params;
 pub mod rounding;
 pub mod scaling;
+mod signal;
 
 pub use error::Error;
 pub use params::{Choice, Params};
+pub use signal::Signal;
 
 /// Run the shaper called `name` over `inputs` (its input signal sampled at the shaper's rate from time 0) with `params`
 /// (an object of the shaper's parameters by name; one left out takes its default); a new series of the same length,
@@ -113,11 +115,9 @@ mod tests {
     #[test]
     fn an_unknown_shaper_is_refused_by_name() {
         let result = render("no_such_shaper", &[0.0], &slew_params());
-        assert_eq!(
-            result,
-            Err(Error::UnknownShaper {
-                name: "no_such_shaper".to_owned()
-            })
+        assert!(
+            matches!(&result, Err(Error::UnknownShaper { name }) if name == "no_such_shaper"),
+            "{result:?}"
         );
     }
 

@@ -190,13 +190,14 @@ impl FromStr for Ease {
     /// ```
     /// use bullterrier_control::easing::Ease;
     ///
-    /// assert_eq!("out".parse(), Ok(Ease::Out));
+    /// assert_eq!("out".parse::<Ease>()?, Ease::Out);
     /// assert_eq!(
-    ///     " cubic-bezier( .5 ,0,1e0, 1.) ".parse(),
-    ///     Ok(Ease::Bezier { x1: 0.5, y1: 0.0, x2: 1.0, y2: 1.0 })
+    ///     " cubic-bezier( .5 ,0,1e0, 1.) ".parse::<Ease>()?,
+    ///     Ease::Bezier { x1: 0.5, y1: 0.0, x2: 1.0, y2: 1.0 }
     /// );
     /// let refused = "wobble".parse::<Ease>().map_err(|error| error.to_string());
     /// assert!(matches!(refused, Err(text) if text.starts_with("unknown ease 'wobble': use linear, hold")));
+    /// # Ok::<(), bullterrier_control::Error>(())
     /// ```
     ///
     /// # Errors
@@ -303,7 +304,8 @@ mod tests {
             ]
         );
         for (name, curve) in Ease::NAMES.iter().zip(named()) {
-            assert_eq!(name.parse::<Ease>(), Ok(curve), "{name}");
+            let parsed = name.parse::<Ease>();
+            assert!(matches!(&parsed, Ok(parsed) if *parsed == curve), "{name}: {parsed:?}");
         }
     }
 
@@ -438,7 +440,11 @@ mod tests {
                 "y outside 0..1 is valid",
             ),
         ] {
-            assert_eq!(text.parse::<Ease>(), Ok(expected), "{rule}: {text:?}");
+            let parsed = text.parse::<Ease>();
+            assert!(
+                matches!(&parsed, Ok(parsed) if *parsed == expected),
+                "{rule}: {text:?}: {parsed:?}"
+            );
         }
     }
 

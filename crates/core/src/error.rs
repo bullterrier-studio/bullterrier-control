@@ -1,13 +1,15 @@
-//! What can go wrong when the core runs a shaper.
+//! What can go wrong when the core reads a signal or runs a shaper.
 
 use std::fmt;
+use std::sync::Arc;
 
 use crate::formats::{Problem, write_problems};
 use crate::params::ParamError;
 
-/// Why a shaper could not run, or a built-in's parameters could not be given. Each is a programming error of the
-/// caller, never a user's mistake: the Python package validates whatever a user gives before it reaches the core.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Why a signal could not be read, a shaper could not run, or a built-in's parameters could not be given. Each but
+/// [`Error::Node`] is a programming error of the caller, never a user's mistake: the Python package validates whatever
+/// a user gives before it reaches the core.
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Error {
     /// The core has no shaper (or, asked for its parameters, no built-in) of this name.
@@ -34,6 +36,12 @@ pub enum Error {
         problems: Vec<Problem>,
         /// How many more problems there were than `problems` holds.
         omitted: usize,
+    },
+    /// A callback of a signal (`Signal::from_fn`) failed: its error is the [`source`](std::error::Error::source), and
+    /// the message is its message.
+    Node {
+        /// The callback's own error.
+        source: Arc<dyn std::error::Error + Send + Sync>,
     },
 }
 
@@ -62,11 +70,19 @@ impl fmt::Display for Error {
                 write!(formatter, "the parameters of {shaper:?} do not fit: ")?;
                 write_problems(formatter, problems, *omitted)
             }
+            Self::Node { source } => write!(formatter, "{source}"),
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Node { source } => Some(source.as_ref()),
+            _ => None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
