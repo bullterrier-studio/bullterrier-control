@@ -134,25 +134,41 @@ pub(crate) fn counter(py: Python<'_>, rate: f64, per: &str, grid: Option<&Bound<
     Ok(counter)
 }
 
-/// Whether `value` (a number, or an array: then an array of bools) reaches `bound`, or is short of it by no more than
-/// `TOLERANCE`.
+/// Whether `value` reaches `bound`, or is short of it by no more than `TOLERANCE`: two numbers give a `bool`, else
+/// (either an array) an array of bools of the shape numpy broadcasts them to.
 #[pyfunction]
-pub(crate) fn at_least<'py>(value: &Bound<'py, PyAny>, bound: f64) -> PyResult<Bound<'py, PyAny>> {
-    decided(value, |value| rounding::at_least(value, bound))
+pub(crate) fn at_least<'py>(value: &Bound<'py, PyAny>, bound: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    decided(value, bound, rounding::at_least)
 }
 
-/// Whether `value` (a number, or an array: then an array of bools) is beyond `bound` by more than `TOLERANCE`.
+/// Whether `value` is beyond `bound` by more than `TOLERANCE`; numbers and arrays as for `at_least`.
 #[pyfunction]
-pub(crate) fn more_than<'py>(value: &Bound<'py, PyAny>, bound: f64) -> PyResult<Bound<'py, PyAny>> {
-    decided(value, |value| rounding::more_than(value, bound))
+pub(crate) fn more_than<'py>(value: &Bound<'py, PyAny>, bound: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    decided(value, bound, rounding::more_than)
 }
 
-/// `decide` of `value`: a `bool` for a number, an array of bools of its shape for an array.
-fn decided<'py>(value: &Bound<'py, PyAny>, decide: impl Fn(f64) -> bool) -> PyResult<Bound<'py, PyAny>> {
+/// `decide(value, bound)`: a `bool` for two numbers, an array of bools for arrays, broadcast against each other.
+fn decided<'py>(
+    value: &Bound<'py, PyAny>,
+    bound: &Bound<'py, PyAny>,
+    decide: impl Fn(f64, f64) -> bool,
+) -> PyResult<Bound<'py, PyAny>> {
     let py = value.py();
-    if value.cast::<PyUntypedArray>().is_err() {
-        return Ok(PyBool::new(py, decide(value.extract()?)).to_owned().into_any());
+    if value.cast::<PyUntypedArray>().is_err() && bound.cast::<PyUntypedArray>().is_err() {
+        return Ok(PyBool::new(py, decide(value.extract()?, bound.extract()?))
+            .to_owned()
+            .into_any());
     }
-    let (values, shape) = float64s(value)?;
-    shaped(py, values.into_iter().map(decide).collect::<Vec<bool>>(), &shape)
+    let pair = py.import("numpy")?.call_method1("broadcast_arrays", (value, bound))?;
+    let (values, shape) = float64s(&pair.get_item(0)?)?;
+    let (bounds, _) = float64s(&pair.get_item(1)?)?;
+    shaped(
+        py,
+        values
+            .into_iter()
+            .zip(bounds)
+            .map(|(value, bound)| decide(value, bound))
+            .collect::<Vec<bool>>(),
+        &shape,
+    )
 }

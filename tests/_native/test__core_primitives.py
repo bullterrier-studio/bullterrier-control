@@ -166,3 +166,29 @@ def test_the_decisions_give_an_array_of_bools_for_an_array():
     assert decided.dtype == np.bool_
     assert decided.tolist() == [True, False, False]
     assert _core.TOLERANCE == 1e-9
+
+
+@pytest.mark.parametrize(
+    ("decide", "value", "bound", "expected"),
+    [
+        pytest.param(_core.at_least, np.array([0.1, 0.5]), np.array([0.2, 0.2]), [False, True], id="paired"),
+        pytest.param(_core.at_least, np.array([0.1, 0.5]), np.float64(0.2), [False, True], id="a numpy scalar bound"),
+        pytest.param(_core.at_least, 0.5, np.array([0.2, 0.9]), [True, False], id="a number against an array bound"),
+        pytest.param(
+            _core.more_than,
+            np.array([[0.5], [0.0]]),
+            np.array([0.0, 0.5]),
+            [[True, False], [False, False]],
+            id="a column against a row broadcasts",
+        ),
+        pytest.param(
+            _core.more_than,
+            np.array([0.5, 0.0]),
+            np.array([0.5 - 1e-10, -1e-6]),
+            [False, True],
+            id="the tolerance applies per bound",
+        ),
+    ],
+)
+def test_the_bound_broadcasts_against_the_values_as_numpy_does(decide, value, bound, expected):
+    assert decide(value, bound).tolist() == expected
