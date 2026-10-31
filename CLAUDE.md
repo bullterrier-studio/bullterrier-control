@@ -230,8 +230,9 @@ range in words, what raising it does). A field is a number, a `bool`, a `str` or
 - **Values** are read strictly: `true` or `"1"` is not a number, `1.0` is not a whole number, `1` is not a switch, NaN and
   infinities and integers beyond 64 bits are refused, an unknown name is refused, a left-out field takes its default. The
   `ParameterError` lists every broken rule (`problems`).
-- `P.describe()` (Python) and `ParamTable::describe` (Rust) give each field's JSON-Schema-like properties, basic first, for
-  `help()`, `list --json` and `lib.pyi`; `P(**values).to_dict()` gives the values.
+- `ParamTable::describe` (Rust) gives each field's JSON-Schema-like properties as an object with sorted keys
+  (`params()` keeps declaration order); `P.describe()` (Python) lists the basic fields before the advanced ones, each in
+  declaration order, for `help()`, `list --json` and `lib.pyi`; `P(**values).to_dict()` gives the values.
 
 Use the field's own terms (attack, decay, sustain, release, rate, depth, phase, slew, threshold, hysteresis, hold, ease, overshoot,
 swing, seed, offset), never `strength`, `intensity`, `factor`, `val`, `k`, or the unit's name. A bad value fails at construction or

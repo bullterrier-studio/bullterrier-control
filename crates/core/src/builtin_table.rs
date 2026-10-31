@@ -44,11 +44,8 @@ pub(crate) fn table(files: &[File<'_>]) -> Result<String, fmt::Error> {
         writeln!(code, "    ({name:?}, |inputs, values| {{")?;
         writeln!(
             code,
-            "        let params = {name}::Params::parse(values).map_err(|error| Error::Params {{"
+            "        let params = {name}::Params::parse(values).map_err(|error| Error::params({name:?}, error))?;"
         )?;
-        writeln!(code, "            shaper: {name:?}.to_owned(),")?;
-        writeln!(code, "            problems: error.problems,")?;
-        writeln!(code, "        }})?;")?;
         writeln!(code, "        Ok({name}::run(inputs, &params))")?;
         writeln!(code, "    }}),")?;
     }

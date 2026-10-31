@@ -63,10 +63,7 @@ pub fn parameters(name: &str) -> Result<&'static params::ParamTable, Error> {
         .iter()
         .find(|(built_in, _)| *built_in == name)
         .ok_or_else(|| Error::UnknownShaper { name: name.to_owned() })?;
-    table().map_err(|error| Error::Params {
-        shaper: name.to_owned(),
-        problems: error.problems,
-    })
+    table().map_err(|error| Error::params(name, error))
 }
 
 /// The names of the built-in sources, shapers and operations, sorted: each has a table ([`parameters`]).
@@ -120,6 +117,28 @@ mod tests {
     }
 
     #[test]
+    fn a_refusal_lists_the_first_100_problems_and_counts_the_rest() {
+        let mut given = slew_params();
+        if let Some(fields) = given.as_object_mut() {
+            for index in 0..150 {
+                fields.insert(format!("extra_{index:03}"), json!(index));
+            }
+        }
+        let result = render("slew", &[0.0], &given);
+        let Err(error) = &result else {
+            assert!(result.is_err(), "accepted 150 unknown fields");
+            return;
+        };
+        let text = error.to_string();
+        assert_eq!(text.matches(": unknown field").count(), 100, "{text}");
+        assert!(text.ends_with("; ... and 50 more"), "{text}");
+        assert!(
+            matches!(error, Error::Params { problems, .. } if problems.len() == 100),
+            "{error:?}"
+        );
+    }
+
+    #[test]
     fn parameters_that_break_the_rules_are_refused_naming_each_field() {
         let mut missing = slew_params();
         missing.as_object_mut().map(|fields| fields.remove("fall"));
@@ -143,7 +162,7 @@ mod tests {
         ] {
             let result = render("slew", &[0.0], &given);
             let named = match &result {
-                Err(Error::Params { shaper, problems }) if shaper == "slew" => {
+                Err(Error::Params { shaper, problems, .. }) if shaper == "slew" => {
                     problems.iter().map(|problem| problem.path.clone()).collect()
                 }
                 other => vec![format!("not a parameter error: {other:?}")],

@@ -454,7 +454,8 @@ Rulings:
   and `... and N more`). *Reason:* the cap of the formats applied to parameters: a hostile value must not cost memory
   per broken item.
 - **`describe()` gives the properties pydantic's JSON Schema gave** (`type` or `enum`, `default`, `description`, `title`,
-  `minimum`, `maximum`) plus `unit`, `advanced`, `cyclic`, basic fields first. The Python registry adds the model-level
+  `minimum`, `maximum`) plus `unit`, `advanced`, `cyclic`, as an object with sorted keys (`params()` keeps the
+  declaration order; the Python layer lists basic fields before advanced ones). The Python registry adds the model-level
   keys (`additionalProperties`, `title`, `type`), so `list --json` is unchanged; `lib.pyi` and the generated chain
   are unchanged too. Python's `P.describe()` adds `range`, the range text `help()` prints.
 - **`help()` prints a whole number's range in full** (`0 to 4294967295` for `noise.seed`, was `4.29497e+09`); `lib.pyi`
