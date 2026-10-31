@@ -531,8 +531,11 @@ Taught in `docs/api.md`, Python and Rust side by side; every Python example ther
   consumer reads the values as an array, and a Series is a value (`==`, `hash`) that must not change under its holder.
   `Bundle.series` and `Bundle.events` are read-only mappings in name order (events as tuples). *Cost:* an array view cannot be
   made writeable by the caller, only copied.
-- **The Python error message shows the first 20 problems and `... and N more`; `FormatError.problems` has all.** *Reason:*
-  a message stays readable when a whole list of events is wrong. *Cost:* the message alone may not say it all.
+- **A refused format keeps at most 100 problems and counts the rest; the Python message shows the first 20 and
+  `... and N more`.** `FormatError.problems` holds the first 100 (Rust: `FormatError::omitted()` counts the others), and N is
+  the total minus 20. *Reason:* a list of millions of broken values must not cost millions of `Problem`s (gigabytes) to
+  refuse; a message stays readable when a whole list of events is wrong. *Cost:* past 100 broken rules, the rest are known
+  only as a count; fixing the first ones and trying again shows the next.
 - **Wording and API changed from the Pydantic version** (a break, accepted before the first release):
   - Messages: a value is shown as JSON (`got -1.0`, `"a"`), type errors read in serde's words (`invalid type: string "a",
     expected a number`), a missing field reads `is required`, an event after `duration` is reported at

@@ -18,7 +18,7 @@ use pyo3::types::{PyBytes, PyDict, PyList, PyMapping, PyString, PyTuple, PyType}
 use serde::Serialize;
 
 use bullterrier_control::formats::{
-    BUNDLE_FORMAT, BUNDLE_VERSION, Bundle, BundleOptions, Event, Grid, Problem, Series, Unit,
+    BUNDLE_FORMAT, BUNDLE_VERSION, Bundle, BundleOptions, Event, Grid, Problem, Problems, Series, Unit,
 };
 
 use crate::data::{Data, NOT_UTF8, Numbers, numbers};
@@ -692,7 +692,7 @@ fn type_name(value: &Bound<'_, PyAny>) -> String {
 fn named<'py>(
     field: &str,
     value: &Bound<'py, PyAny>,
-    problems: &mut Vec<Problem>,
+    problems: &mut Problems,
 ) -> PyResult<Vec<(String, Bound<'py, PyAny>)>> {
     let Ok(mapping) = value.cast::<PyMapping>() else {
         problems.push(Problem {
@@ -723,7 +723,7 @@ fn named<'py>(
 fn instance<T: pyo3::PyClass + pyo3::PyTypeInfo>(
     path: &str,
     value: &Bound<'_, PyAny>,
-    problems: &mut Vec<Problem>,
+    problems: &mut Problems,
 ) -> Option<Py<T>> {
     if let Ok(found) = value.cast::<T>() {
         return Some(found.clone().unbind());
@@ -750,7 +750,7 @@ impl PyBundle {
         series: Option<Bound<'py, PyAny>>,
         events: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Self> {
-        let mut problems = Vec::new();
+        let mut problems = Problems::new();
         // the fields of the document's own, read as a file's are; the parts below are already checked objects
         let head = [
             ("format", Some(format)),
@@ -761,7 +761,7 @@ impl PyBundle {
         let (source, duration) = match Bundle::from_deserializer(Data(fields(py, &head)?.into_any())) {
             Ok(read) => (read.source().map(str::to_owned), read.duration()),
             Err(error) => {
-                problems.extend(error.problems);
+                problems.absorb(&error);
                 (None, None)
             }
         };
@@ -807,13 +807,13 @@ impl PyBundle {
                 .map(|(name, found)| (name.clone(), found.iter().map(|event| event.get().0.clone()).collect()))
                 .collect(),
         };
-        match Bundle::new(options) {
-            Ok(inner) if problems.is_empty() => Self::assemble(py, inner, grid, given_series, given_events),
-            Ok(_) => Err(raise(py, "Bundle", &problems)),
-            Err(error) => {
-                problems.extend(error.problems);
-                Err(raise(py, "Bundle", &problems))
-            }
+        let built = Bundle::new(options);
+        if let Err(error) = &built {
+            problems.absorb(error);
+        }
+        match (built, problems.into_error()) {
+            (Ok(inner), None) => Self::assemble(py, inner, grid, given_series, given_events),
+            (_, Some(error)) | (Err(error), None) => Err(format_error(py, "Bundle", &error)),
         }
     }
 

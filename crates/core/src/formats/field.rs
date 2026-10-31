@@ -9,7 +9,7 @@ use std::marker::PhantomData;
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 
-use super::error::{FormatError, Problem};
+use super::error::{FormatError, Problem, Problems};
 
 /// The largest whole number a JSON number can carry into an `f64` without rounding (2^53): beyond it, two different
 /// integers in a file would read as one value. Only integers `serde_json` reads as 64-bit are held to it: one beyond
@@ -215,25 +215,38 @@ fn path(prefix: &str, field: impl fmt::Display) -> String {
 }
 
 /// Record that `field` (under `prefix`) breaks `rule`.
-pub(crate) fn push(problems: &mut Vec<Problem>, prefix: &str, field: impl fmt::Display, rule: impl Into<String>) {
-    problems.push(Problem {
+pub(crate) fn push(problems: &mut Problems, prefix: &str, field: impl fmt::Display, rule: impl Into<String>) {
+    push_with(problems, prefix, field, || rule.into());
+}
+
+/// Record that `field` (under `prefix`) breaks the rule `rule` writes, which is not written once the list of problems is
+/// full.
+pub(crate) fn push_with(
+    problems: &mut Problems,
+    prefix: &str,
+    field: impl fmt::Display,
+    rule: impl FnOnce() -> String,
+) {
+    problems.push_with(|| Problem {
         path: path(prefix, field),
-        rule: rule.into(),
+        rule: rule(),
     });
 }
 
 /// Record a problem unless `value` is finite; whether it was.
-pub(crate) fn finite(problems: &mut Vec<Problem>, prefix: &str, field: impl fmt::Display, value: f64) -> bool {
+pub(crate) fn finite(problems: &mut Problems, prefix: &str, field: impl fmt::Display, value: f64) -> bool {
     let is_finite = value.is_finite();
     if !is_finite {
-        push(problems, prefix, field, format!("must be finite (got {})", show(value)));
+        push_with(problems, prefix, field, || {
+            format!("must be finite (got {})", show(value))
+        });
     }
     is_finite
 }
 
 /// Record a problem unless `value` is finite and satisfies `holds`, which `rule` states (`"must be >= 0"`).
 pub(crate) fn check(
-    problems: &mut Vec<Problem>,
+    problems: &mut Problems,
     prefix: &str,
     field: impl fmt::Display + Copy,
     value: f64,
@@ -242,11 +255,11 @@ pub(crate) fn check(
 ) {
     // the field is only turned into text when a problem is recorded
     if finite(problems, prefix, field, value) && !holds(value) {
-        push(problems, prefix, field, format!("{rule} (got {})", show(value)));
+        push_with(problems, prefix, field, || format!("{rule} (got {})", show(value)));
     }
 }
 
 /// The problem for a field the data lacks.
-pub(crate) fn required(problems: &mut Vec<Problem>, prefix: &str, field: impl fmt::Display) {
+pub(crate) fn required(problems: &mut Problems, prefix: &str, field: impl fmt::Display) {
     push(problems, prefix, field, "is required");
 }

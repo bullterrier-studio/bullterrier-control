@@ -4,8 +4,8 @@ use schemars::JsonSchema;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::error::{FormatError, Problem};
-use super::field::{Number, Whole, check, decode, finite, push, required, show};
+use super::error::{FormatError, Problems};
+use super::field::{Number, Whole, check, decode, finite, push, push_with, required, show};
 
 /// Beat times in seconds, strictly increasing, with the beats per bar and which beat starts the first bar. Tempo is
 /// derived from the beats, never stored beside them.
@@ -35,7 +35,7 @@ impl Grid {
     /// not finite, a beat that does not come after the one before it, `meter` below 1, and `first_downbeat` not below
     /// both `meter` and the number of beats.
     pub fn new(beats: Vec<f64>, meter: u32, first_downbeat: u32) -> Result<Self, FormatError> {
-        let mut problems = Vec::new();
+        let mut problems = Problems::new();
         Self::build(
             "",
             Some(beats),
@@ -55,7 +55,7 @@ impl Grid {
         beats: Option<Vec<f64>>,
         meter: Option<i128>,
         first_downbeat: Option<i128>,
-        problems: &mut Vec<Problem>,
+        problems: &mut Problems,
     ) -> Option<Self> {
         let before = problems.len();
         match &beats {
@@ -136,7 +136,7 @@ impl Grid {
     /// unknown or repeated field, something that is not an object), or, when the data was read, every rule it breaks.
     pub fn from_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Self, FormatError> {
         let raw: RawGrid = decode(deserializer)?;
-        let mut problems = Vec::new();
+        let mut problems = Problems::new();
         raw.read("", &mut problems).ok_or_else(|| FormatError::new(problems))
     }
 
@@ -223,7 +223,7 @@ impl Grid {
 /// `convert` every one of `values` (named `name`, in a message `name[2]`), or say which is not finite or has a result
 /// that is not.
 fn convert(name: &str, values: &[f64], convert: impl Fn(f64) -> f64) -> Result<Vec<f64>, FormatError> {
-    let mut problems = Vec::new();
+    let mut problems = Problems::new();
     for (index, &value) in values.iter().enumerate() {
         finite(&mut problems, "", format_args!("{name}[{index}]"), value);
     }
@@ -233,11 +233,12 @@ fn convert(name: &str, values: &[f64], convert: impl Fn(f64) -> f64) -> Result<V
     let converted: Vec<f64> = values.iter().map(|&value| convert(value)).collect();
     for (index, (&value, result)) in values.iter().zip(&converted).enumerate() {
         if !result.is_finite() {
-            let rule = format!(
-                "{} is too far from the beats: its result is not a finite number",
-                show(value)
-            );
-            push(&mut problems, "", format_args!("{name}[{index}]"), rule);
+            push_with(&mut problems, "", format_args!("{name}[{index}]"), || {
+                format!(
+                    "{} is too far from the beats: its result is not a finite number",
+                    show(value)
+                )
+            });
         }
     }
     if problems.is_empty() {
@@ -283,7 +284,7 @@ pub(crate) struct RawGrid {
 impl RawGrid {
     /// Check the rules of [`Grid::new`], recording each broken one in `problems` under `prefix` (`grid`); the grid if
     /// none is broken.
-    pub(crate) fn read(self, prefix: &str, problems: &mut Vec<Problem>) -> Option<Grid> {
+    pub(crate) fn read(self, prefix: &str, problems: &mut Problems) -> Option<Grid> {
         Grid::build(
             prefix,
             self.beats
@@ -418,6 +419,27 @@ mod tests {
         assert_eq!(grid.seconds_at(&[])?, Vec::<f64>::new());
         assert_eq!(grid.beat_at(&[])?, Vec::<f64>::new());
         assert_eq!(grid.seconds_at(&[0.0, 1.0, 2.0, 3.0, 4.0])?.len(), 5);
+        Ok(())
+    }
+
+    #[test]
+    fn a_conversion_of_many_broken_values_keeps_the_first_hundred_and_counts_the_rest() -> Result<(), FormatError> {
+        let grid = lengthening()?;
+        for result in [
+            grid.seconds_at(&[f64::NAN; 1_000]),
+            grid.beat_at(&[f64::INFINITY; 1_000]),
+        ] {
+            let Err(error) = result else {
+                return Err(FormatError::at("", "accepted"));
+            };
+            assert_eq!(error.problems.len(), 100);
+            assert_eq!(error.omitted(), 900);
+        }
+        let hair = Grid::new(vec![0.0, 1.0e-300], 1, 0)?;
+        let Err(error) = hair.beat_at(&[1.0e10; 1_000]) else {
+            return Err(FormatError::at("", "accepted"));
+        };
+        assert_eq!((error.problems.len(), error.omitted()), (100, 900));
         Ok(())
     }
 

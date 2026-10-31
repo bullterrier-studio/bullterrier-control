@@ -2,7 +2,8 @@
 //! [`Series`], [`Grid`] and the [`Bundle`] that carries them (with [`bundle_schema`], its JSON Schema).
 //!
 //! Each is built through a validating constructor that returns every rule it finds broken, not only the first: a
-//! [`FormatError`] lists one [`Problem`] per rule, in field order, each with the path of the field (`t`, `values[2]`).
+//! [`FormatError`] lists one [`Problem`] per rule, in field order, each with the path of the field (`t`, `values[2]`); it
+//! keeps the first 100 and counts the rest ([`FormatError::omitted`]), so refusing millions of broken values stays small.
 //! Reading JSON goes through the same constructor, so a file and a call are held to one set of rules. A value of a wrong
 //! JSON type (`true`, `"1"`) for a number, an unknown field and a whole number beyond 2^53 (within 64 bits; a larger integer is
 //! read like a decimal) are problems of their own that stop the reading at the field they name: the rules cannot be checked on a value that was not read.
@@ -18,7 +19,7 @@ mod test_support;
 mod unit;
 
 pub use bundle::{BUNDLE_FORMAT, BUNDLE_VERSION, Bundle, BundleOptions, bundle_schema, is_name};
-pub use error::{FormatError, Problem};
+pub use error::{FormatError, Problem, Problems};
 pub use event::{Event, EventOptions};
 pub use grid::Grid;
 pub use series::{Series, SeriesOptions};

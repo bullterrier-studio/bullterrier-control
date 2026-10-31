@@ -28,7 +28,8 @@ class InvalidError(BullterrierControlError, ValueError):
     either kind below; raise `InvalidError.at(path, rule)` from a validator, and the model reports it as its own kind.
 
     `problems` holds the same as (path, rule) pairs when the error came from a model, so a model that holds another can
-    report the inner paths under its own; it is empty for an error that has only a message.
+    report the inner paths under its own; it is empty for an error that has only a message. A `FormatError` keeps at
+    most the first 100 and says in its message how many more there were.
     """
 
     def __init__(self, message: str, problems: tuple[tuple[str, str], ...] = ()) -> None:

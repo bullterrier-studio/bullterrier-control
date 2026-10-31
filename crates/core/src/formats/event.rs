@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::error::{FormatError, Problem};
+use super::error::{FormatError, Problems};
 use super::field::{Number, check, decode, push, required};
 
 /// Something at `t` seconds: an onset, a beat, a note (with `duration` and `pitch`) or a section start.
@@ -63,14 +63,14 @@ impl Event {
     /// A [`FormatError`] listing every rule broken: `t` is below 0, `strength` outside `[0, 1]`, `duration` not above 0,
     /// `label` empty, `pitch` outside `[0, 127]`, or any number not finite.
     pub fn new(t: f64, options: EventOptions) -> Result<Self, FormatError> {
-        let mut problems = Vec::new();
+        let mut problems = Problems::new();
         Self::build("", Some(t), options, &mut problems).ok_or_else(|| FormatError::new(problems))
     }
 
     /// The one place the rules are written. Every rule `options` breaks is recorded in `problems` under `prefix`
     /// (empty, or where this event sits in a document: `events.kick[3]`), after what the caller already collected;
     /// `t` is `None` when the data lacked it. The event, if none is broken.
-    fn build(prefix: &str, t: Option<f64>, options: EventOptions, problems: &mut Vec<Problem>) -> Option<Self> {
+    fn build(prefix: &str, t: Option<f64>, options: EventOptions, problems: &mut Problems) -> Option<Self> {
         let before = problems.len();
         match t {
             Some(t) => check(problems, prefix, "t", t, "must be >= 0", |t| t >= 0.0),
@@ -116,7 +116,7 @@ impl Event {
     /// breaks.
     pub fn from_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Self, FormatError> {
         let raw: RawEvent = decode(deserializer)?;
-        let mut problems = Vec::new();
+        let mut problems = Problems::new();
         raw.read("", &mut problems).ok_or_else(|| FormatError::new(problems))
     }
 
@@ -183,7 +183,7 @@ impl RawEvent {
 
     /// Check the rules of [`Event::new`], recording each broken one in `problems` under `prefix` (`events.kick[3]`);
     /// the event if none is broken.
-    pub(crate) fn read(self, prefix: &str, problems: &mut Vec<Problem>) -> Option<Event> {
+    pub(crate) fn read(self, prefix: &str, problems: &mut Problems) -> Option<Event> {
         let defaults = EventOptions::default();
         let options = EventOptions {
             strength: self.strength.map_or(defaults.strength, |number| number.0),
@@ -204,7 +204,7 @@ impl<'de> Deserialize<'de> for Event {
 #[cfg(test)]
 #[allow(clippy::float_cmp, reason = "the getters give back exactly what was given")]
 mod tests {
-    use super::super::test_support::{Expected, check_against, check_problems, object_of_floats};
+    use super::super::test_support::{Expected, check_against, check_collected, object_of_floats};
     use super::*;
     use proptest::prelude::*;
     use serde_json::{Value, json};
@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn an_event_inside_a_document_reports_every_problem_under_its_own_path() -> Result<(), serde_json::Error> {
-        let mut problems = Vec::new();
+        let mut problems = Problems::new();
         let fine: RawEvent = serde_json::from_value(json!({"t": 1.5}))?;
         let broken: RawEvent = serde_json::from_value(json!({"t": -1, "strength": 2, "label": "ok"}))?;
         let also_broken: RawEvent = serde_json::from_value(json!({"strength": 0.5, "pitch": 128}))?;
@@ -361,7 +361,7 @@ mod tests {
             kept.map(|event| (event.t(), event.label().map(str::to_owned))),
             Some((4.0, Some("kick".to_owned())))
         );
-        check_problems(
+        check_collected(
             "two items, the second added after the first, and a good one after both",
             &problems,
             &[

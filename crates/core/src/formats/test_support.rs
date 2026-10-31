@@ -4,7 +4,7 @@ use serde::de::value::{Error, MapDeserializer};
 use serde::de::{Deserializer, IntoDeserializer, Visitor};
 use serde::forward_to_deserialize_any;
 
-use super::error::{FormatError, Problem};
+use super::error::{FormatError, Problem, Problems};
 
 /// The problems wanted: each a path and a short part of its rule.
 pub(crate) type Expected = &'static [(&'static str, &'static str)];
@@ -18,6 +18,14 @@ pub(crate) fn check_against<T: std::fmt::Debug>(id: &str, result: Result<T, Form
             assert!(!expected.is_empty(), "{id}: refused with {error}");
             check_problems(id, &error.problems, expected);
         }
+    }
+}
+
+/// Assert that the `problems` collected have exactly the paths of `expected`, as [`check_problems`] does.
+pub(crate) fn check_collected(id: &str, problems: &Problems, expected: Expected) {
+    match problems.clone().into_error() {
+        Some(error) => check_problems(id, &error.problems, expected),
+        None => assert!(expected.is_empty(), "{id}: nothing recorded, wanted {expected:?}"),
     }
 }
 

@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::error::{FormatError, Problem};
+use super::error::{FormatError, Problems};
 use super::field::{Number, check, decode, finite, push, required};
 use super::unit::Unit;
 
@@ -48,7 +48,7 @@ impl Series {
     /// `values` empty, any number not finite, and for a `fraction` series a value outside `[0, 1]` and a missing or
     /// empty `scaling`.
     pub fn new(rate: f64, values: Vec<f64>, unit: Unit, options: SeriesOptions) -> Result<Self, FormatError> {
-        let mut problems = Vec::new();
+        let mut problems = Problems::new();
         Self::build(
             "",
             options.start,
@@ -72,7 +72,7 @@ impl Series {
         values: Option<Vec<f64>>,
         unit: Option<Unit>,
         scaling: Option<String>,
-        problems: &mut Vec<Problem>,
+        problems: &mut Problems,
     ) -> Option<Self> {
         let before = problems.len();
         check(problems, prefix, "start", start, "must be >= 0", |x| x >= 0.0);
@@ -123,7 +123,7 @@ impl Series {
     /// breaks.
     pub fn from_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Self, FormatError> {
         let raw: RawSeries = decode(deserializer)?;
-        let mut problems = Vec::new();
+        let mut problems = Problems::new();
         raw.read("", &mut problems).ok_or_else(|| FormatError::new(problems))
     }
 
@@ -188,7 +188,7 @@ impl RawSeries {
 
     /// Check the rules of [`Series::new`], recording each broken one in `problems` under `prefix` (`series.bass`); the
     /// series if none is broken.
-    pub(crate) fn read(self, prefix: &str, problems: &mut Vec<Problem>) -> Option<Series> {
+    pub(crate) fn read(self, prefix: &str, problems: &mut Problems) -> Option<Series> {
         Series::build(
             prefix,
             self.start(),
@@ -211,7 +211,7 @@ impl<'de> Deserialize<'de> for Series {
 #[cfg(test)]
 #[allow(clippy::float_cmp, reason = "the getters give back exactly what was given")]
 mod tests {
-    use super::super::test_support::{Expected, check_against, check_problems, object_of_floats};
+    use super::super::test_support::{Expected, check_against, check_collected, object_of_floats};
     use super::*;
     use proptest::prelude::*;
     use serde_json::{Value, json};
@@ -271,6 +271,18 @@ mod tests {
         for (id, rate, values, unit, options, expected) in rows {
             check_against(id, Series::new(rate, values, unit, options), expected);
         }
+    }
+
+    #[test]
+    fn a_million_broken_values_are_refused_with_a_capped_list() {
+        let result = Series::new(10.0, vec![f64::NAN; 1_000_000], Unit::Hertz, SeriesOptions::default());
+        assert!(result.is_err());
+        let Err(error) = result else { return };
+        let paths: Vec<&str> = error.problems.iter().map(|problem| problem.path.as_str()).collect();
+        let first: Vec<String> = (0..100).map(|index| format!("values[{index}]")).collect();
+        assert_eq!(paths, first);
+        assert_eq!(error.omitted(), 999_900);
+        assert!(error.to_string().ends_with("; ... and 999900 more"), "{error}");
     }
 
     #[test]
@@ -344,7 +356,7 @@ mod tests {
 
     #[test]
     fn a_series_inside_a_document_reports_every_problem_under_its_own_path() -> Result<(), serde_json::Error> {
-        let mut problems = Vec::new();
+        let mut problems = Problems::new();
         let raw: RawSeries =
             serde_json::from_value(json!({"start": -1, "values": [0.5, 2, 0.1, 3], "unit": "fraction"}))?;
         let fine_after: RawSeries = serde_json::from_value(json!({"rate": 2, "values": [1, 2], "unit": "hertz"}))?;
@@ -355,7 +367,7 @@ mod tests {
             kept.map(|series| (series.rate(), series.values().to_vec())),
             Some((2.0, vec![1.0, 2.0]))
         );
-        check_problems(
+        check_collected(
             "values and scaling under the series' name, and a good series after it",
             &problems,
             &[

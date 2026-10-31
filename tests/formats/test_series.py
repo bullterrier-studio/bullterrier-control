@@ -77,6 +77,25 @@ def test_a_rule_across_fields_names_its_path_and_does_not_echo_the_whole_input()
     assert str(refused.value) == 'Series: values[1]: must be in [0, 1] when unit is "fraction" (got 1.5)'
 
 
+def test_a_few_broken_values_are_all_listed():
+    with pytest.raises(FormatError) as refused:
+        Series(rate=10, values=[1.0, np.nan, 2.0, np.inf, -np.inf], unit="hertz")
+    assert [path for path, _ in refused.value.problems] == ["values[1]", "values[3]", "values[4]"]
+    assert str(refused.value) == (
+        "Series: values[1]: must be finite (got NaN); values[3]: must be finite (got Infinity); "
+        "values[4]: must be finite (got -Infinity)"
+    )
+
+
+def test_a_million_broken_values_give_a_short_list_that_still_counts_them_all():
+    with pytest.raises(FormatError) as refused:
+        Series(rate=10, values=np.full(1_000_000, np.nan), unit="hertz")
+    assert len(refused.value.problems) <= 100
+    assert refused.value.problems[0] == ("values[0]", "must be finite (got NaN)")
+    # 20 are shown, so 999_980 of the 1_000_000 are left out
+    assert str(refused.value).endswith("; ... and 999980 more")
+
+
 def a_series(values):
     return Series(rate=1, values=values, unit=Unit.RATIO)
 

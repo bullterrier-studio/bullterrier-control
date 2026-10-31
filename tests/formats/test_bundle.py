@@ -359,3 +359,12 @@ def test_from_json_reads_the_text_a_file_holds():
 def test_a_bundle_states_its_format_and_version(made):
     bundle = made()
     assert (bundle.format, bundle.version) == ("bullterrier-control/bundle", 1)
+
+
+def test_a_bundle_of_many_parts_that_are_not_events_gives_a_short_list_that_still_counts_them_all():
+    with pytest.raises(FormatError) as refused:
+        Bundle(format=FORMAT, version=1, events={"kick": [None] * 300_000})  # type: ignore[list-item]
+    assert len(refused.value.problems) <= 100
+    assert refused.value.problems[0][0] == "events.kick[0]"
+    # 20 are shown, so 299_980 of the 300_000 are left out
+    assert str(refused.value).endswith("; ... and 299980 more")

@@ -11,7 +11,7 @@ use serde::de::{self, Deserializer, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
 use serde_json::ser::Formatter;
 
-use super::error::{FormatError, Problem};
+use super::error::{FormatError, Problems};
 use super::event::{Event, RawEvent};
 use super::field::{Number, Object, Whole, check, decode, push, required, show};
 use super::grid::{Grid, RawGrid};
@@ -65,7 +65,7 @@ impl Bundle {
     /// `^[a-z0-9][a-z0-9_.-]*$`, a series starting after the duration, events not sorted by `t`, and events after the
     /// duration.
     pub fn new(options: BundleOptions) -> Result<Self, FormatError> {
-        let mut problems = Vec::new();
+        let mut problems = Problems::new();
         let limit = check_duration(&mut problems, options.duration);
         for (name, series) in &options.series {
             check_name(&mut problems, "series", name);
@@ -132,7 +132,7 @@ impl Bundle {
     /// As [`Bundle::from_json`].
     pub fn from_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Self, FormatError> {
         let raw: RawBundle = decode(deserializer)?;
-        let mut problems = Vec::new();
+        let mut problems = Problems::new();
         raw.read(&mut problems).ok_or_else(|| FormatError::new(problems))
     }
 
@@ -211,7 +211,7 @@ pub fn is_name(name: &str) -> bool {
 }
 
 /// The rules of the name of a series or an event list.
-fn check_name(problems: &mut Vec<Problem>, section: &str, name: &str) {
+fn check_name(problems: &mut Problems, section: &str, name: &str) {
     if !is_name(name) {
         let rule = format!("name must match {NAME_PATTERN} (got {})", serde_json::Value::from(name));
         push(problems, section, name, rule);
@@ -219,7 +219,7 @@ fn check_name(problems: &mut Vec<Problem>, section: &str, name: &str) {
 }
 
 /// The rule of `duration`, `> 0`; the duration other rules measure against: it, if it is a number that holds.
-fn check_duration(problems: &mut Vec<Problem>, duration: Option<f64>) -> Option<f64> {
+fn check_duration(problems: &mut Problems, duration: Option<f64>) -> Option<f64> {
     let duration = duration?;
     let before = problems.len();
     check(problems, "", "duration", duration, "must be > 0", |x| x > 0.0);
@@ -227,7 +227,7 @@ fn check_duration(problems: &mut Vec<Problem>, duration: Option<f64>) -> Option<
 }
 
 /// The rule that a series starts at or before the `duration`, if there is one.
-fn check_start(problems: &mut Vec<Problem>, name: &str, start: f64, duration: Option<f64>) {
+fn check_start(problems: &mut Problems, name: &str, start: f64, duration: Option<f64>) {
     if let Some(duration) = duration.filter(|duration| start > *duration) {
         let rule = format!("{} is after the duration of {}", show(start), show(duration));
         push(problems, &format!("series.{name}"), "start", rule);
@@ -237,7 +237,7 @@ fn check_start(problems: &mut Vec<Problem>, name: &str, start: f64, duration: Op
 /// The rules that tie event `index` of the list `name`, which is at `t` (if it said so, as a number), to the rest of
 /// the document: it is not before the event before it (at `before`), and not after the `duration`.
 fn check_event(
-    problems: &mut Vec<Problem>,
+    problems: &mut Problems,
     name: &str,
     index: usize,
     t: Option<f64>,
@@ -296,7 +296,7 @@ fn version_schema(_: &mut SchemaGenerator) -> Schema {
 
 impl RawBundle {
     /// Check every rule of the document, recording each one broken in `problems`; the bundle if none is.
-    fn read(self, problems: &mut Vec<Problem>) -> Option<Bundle> {
+    fn read(self, problems: &mut Problems) -> Option<Bundle> {
         match self.format.as_deref() {
             None => required(problems, "", "format"),
             Some(BUNDLE_FORMAT) => {}
