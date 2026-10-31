@@ -21,6 +21,7 @@
 
 mod combine;
 mod node;
+mod rendered;
 mod series;
 #[cfg(test)]
 mod tests;
@@ -33,6 +34,8 @@ use crate::Error;
 use crate::formats::{Series, SeriesOptions, Unit};
 use combine::Operation;
 use node::{Constant, FromFn, Node};
+use rendered::Rendered;
+pub use rendered::Rendering;
 use series::SeriesNode;
 
 /// How many nodes deep a signal's graph may be, counting the signal and its deepest input: reading and dropping a
@@ -152,6 +155,50 @@ impl Signal {
         E: std::error::Error + Send + Sync + 'static,
     {
         Self::of(FromFn::new(f))
+    }
+
+    /// The signal that needs history (a smoother, a slew limiter): `run`, a causal recurrence, over `input` sampled at
+    /// `rendering.rate` samples per second from time 0, read by holding the latest sample at or before each time.
+    ///
+    /// `run` gets the input's values at times `i / rate` (unchecked: a value that is not finite comes through, and only a
+    /// read of an output it makes not finite is refused) and returns as many outputs. It must be causal (output *i*
+    /// depends on inputs 0 to *i* only) and give the same outputs for the same inputs: then the same time gives the same
+    /// value whatever was read before, in whatever order or batches, and a read at time t depends on the input only up to
+    /// t (a float rounding of a billionth of a sample aside).
+    ///
+    /// The signal renders as far as the latest time read needs, at least 1024 samples and at least twice what it holds,
+    /// at most `rendering.limit`, and keeps what it rendered. A read needing more than the limit is an [`Error::Signal`]
+    /// before anything is rendered or allocated. Several threads may read it at once: no lock is held while the input is
+    /// read or `run` runs, so either may read this signal again; two reads that render at once each render, and the
+    /// longer history is kept.
+    ///
+    /// ```
+    /// use bullterrier_control::{Rendering, Signal};
+    ///
+    /// // the running sum of a constant 1 at 10 samples a second, in seconds: (i + 1) / 10 at sample i
+    /// let integral = Signal::rendered(&Signal::constant(1.0)?, Rendering { rate: 10.0, ..Default::default() }, |inputs| {
+    ///     let mut sum = 0.0;
+    ///     Ok::<_, std::fmt::Error>(inputs.iter().map(|input| { sum += input; sum / 10.0 }).collect())
+    /// })?;
+    /// assert_eq!(integral.sample(&[0.0, 0.15, 2.55])?, [0.1, 0.2, 2.6]);
+    /// assert!(integral.at(1e7).is_err()); // 100 million samples: over the limit
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    /// [`Error::Signal`] if `rendering.rate` is not positive and finite, `rendering.limit` is 0, or the graph would be
+    /// deeper than [`MAX_DEPTH`]. A read is refused as by any signal, and also with [`Error::Signal`] when it needs more
+    /// samples than the limit or `run` returns another number of outputs than it got inputs; an error `run` returns is
+    /// the [`Error::Node`] of the read, `run`'s error its [`source`](std::error::Error::source).
+    pub fn rendered<E>(
+        input: &Signal,
+        rendering: Rendering,
+        run: impl Fn(&[f64]) -> Result<Vec<f64>, E> + Send + Sync + 'static,
+    ) -> Result<Self, Error>
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::checked(Rendered::new(input, rendering, run)?)
     }
 
     /// The signal that reads `series`: sample *i* is at `start + i / rate` seconds, the first and last values hold
