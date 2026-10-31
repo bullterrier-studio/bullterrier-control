@@ -210,3 +210,19 @@ def test_a_recurrence_that_returns_the_wrong_shape_is_named_with_both_shapes():
     signal = Rendered(Constant(1.0), rate=RATE, run=lambda inputs: np.zeros((len(inputs), 1)))
     with pytest.raises(ValueError, match=r"shape \(\d+, 1\).*shape \(\d+,\)"):
         signal.sample(1.0)
+
+
+def test_rendering_a_graph_too_deep_is_a_signal_error_not_a_wrong_argument():
+    deep: Signal = Constant(1.0)
+    for _ in range(999):
+        deep = deep + 1.0
+    with pytest.raises(SignalError, match="nodes deep"):
+        Rendered(deep, rate=RATE, run=integrate)
+
+
+def test_a_subclass_with_arguments_of_its_own_builds_through_new():
+    class Integrated(Rendered):
+        def __new__(cls, signal, tau):
+            return super().__new__(cls, signal, rate=RATE, run=lambda inputs: integrate(inputs) * tau)
+
+    assert Integrated(Constant(1.0), 2.0).sample([0.0, 0.3]).tolist() == pytest.approx([0.2, 0.8])

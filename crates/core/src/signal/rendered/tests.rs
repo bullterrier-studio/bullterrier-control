@@ -79,6 +79,14 @@ fn constant(value: f64) -> Result<Signal, Error> {
     Signal::constant(value)
 }
 
+/// The message of a refusal that must be an `Error::Depth`, or why it is not one.
+fn depth_error<T: fmt::Debug>(result: &Result<T, Error>) -> String {
+    match result {
+        Err(Error::Depth { message }) => message.clone(),
+        other => format!("not a depth error: {other:?}"),
+    }
+}
+
 /// The message of a refusal that must be an `Error::Signal`, or why it is not one.
 fn signal_error<T: fmt::Debug>(result: &Result<T, Error>) -> String {
     match result {
@@ -307,7 +315,7 @@ fn a_rendered_signal_over_the_deepest_input_is_refused() -> Result<(), Error> {
     let deepest = Signal::rendered(&deep, at_rate(10.0), integrate)?;
     assert_eq!(deepest.at(0.0)?, 99.8); // (0 + 998) / 10
     let refused = Signal::rendered(&(deep + 1.0), at_rate(10.0), integrate);
-    assert!(signal_error(&refused).contains("deep"), "{refused:?}");
+    assert!(depth_error(&refused).contains("deep"), "{refused:?}");
     Ok(())
 }
 

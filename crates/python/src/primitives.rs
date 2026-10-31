@@ -6,11 +6,11 @@ use bullterrier_control::easing::Ease;
 use bullterrier_control::formats::Grid;
 use bullterrier_control::{Error, hashing, rounding, scaling};
 use numpy::{PyArrayDyn, PyArrayMethods, PyUntypedArray};
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyTuple};
+use pyo3::types::{PyBool, PyDict, PyTuple};
 
-use crate::data::{float64s, shaped};
+use crate::data::{float64s, shaped, shown};
 use crate::error;
 use crate::formats::PyGrid;
 
@@ -41,13 +41,41 @@ pub(crate) fn ease(py: Python<'_>, name: &str) -> PyResult<PyEase> {
     name.parse().map(PyEase).map_err(|error| error::raised(py, error))
 }
 
-/// The value at each `index` (a uint64 array) of the seeded stream of `seed` (0 to 2^64 - 1): a float64 in [0, 1),
-/// `SplitMix64` started at state `seed`, the same on every machine.
+/// The value at each `index` (an array of whole numbers from 0, of any integer dtype: a negative one is a `ValueError`,
+/// another dtype a `TypeError`) of the seeded stream of `seed` (0 to 2^64 - 1): a float64 in [0, 1), `SplitMix64`
+/// started at state `seed`, the same on every machine.
 #[pyfunction]
-pub(crate) fn uniform<'py>(seed: u64, index: &Bound<'py, PyArrayDyn<u64>>) -> PyResult<Bound<'py, PyAny>> {
-    let indices = index.to_vec()?;
-    let values = indices.iter().map(|&index| hashing::uniform(seed, index)).collect();
-    shaped(index.py(), values, &index.getattr("shape")?)
+pub(crate) fn uniform<'py>(seed: u64, index: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let py = index.py();
+    let numpy = py.import("numpy")?;
+    let raw = numpy.call_method1("asarray", (index,))?;
+    let kind: String = raw.getattr("dtype")?.getattr("kind")?.extract()?;
+    if !matches!(kind.as_str(), "i" | "u") {
+        return Err(PyTypeError::new_err(format!(
+            "index must be an array of whole numbers (got {})",
+            shown(index)
+        )));
+    }
+    if kind == "i"
+        && numpy
+            .call_method1("less", (&raw, 0))?
+            .call_method0("any")?
+            .is_truthy()?
+    {
+        return Err(PyValueError::new_err("index must not be negative"));
+    }
+    let layout = PyDict::new(py);
+    layout.set_item("dtype", "uint64")?;
+    layout.set_item("order", "C")?;
+    let copy = numpy
+        .call_method("array", (&raw,), Some(&layout))?
+        .cast_into::<PyArrayDyn<u64>>()?;
+    let values = copy
+        .to_vec()?
+        .iter()
+        .map(|&index| hashing::uniform(seed, index))
+        .collect();
+    shaped(py, values, &copy.getattr("shape")?)
 }
 
 /// Each of `fraction` (0 to 1) as a value from `low` to `high`, kept exactly inside them; `low` above `high` inverts
@@ -106,25 +134,41 @@ pub(crate) fn counter(py: Python<'_>, rate: f64, per: &str, grid: Option<&Bound<
     Ok(counter)
 }
 
-/// Whether `value` (a number, or an array: then an array of bools) reaches `bound`, or is short of it by no more than
-/// `TOLERANCE`.
+/// Whether `value` reaches `bound`, or is short of it by no more than `TOLERANCE`: two numbers give a `bool`, else
+/// (either an array) an array of bools of the shape numpy broadcasts them to.
 #[pyfunction]
-pub(crate) fn at_least<'py>(value: &Bound<'py, PyAny>, bound: f64) -> PyResult<Bound<'py, PyAny>> {
-    decided(value, |value| rounding::at_least(value, bound))
+pub(crate) fn at_least<'py>(value: &Bound<'py, PyAny>, bound: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    decided(value, bound, rounding::at_least)
 }
 
-/// Whether `value` (a number, or an array: then an array of bools) is beyond `bound` by more than `TOLERANCE`.
+/// Whether `value` is beyond `bound` by more than `TOLERANCE`; numbers and arrays as for `at_least`.
 #[pyfunction]
-pub(crate) fn more_than<'py>(value: &Bound<'py, PyAny>, bound: f64) -> PyResult<Bound<'py, PyAny>> {
-    decided(value, |value| rounding::more_than(value, bound))
+pub(crate) fn more_than<'py>(value: &Bound<'py, PyAny>, bound: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    decided(value, bound, rounding::more_than)
 }
 
-/// `decide` of `value`: a `bool` for a number, an array of bools of its shape for an array.
-fn decided<'py>(value: &Bound<'py, PyAny>, decide: impl Fn(f64) -> bool) -> PyResult<Bound<'py, PyAny>> {
+/// `decide(value, bound)`: a `bool` for two numbers, an array of bools for arrays, broadcast against each other.
+fn decided<'py>(
+    value: &Bound<'py, PyAny>,
+    bound: &Bound<'py, PyAny>,
+    decide: impl Fn(f64, f64) -> bool,
+) -> PyResult<Bound<'py, PyAny>> {
     let py = value.py();
-    if value.cast::<PyUntypedArray>().is_err() {
-        return Ok(PyBool::new(py, decide(value.extract()?)).to_owned().into_any());
+    if value.cast::<PyUntypedArray>().is_err() && bound.cast::<PyUntypedArray>().is_err() {
+        return Ok(PyBool::new(py, decide(value.extract()?, bound.extract()?))
+            .to_owned()
+            .into_any());
     }
-    let (values, shape) = float64s(value)?;
-    shaped(py, values.into_iter().map(decide).collect::<Vec<bool>>(), &shape)
+    let pair = py.import("numpy")?.call_method1("broadcast_arrays", (value, bound))?;
+    let (values, shape) = float64s(&pair.get_item(0)?)?;
+    let (bounds, _) = float64s(&pair.get_item(1)?)?;
+    shaped(
+        py,
+        values
+            .into_iter()
+            .zip(bounds)
+            .map(|(value, bound)| decide(value, bound))
+            .collect::<Vec<bool>>(),
+        &shape,
+    )
 }

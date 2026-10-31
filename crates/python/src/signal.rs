@@ -26,7 +26,9 @@ use crate::params;
 
 /// A value that changes over time, readable at any moment in seconds: the base of every signal. A subclass implements
 /// `compute(times)`; its `__init__` may take any arguments and need not call `super().__init__()`. A class inheriting
-/// `Constant` or `Rendered` lists it first in its bases (else making one is a `TypeError`).
+/// `Constant` or `Rendered` lists it first in its bases (else making one is a `TypeError`) and takes its own arguments
+/// through `__new__`, which calls `super().__new__(cls, ...)`: their native `__new__` makes the signal, so an `__init__`
+/// with other arguments is never reached.
 ///
 /// `sample(times)` takes a number or an array of any shape and returns float64 values of its shape (0-d for a
 /// number), reading a time before 0 as 0. A time that is not a finite number (text, a bool, NaN, an infinity, an
@@ -276,8 +278,9 @@ pub(crate) fn shape<'py>(
 }
 
 /// Make every signal the extension makes from now on (an operator's result, `from_series`, `shape`, ...) an instance
-/// of `cls`: a subclass of `SignalBase` that does not implement `compute` and whose `__new__` takes no arguments. Once
-/// per process: naming another class later is a `ValueError`.
+/// of `cls`: a subclass of `SignalBase` that does not implement `compute` and can be made by `cls.__new__(cls)` alone
+/// (so not one with a `__new__` needing arguments, nor a subclass of `Constant` or `Rendered`: `TypeError`). Once per
+/// process: naming another class later is a `ValueError`.
 #[pyfunction]
 pub(crate) fn make_signals_as(cls: &Bound<'_, PyType>) -> PyResult<()> {
     let py = cls.py();
@@ -285,6 +288,15 @@ pub(crate) fn make_signals_as(cls: &Bound<'_, PyType>) -> PyResult<()> {
     if !cls.is_subclass(&base)? || !cls.getattr("compute")?.is(&base.getattr("compute")?) {
         return Err(PyTypeError::new_err(format!(
             "signals are made as a subclass of SignalBase that does not implement compute (got {})",
+            cls.name()?
+        )));
+    }
+    if !cls
+        .call_method1("__new__", (cls,))
+        .is_ok_and(|instance| instance.is_instance_of::<SignalBase>())
+    {
+        return Err(PyTypeError::new_err(format!(
+            "{} cannot be made without arguments, as signals are made",
             cls.name()?
         )));
     }

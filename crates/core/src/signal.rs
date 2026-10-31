@@ -40,7 +40,7 @@ use series::SeriesNode;
 
 /// How many nodes deep a signal's graph may be, counting the signal and its deepest input: reading and dropping a
 /// graph recurse this deep. An operator that would go deeper gives a signal refusing every read with
-/// [`Error::Signal`]; a sum of more terms than this fits as a balanced tree (`(a + b) + (c + d)`), not as a chain.
+/// [`Error::Depth`]; a sum of more terms than this fits as a balanced tree (`(a + b) + (c + d)`), not as a chain.
 ///
 /// ```
 /// use bullterrier_control::{MAX_DEPTH, Signal};
@@ -186,10 +186,11 @@ impl Signal {
     /// ```
     ///
     /// # Errors
-    /// [`Error::Signal`] if `rendering.rate` is not positive and finite, `rendering.limit` is 0, or the graph would be
-    /// deeper than [`MAX_DEPTH`]. A read is refused as by any signal, and also with [`Error::Signal`] when it needs more
-    /// samples than the limit or `run` returns another number of outputs than it got inputs; an error `run` returns is
-    /// the [`Error::Node`] of the read, `run`'s error its [`source`](std::error::Error::source).
+    /// [`Error::Signal`] if `rendering.rate` is not positive and finite or `rendering.limit` is 0, [`Error::Depth`] if
+    /// the graph would be deeper than [`MAX_DEPTH`]. A read is refused as by any signal, and also with
+    /// [`Error::Signal`] when it needs more samples than the limit or `run` returns another number of outputs than it
+    /// got inputs; an error `run` returns is the [`Error::Node`] of the read, `run`'s error its
+    /// [`source`](std::error::Error::source).
     pub fn rendered<E>(
         input: &Signal,
         rendering: Rendering,
@@ -374,10 +375,10 @@ impl Signal {
     /// The signal holding `node`, which may have inputs.
     ///
     /// # Errors
-    /// [`Error::Signal`] if the graph from `node` is deeper than [`MAX_DEPTH`].
+    /// [`Error::Depth`] if the graph from `node` is deeper than [`MAX_DEPTH`].
     pub(crate) fn checked(node: impl Node + Send + Sync + 'static) -> Result<Self, Error> {
         match node.depth() {
-            depth if depth > MAX_DEPTH => Err(Error::Signal {
+            depth if depth > MAX_DEPTH => Err(Error::Depth {
                 message: format!(
                     "a signal can be at most {MAX_DEPTH} nodes deep (this one would be {depth}): combine many signals \
                      as a balanced tree, not a chain"

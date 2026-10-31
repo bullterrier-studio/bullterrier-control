@@ -26,13 +26,13 @@ static SIGNAL_ERROR: PyOnceLock<Py<PyType>> = PyOnceLock::new();
 /// The package's `InvalidError`, imported and kept as [`FORMAT_ERROR`] is.
 static INVALID_ERROR: PyOnceLock<Py<PyType>> = PyOnceLock::new();
 
-/// The Python exception for `error`: a signal that cannot be read is a `SignalError`, a text naming no easing curve an
-/// `InvalidError`, data breaking a format's rules a `FormatError`, parameters breaking theirs a `ParameterError`; a
-/// callback's error is the exception the Python callback raised, unchanged. Anything else is a bug of the caller: a
-/// `ValueError`.
+/// The Python exception for `error`: a signal that cannot be read, or is too deep, is a `SignalError`, a text naming no
+/// easing curve an `InvalidError`, data breaking a format's rules a `FormatError`, parameters breaking theirs a
+/// `ParameterError`; a callback's error is the exception the Python callback raised, unchanged. Anything else is a
+/// bug of the caller: a `ValueError`.
 pub(crate) fn raised(py: Python<'_>, error: Error) -> PyErr {
     match error {
-        Error::Signal { message } => package(py, (&SIGNAL_ERROR, "SignalError"), message),
+        Error::Signal { message } | Error::Depth { message } => package(py, (&SIGNAL_ERROR, "SignalError"), message),
         Error::Ease { message } => package(py, (&INVALID_ERROR, "InvalidError"), message),
         Error::Format { source } => format_error(py, "", &source),
         Error::Params {
