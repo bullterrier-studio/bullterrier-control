@@ -1,5 +1,7 @@
 //! The rules of a parameter table: a declaration's (once, as the table is built) and a value's (on every parse).
 
+use std::collections::HashMap;
+
 use serde_json::Value;
 
 use super::{Kind, Param, ParamUnit};
@@ -40,8 +42,11 @@ pub(super) fn declarations(params: &mut [Param], problems: &mut Problems) {
                 broken("a choice needs at least one name".to_owned());
             }
             // once per repeated name: at its second appearance
-            for (index, name) in names.iter().enumerate() {
-                if names[..index].iter().filter(|earlier| *earlier == name).count() == 1 {
+            let mut seen = HashMap::new();
+            for name in names {
+                let times = seen.entry(name.as_str()).or_insert(0_usize);
+                *times += 1;
+                if *times == 2 {
                     broken(format!("the choice {name:?} is offered more than once"));
                 }
             }

@@ -486,6 +486,24 @@ mod tests {
     }
 
     #[test]
+    fn a_choice_of_fifty_thousand_names_is_checked_in_linear_time() {
+        let names: Vec<String> = (0..50_000).map(|index| format!("name{index}")).collect();
+        let mut repeated = names.clone();
+        repeated.push("name7".to_owned());
+        let started = std::time::Instant::now();
+        let accepted = ParamTable::new(vec![plain("shape", Kind::Choice(names), json!("name0"))]);
+        let refused = ParamTable::new(vec![plain("shape", Kind::Choice(repeated), json!("name0"))]);
+        let elapsed = started.elapsed();
+        check("fifty thousand names", accepted, &[]);
+        check(
+            "fifty thousand names and a repeat",
+            refused,
+            &[("shape", r#"the choice "name7" is offered more than once"#)],
+        );
+        assert!(elapsed < std::time::Duration::from_secs(1), "took {elapsed:?}");
+    }
+
+    #[test]
     fn every_unit_can_measure_a_number() {
         for unit in ParamUnit::ALL {
             let table = ParamTable::new(vec![Param {
