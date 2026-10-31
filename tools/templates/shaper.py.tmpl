@@ -1,21 +1,17 @@
 """$name: <what it does to a signal, in a few words>."""
 
-from ..plugin import Finite, Params, Signal, param, shaper
+from typing import cast
+
+from bullterrier_control._native import _core
+
+from ..plugin import Params, Signal, shaper
 
 
-class ${title}Params(Params):
+class ${title}Params(Params, builtin="$name"):
     """<What the parameters of $name set.>"""
-
-    depth: Finite = param(
-        1.0,
-        doc="<What it does, its unit and range in words, and what raising it does.>",
-        unit="fraction",
-        min=0,
-        max=1,
-    )
 
 
 @shaper(params=${title}Params)
 def $name(signal: Signal, params: ${title}Params) -> Signal:
     """<What the output is, in one sentence: the summary `help(lib.$name)` shows.>"""
-    return signal * params.depth
+    return cast("Signal", _core.shape("$name", signal, params.to_dict()))

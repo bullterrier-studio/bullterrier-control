@@ -1,7 +1,8 @@
 """`poe new-source` writes a source, shaper or operation that passes the gate as written, in a copy of the project.
 
 An architecture test of the tooling: it runs the developer command and then the tests and the linter, as a contributor
-would, on a copy of the project, so the real one is untouched.
+would, on a copy of the project, so the real one is untouched. A shaper is Rust: its copy is also built (the core's
+tests, clippy and the extension) with cargo, into the target folder the project's own builds use.
 """
 
 import os
@@ -19,9 +20,10 @@ pytestmark = pytest.mark.xdist_group("dev-scaffold")
 @pytest.fixture
 def checkout(tmp_path):
     skip = shutil.ignore_patterns("__pycache__", "*.pyc")
-    for folder in ("src", "tests", "tools"):
+    for folder in ("src", "tests", "tools", "crates"):
         shutil.copytree(ROOT / folder, tmp_path / folder, ignore=skip)
-    shutil.copy(ROOT / "pyproject.toml", tmp_path)
+    for file in ("pyproject.toml", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml"):
+        shutil.copy(ROOT / file, tmp_path)
     return tmp_path
 
 
@@ -32,12 +34,8 @@ def run(checkout: Path, *argv: str) -> subprocess.CompletedProcess:
     )
 
 
-@pytest.mark.parametrize("kind", ["source", "shaper", "operation"])
-def test_a_new_source_shaper_or_operation_passes_its_tests_the_contract_and_the_linter_as_written(checkout, kind):
-    made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", kind)
-    assert made.returncode == 0, made.stderr
-    assert "src/bullterrier_control/builtin/fresh_one.py" in made.stdout
-    assert "uv run poe api" in made.stdout  # lib.pyi (and a shaper's method) are generated
+def check_python(checkout: Path) -> None:
+    """The new thing's tests and the contract tests over it pass, and the linter is content with its files."""
     tests = run(
         checkout,
         "-m",
@@ -71,6 +69,83 @@ def test_a_new_source_shaper_or_operation_passes_its_tests_the_contract_and_the_
     assert lint.returncode == 0, lint.stdout + lint.stderr
 
 
+@pytest.mark.parametrize("kind", ["source", "operation"])
+def test_a_new_source_or_operation_passes_its_tests_the_contract_and_the_linter_as_written(checkout, kind):
+    made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", kind)
+    assert made.returncode == 0, made.stderr
+    assert "src/bullterrier_control/builtin/fresh_one.py" in made.stdout
+    assert "uv run poe api" in made.stdout  # lib.pyi is generated
+    check_python(checkout)
+
+
+def cargo(checkout: Path, *argv: str) -> subprocess.CompletedProcess:
+    """cargo in the copy, building into the target folder of the project (or `CARGO_TARGET_DIR`): the dependencies
+    are compiled there already."""
+    target = os.environ.get("CARGO_TARGET_DIR", str(ROOT / "target"))
+    environment = {**os.environ, "CARGO_TARGET_DIR": target, "PYO3_BUILD_EXTENSION_MODULE": "1"}
+    return subprocess.run(
+        ["cargo", *argv], cwd=checkout, env=environment, capture_output=True, encoding="utf-8", check=False
+    )
+
+
+def install_extension(checkout: Path) -> None:
+    """Build the copy's extension (it has the new shaper in its table) over the one the copy came with, as maturin
+    would: macOS leaves the interpreter's symbols to be found when the extension is loaded."""
+    leave_to_load = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"] if sys.platform == "darwin" else []
+    built = cargo(
+        checkout, "rustc", "-p", "bullterrier-control-python", "--lib", "--locked", "--quiet", "--", *leave_to_load
+    )
+    assert built.returncode == 0, built.stderr
+    library, installed = ("lib_core.dylib" if sys.platform == "darwin" else "lib_core.so"), "_core.abi3.so"
+    target = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target"))
+    shutil.copy(target / "debug" / library, checkout / "src" / "bullterrier_control" / "_native" / installed)
+
+
+def test_a_new_shaper_is_found_by_the_build_and_its_rust_and_python_tests_pass_as_written(checkout):
+    made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "shaper")
+    assert made.returncode == 0, made.stderr
+    assert sorted(line.removeprefix("wrote ") for line in made.stdout.splitlines() if line.startswith("wrote ")) == [
+        "crates/core/src/builtin/fresh_one.rs",
+        "examples/gallery/fresh_one.toml",
+        "src/bullterrier_control/builtin/fresh_one.py",
+        "tests/builtin/test_fresh_one.py",
+    ]
+    # the one edit the author still makes by hand, said before they run into it
+    assert "crates/core/src/builtin.rs" in made.stdout
+    assert "uv run poe api" in made.stdout  # lib.pyi and _chain.py are generated
+
+    formatted = cargo(checkout, "fmt", "--all", "--check")
+    assert formatted.returncode == 0, formatted.stdout + formatted.stderr
+    for part, passed in (("--lib", "3 passed"), ("--doc", "1 passed")):  # its three unit tests, its one doctest
+        rust = cargo(checkout, "test", "-p", "bullterrier-control", part, "--locked", "--quiet", "fresh_one")
+        assert rust.returncode == 0, rust.stdout + rust.stderr
+        assert passed in rust.stdout, rust.stdout
+    linted = cargo(
+        checkout, "clippy", "-p", "bullterrier-control", "--all-targets", "--locked", "--quiet", "--", "-D", "warnings"
+    )
+    assert linted.returncode == 0, linted.stdout + linted.stderr
+
+    install_extension(checkout)
+    check_python(checkout)
+    built = run(checkout, "-c", CHECK_GALLERY_PATCH)
+    assert built.returncode == 0, built.stderr
+    assert built.stdout.strip() == "['fresh_one', 'input'] True"
+
+
+def test_a_new_shaper_scales_a_signal_by_its_depth_through_the_python_binding(checkout):
+    run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "shaper")
+    install_extension(checkout)
+    scaled = run(
+        checkout,
+        "-c",
+        "from bullterrier_control import lib\n"
+        "from bullterrier_control.signal import Constant\n"
+        "print(lib.fresh_one(Constant(3.0), depth=0.25).sample([0.0, 9.0]).tolist())",
+    )
+    assert scaled.returncode == 0, scaled.stderr
+    assert scaled.stdout.strip() == "[0.75, 0.75]"
+
+
 CHECK_GALLERY_PATCH = """
 from pathlib import Path
 
@@ -82,14 +157,13 @@ print(sorted(built), all(numpy.isfinite(signal.sample([0.0, 1.0, 2.5])).all() fo
 """
 
 
-@pytest.mark.parametrize(("kind", "nodes"), [("source", "['fresh_one']"), ("shaper", "['fresh_one', 'input']")])
-def test_a_new_source_or_shaper_also_gets_a_gallery_patch_that_builds(checkout, kind, nodes):
-    made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", kind)
+def test_a_new_source_also_gets_a_gallery_patch_that_builds(checkout):
+    made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "source")
     assert made.returncode == 0, made.stderr
     assert "examples/gallery/fresh_one.toml" in made.stdout
     built = run(checkout, "-c", CHECK_GALLERY_PATCH)
     assert built.returncode == 0, built.stderr
-    assert built.stdout.strip() == f"{nodes} True"
+    assert built.stdout.strip() == "['fresh_one'] True"
 
 
 def test_a_new_operation_gets_no_gallery_patch_because_it_gives_no_signal_to_draw(checkout):
@@ -107,10 +181,23 @@ def test_a_name_whose_gallery_patch_exists_is_refused_and_nothing_is_written(che
     assert not (checkout / "src" / "bullterrier_control" / "builtin" / "fresh_one.py").exists()
 
 
+def test_a_shaper_whose_rust_file_exists_is_refused_and_nothing_is_written(checkout):
+    taken = checkout / "crates" / "core" / "src" / "builtin" / "fresh_one.rs"
+    taken.write_text("// mine\n", encoding="utf-8")
+    refused = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "shaper")
+    assert refused.returncode == 1
+    assert "crates/core/src/builtin/fresh_one.rs exists already" in refused.stderr
+    assert taken.read_text(encoding="utf-8") == "// mine\n"
+    assert not (checkout / "src" / "bullterrier_control" / "builtin" / "fresh_one.py").exists()
+    assert not (checkout / "examples" / "gallery" / "fresh_one.toml").exists()
+
+
+@pytest.mark.parametrize("kind", ["source", "shaper", "operation"])
 @pytest.mark.parametrize(("name", "said"), [("slew", "exists"), ("Bad-Name", "lower case")], ids=["taken", "malformed"])
-def test_a_name_that_is_taken_or_malformed_is_refused_and_nothing_is_written(checkout, name, said):
-    before = sorted(path.name for path in (checkout / "src/bullterrier_control/builtin").iterdir())
-    refused = run(checkout, "tools/dev.py", "new-source", name, "--kind", "source")
+def test_a_name_that_is_taken_or_malformed_is_refused_and_nothing_is_written(checkout, kind, name, said):
+    folders = [checkout / "src/bullterrier_control/builtin", checkout / "crates/core/src/builtin", checkout / "tests"]
+    before = [sorted(path.name for path in folder.iterdir()) for folder in folders]
+    refused = run(checkout, "tools/dev.py", "new-source", name, "--kind", kind)
     assert refused.returncode == 1
     assert said in refused.stderr
-    assert sorted(path.name for path in (checkout / "src/bullterrier_control/builtin").iterdir()) == before
+    assert [sorted(path.name for path in folder.iterdir()) for folder in folders] == before

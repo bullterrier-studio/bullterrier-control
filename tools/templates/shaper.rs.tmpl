@@ -1,0 +1,87 @@
+//! `$name`: <what it does to a signal, in a few words>. Its parameters are declared here, once; what it does is
+//! documented once, on the Python shaper.
+
+use crate::{Error, Params as _, Signal};
+
+/// <What the parameters of $name set.>
+#[derive(Clone, Copy, Debug, PartialEq, crate::Params)]
+pub struct Params {
+    /// <What it does, its unit and range in words, and what raising it does.>
+    #[param(default = 1.0, unit = Fraction, min = 0, max = 1)]
+    pub depth: f64,
+}
+
+impl Signal {
+    /// This signal shaped by `params` ([`$name`](super)); what it does is documented on the Python shaper `$name`.
+    ///
+    /// ```
+    /// use bullterrier_control::builtin::$name;
+    /// use bullterrier_control::Signal;
+    ///
+    /// let level = Signal::constant(2.0)?;
+    /// let halved = level.$name($name::Params { depth: 0.5 })?;
+    /// assert_eq!(halved.sample(&[0.0, 1.0])?, [1.0, 1.0]);
+    /// assert!(level.$name($name::Params { depth: 2.0 }).is_err());
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    /// [`Error::Params`] listing every rule `params` breaks (a field out of its range or not finite).
+    pub fn $name(&self, params: Params) -> Result<Signal, Error> {
+        let params = params.check().map_err(|error| Error::params("$name", error))?;
+        shape(self, &params)
+    }
+}
+
+/// The shaper as the core runs it: `input` with `params` applied. Replace the body; a shaper that needs history
+/// is a `Signal::rendered` over a causal recurrence instead (`slew.rs` is the model).
+// delete this attribute once the body needs the reference or can fail (clippy then says it is unfulfilled)
+#[expect(
+    clippy::unnecessary_wraps,
+    clippy::trivially_copy_pass_by_ref,
+    reason = "the signature every shaper has, whatever its body needs"
+)]
+pub(crate) fn shape(input: &Signal, params: &Params) -> Result<Signal, Error> {
+    Ok(input * params.depth)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// A signal that reads as its time.
+    fn ramp() -> Signal {
+        Signal::from_fn(|times, out| {
+            out.copy_from_slice(times);
+            Ok::<(), std::fmt::Error>(())
+        })
+    }
+
+    #[test]
+    fn it_scales_its_input_by_depth() -> Result<(), Error> {
+        // Replace with what $name promises, each expected number worked out by hand.
+        // 0.25 of a signal that reads its time, at 0, 2 and 4 seconds
+        let out = shape(&ramp(), &Params { depth: 0.25 })?.sample(&[0.0, 2.0, 4.0])?;
+        assert_eq!(out, [0.0, 0.5, 1.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn the_core_runs_it_by_name_with_its_parameters_checked() -> Result<(), Error> {
+        let out = crate::shape("$name", &ramp(), &json!({"depth": 0.5}))?.sample(&[2.0])?;
+        assert_eq!(out, [1.0]);
+        let refused = crate::shape("$name", &ramp(), &json!({"depth": 2.0}));
+        assert!(matches!(&refused, Err(Error::Params { shaper, .. }) if shaper == "$name"), "{refused:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn a_signal_is_shaped_with_typed_parameters_checked_as_values_by_name_are() -> Result<(), Error> {
+        let out = ramp().$name(Params { depth: 0.5 })?.sample(&[4.0])?;
+        assert_eq!(out, [2.0]);
+        let refused = ramp().$name(Params { depth: -1.0 });
+        assert!(matches!(&refused, Err(Error::Params { shaper, .. }) if shaper == "$name"), "{refused:?}");
+        Ok(())
+    }
+}
