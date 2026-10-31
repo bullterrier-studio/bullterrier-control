@@ -1,21 +1,10 @@
 """thin: drop events that come too soon after the last one kept: a flash that cannot fire twice in 0.1 s."""
 
-from ..plugin import Event, Finite, Params, at_least, operation, param
+from ..plugin import Event, Params, at_least, operation
 
 
-class ThinParams(Params):
+class ThinParams(Params, builtin="thin"):
     """The shortest time allowed between two kept events."""
-
-    gap: Finite = param(
-        0.1,
-        doc=(
-            "The least time between two kept events, in seconds, 0 to 3600: an event is kept when it comes at least"
-            " this long after the last kept one. Raising it keeps fewer events; 0 keeps all."
-        ),
-        unit="seconds",
-        min=0,
-        max=3600,
-    )
 
 
 @operation(params=ThinParams)

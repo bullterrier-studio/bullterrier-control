@@ -1,72 +1,13 @@
 """lfo: a periodic wave, free-running or following the beat: a pulse on every beat, a slow drift."""
 
-from typing import Literal
-
 import numpy as np
 from numpy.typing import NDArray
 
-from ..plugin import Finite, Grid, Params, Positions, Signal, between, counter, param, source
+from ..plugin import Grid, Params, Positions, Signal, between, counter, source
 
 
-class LfoParams(Params):
+class LfoParams(Params, builtin="lfo"):
     """The wave: its shape, how fast it repeats and where in the cycle it starts, and the range it moves in."""
-
-    shape: Literal["sine", "triangle", "square", "saw", "saw-down"] = param(
-        "sine",
-        doc=(
-            "The wave: 'sine' (smooth), 'triangle' (straight up and down), 'square' (high, then low), 'saw' (rises,"
-            " then jumps back) or 'saw-down' (falls, then jumps back)."
-        ),
-    )
-    rate: Finite = param(
-        1.0,
-        doc=(
-            "Cycles per second, or per beat if `per` is 'beat'; 0 holds the wave still at `phase`. Raising it makes"
-            " the wave faster."
-        ),
-        unit="cycles",
-        min=0,
-        max=1000,
-    )
-    per: Literal["second", "beat"] = param(
-        "second",
-        doc=(
-            "What `rate` counts in: 'second' (free-running) or 'beat' (follows the tempo of the `grid`, which it"
-            " needs)."
-        ),
-    )
-    phase: Finite = param(
-        0.0,
-        doc=(
-            "Where in the cycle time 0 falls, as a share of a cycle, 0 to 1: 0.25 starts a quarter of the way in. Any"
-            " number is accepted and wraps into 0 to 1 (1.25 is 0.25), so a phase that keeps turning needs no wrap."
-        ),
-        unit="cycles",
-        min=0,
-        max=1,
-        cyclic=True,
-    )
-    low: Finite = param(
-        0.0,
-        doc="The value at the bottom of the wave; set above `high` to flip the wave upside down.",
-        unit="ratio",
-        min=-1e6,
-        max=1e6,
-    )
-    high: Finite = param(
-        1.0,
-        doc="The value at the top of the wave.",
-        unit="ratio",
-        min=-1e6,
-        max=1e6,
-    )
-    duty: Finite = param(
-        0.5,
-        doc="Square only: the share of each cycle spent high, 0 to 1; 0 is never high, 1 always.",
-        unit="fraction",
-        min=0,
-        max=1,
-    )
 
 
 class _Lfo(Signal):

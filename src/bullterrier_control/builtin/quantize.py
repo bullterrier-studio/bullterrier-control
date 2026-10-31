@@ -2,22 +2,11 @@
 
 import numpy as np
 
-from ..plugin import Event, FormatError, Grid, ParameterError, Params, at_least, operation, param
+from ..plugin import Event, FormatError, Grid, ParameterError, Params, at_least, operation
 
 
-class QuantizeParams(Params):
+class QuantizeParams(Params, builtin="quantize"):
     """How fine the positions are that events snap to."""
-
-    division: int = param(
-        1,
-        doc=(
-            "Snap positions per beat, 1 to 64: 1 snaps to the beats, 2 to the beats and the halves between them, 4 to"
-            " quarters. Raising it moves events less."
-        ),
-        unit="count",
-        min=1,
-        max=64,
-    )
 
 
 @operation(params=QuantizeParams)

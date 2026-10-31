@@ -1,36 +1,10 @@
 """every: keep every Nth event: a flash on every second kick, a cut on every fourth beat."""
 
-from pydantic import model_validator
-
-from ..plugin import Event, InvalidError, Params, operation, param
+from ..plugin import Event, Params, operation
 
 
-class EveryParams(Params):
+class EveryParams(Params, builtin="every"):
     """Which of the events in time order to keep: every `n`th, counting from `offset`."""
-
-    n: int = param(
-        2,
-        doc="Keep one event in this many, 1 to 1000: 1 keeps all, 2 every second one, 3 every third.",
-        unit="count",
-        min=1,
-        max=1000,
-    )
-    offset: int = param(
-        0,
-        doc=(
-            "How many events to skip before the first one kept, 0 to 999 and below `n`: 0 starts with the first event,"
-            " 1 with the second."
-        ),
-        unit="count",
-        min=0,
-        max=999,
-    )
-
-    @model_validator(mode="after")
-    def _offset_is_below_n(self) -> "EveryParams":
-        if self.offset >= self.n:
-            raise InvalidError.at("offset", f"{self.offset} is not below n = {self.n}")
-        return self
 
 
 @operation(params=EveryParams)

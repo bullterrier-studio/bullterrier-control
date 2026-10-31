@@ -4,36 +4,12 @@ from collections.abc import Callable
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from pydantic import field_validator
 
-from ..plugin import Finite, Params, Signal, Text, between, curve, param, shaper
+from ..plugin import Params, Signal, between, curve, shaper
 
 
-class RemapParams(Params):
+class RemapParams(Params, builtin="remap"):
     """The range the input is put onto, and the ease that bends the way there."""
-
-    low: Finite = param(
-        0.0,
-        doc="The output when the input is 0; set above `high` to flip the signal.",
-        unit="ratio",
-        min=-1e6,
-        max=1e6,
-    )
-    high: Finite = param(1.0, doc="The output when the input is 1.", unit="ratio", min=-1e6, max=1e6)
-    ease: Text = param(
-        "linear",
-        doc=(
-            "How the input is bent before it is put onto the range: one of the eases keyframes take (linear, hold, in,"
-            " out, in-out, cubic-in, cubic-out, cubic-in-out, overshoot) or cubic-bezier(x1, y1, x2, y2). 'linear'"
-            " keeps the shape."
-        ),
-    )
-
-    @field_validator("ease")
-    @classmethod
-    def _is_an_ease(cls, name: str) -> str:
-        curve(name)  # raises InvalidError listing the valid forms
-        return name
 
 
 class _Remapped(Signal):

@@ -1,30 +1,13 @@
 """steps: a step sequencer: a list of values stepped through at a rate, free-running or on the beat."""
 
-from typing import Literal
-
 import numpy as np
 from numpy.typing import NDArray
 
-from ..plugin import Finite, Grid, Params, Positions, Signal, counter, param, source
+from ..plugin import Grid, Params, Positions, Signal, counter, source
 
 
-class StepsParams(Params):
+class StepsParams(Params, builtin="steps"):
     """How fast the list of values is stepped through."""
-
-    rate: Finite = param(
-        4.0,
-        doc=("Steps per second, or per beat if `per` is 'beat'; each step holds one value. Raising it steps faster."),
-        unit="count",
-        min=0.001,
-        max=1000,
-    )
-    per: Literal["second", "beat"] = param(
-        "second",
-        doc=(
-            "What `rate` counts in: 'second' (free-running) or 'beat' (follows the tempo of the `grid`, which it"
-            " needs)."
-        ),
-    )
 
 
 class _Steps(Signal):

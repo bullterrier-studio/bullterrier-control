@@ -20,9 +20,8 @@ from bullterrier_control import (
     load_patch,
     registry,
 )
-from bullterrier_control.params import Params
 from bullterrier_control.patch import patch_schema
-from bullterrier_control.plugin import source
+from bullterrier_control.plugin import Params, source
 
 HEADER = {"format": "bullterrier-control/patch", "version": 1}
 KICKS = [

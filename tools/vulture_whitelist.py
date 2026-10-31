@@ -15,13 +15,13 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-from pydantic import BaseModel
+from bullterrier_control.plugin import Params
 
 
-def whitelist(models: Iterable[type[BaseModel]]) -> str:
+def whitelist(models: Iterable[type[Params]]) -> str:
     """Vulture whitelist source naming every field of `models`: an attribute use of each, which vulture counts."""
     return "".join(
-        f"_.{field}  # {model.__name__}, read by the Rust core\n" for model in models for field in model.model_fields
+        f"_.{field}  # {model.__name__}, read by the Rust core\n" for model in models for field in model.describe()
     )
 
 

@@ -210,7 +210,7 @@ def test_the_phase_wraps_so_a_rotating_phase_needs_none_of_its_own():
 
 
 def test_the_phase_is_described_as_cyclic_for_a_consumer_mapping_onto_it():
-    phase = registry.get("lfo").params_model.model_json_schema()["properties"]["phase"]
+    phase = registry.get("lfo").description()["parameters"]["properties"]["phase"]
     assert (phase["unit"], phase["minimum"], phase["maximum"], phase["cyclic"]) == ("cycles", 0, 1, True)
 
 

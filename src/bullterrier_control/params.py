@@ -1,55 +1,61 @@
-"""How a source, shaper or operation declares its parameters: a frozen model whose every field is described, ranged
-and defaulted.
+"""How a source, shaper or operation declares its parameters: a class whose every field is described, ranged and
+defaulted. The declaration is a parameter table of the Rust core, which holds every rule, once.
 
     class WaveParams(Params):
         \"\"\"A repeating wave.\"\"\"
 
         depth: Finite = param(0.5, doc="How far the wave moves the value.", unit="fraction", min=0, max=1)
 
+    class SlewParams(Params, builtin="slew"):  # a built-in: the table the core declares for it
+        \"\"\"How fast the output may climb and fall.\"\"\"
+
 Promises:
-- A field is a number (`float` or `int`), a `bool`, a `str` or a `Literal` choice of strings; nothing else. A model is
-  checked when its class is made: every field has a default, a description and no alias; the defaults are valid; a
-  number has a unit from `UNITS` and a finite range (min and max) that holds its default; any other field takes no
-  unit or range; no field has a discouraged name (`DISCOURAGED`) or is named after a unit. A broken declaration
-  raises `ValueError` naming the model and the field, so it never reaches a patch.
-- A number is *cyclic* (`cyclic=True`) when the value one cycle further is the same position (a phase): it is a decimal
-  in `cycles` whose range is exactly one cycle (`max == min + 1`), and any finite number (a whole number or a decimal)
-  is wrapped into the range (1.25 on 0..1 is 0.25); a value inside the range, either end included, is kept as given.
-  The same idea as `cyclic` in bullterrier-image (there an angle in degrees, here a position in cycles), described the
-  same way, so a consumer reads one flag in every package.
-- Values are checked when a model is built (`parse`, or the constructor), strictly whatever the annotation: unknown
-  fields, `true` or a string for a number, a float for a whole number, 1 for a switch and values out of range are
-  refused with a `ParameterError` naming each field, the rule and the value. A validator a subclass adds that changes
-  values is the subclass's own business and is not checked.
-- `fields_doc` describes the fields for docs, listings and tests: basic fields first, then the advanced ones
-  (`advanced=True`: they tune the technique rather than choose the shape; settable and validated like the rest).
-- `model_json_schema()` is the description a consumer reads, in the shape bullterrier-image gives its parameters: per
-  field `type` or `enum`, `default`, `description`, `minimum` and `maximum`, and the extras `unit`, `advanced` and
-  `cyclic`. A range is stated once.
+- A field is annotated `Finite` (a decimal), `Whole`, `Switch`, `Text` (or plain `float`, `int`, `bool`, `str`) or a
+  `Literal` of strings, and declared with `param`. The class is checked when it is made: a broken declaration (no
+  description, a number without a unit or without a finite range that holds its default, a field that is not a number
+  with one, a discouraged name or a unit's name, a cyclic field that is not one cycle in `cycles`, another type) raises
+  `ParameterError` naming each field.
+- A number is *cyclic* (`cyclic=True`) when the value one cycle further is the same position (a phase): any finite
+  number is wrapped into its range (1.25 on 0..1 is 0.25); a value inside the range, either end included, is kept.
+- `P(**values)` and `P.parse(mapping)` are the one way in, strict whatever the annotation: an unknown field, `true` or a
+  string for a number, a float for a whole number, 1 for a switch, a value out of range or not finite is refused with
+  a `ParameterError` listing every broken rule (`problems`: (field, rule) pairs); a field left out takes its default.
+  The result is frozen: read-only attributes, `==`, `hash`, `repr` and `to_dict()`.
+- `P.describe()` describes each field for docs, listings and tests, basic fields first, then the advanced ones
+  (`advanced=True`: they tune the technique rather than choose the shape), each in declaration order: per field
+  `type` or `enum`, `default`, `description`, `title`, `minimum` and `maximum`, the extras `unit`, `advanced` and
+  `cyclic` (the JSON Schema properties bullterrier-image gives its parameters), and `range`, the range as help says it.
 """
 
-import math
-from typing import Any, ClassVar, Literal, NamedTuple, get_args, get_origin
+import inspect
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, get_args, get_origin
 
-from pydantic import ConfigDict, Field, model_validator
+from ._native import _core
 
-from .errors import InvalidError, ParameterError
-from .validated import ValidatedModel
+__all__ = ["Finite", "Params", "Switch", "Text", "Whole", "param"]
 
-__all__ = ["DISCOURAGED", "UNITS", "FieldDoc", "Params", "param"]
+# What a field is annotated with. The core reads a value strictly whatever the annotation; these name the intent.
+Finite = float  # a decimal: a whole number is fine, a bool, text, NaN or an infinity is not
+Whole = int  # a whole number: not a bool, not a float
+Switch = bool  # true or false: not 1
+Text = str  # text that can be saved as UTF-8
+_KINDS: dict[object, str] = {float: "float", int: "whole", bool: "switch", str: "text"}
+_NOTHING = object()  # what a class body gave a field it only annotated
 
-# What a number may be measured in. `beats` is turned into seconds through a Grid by whatever reads the value.
-# (A Series' `Unit` says what its values measure; this says what a parameter's number is in. They share names.)
-UNITS = ("seconds", "beats", "hertz", "cycles", "fraction", "decibels", "ratio", "semitones", "count")
 
-# Names a parameter must not have, with what to say instead: the same idea drifts into many names otherwise.
-DISCOURAGED = {
-    "strength": "depth or amount",
-    "intensity": "depth or amount",
-    "factor": "ratio, depth or amount",
-    "val": "value",
-    "k": "a name that says what it is",
-}
+@dataclass(frozen=True)
+class _Declared:
+    """What `param` was given for one field."""
+
+    default: Any
+    doc: str
+    unit: str | None
+    min: float | None
+    max: float | None
+    advanced: bool
+    cyclic: bool
 
 
 def param(
@@ -61,154 +67,104 @@ def param(
     max: float | None = None,  # noqa: A002  (the documented name of the range's upper bound)
     advanced: bool = False,
     cyclic: bool = False,
-    **field_kwargs: Any,
 ) -> Any:
-    """Declare one field of a `Params` model.
+    """Declare one field of a `Params` class.
 
     default: the value used when none is given; for a number it lies in the range. doc: what the field does, its unit
-    and range in words, and what raising it does. unit: one of `UNITS`, required for a number, not allowed otherwise.
-    min, max: the inclusive range, both required for a number, not allowed otherwise. advanced: the field tunes the
-    technique rather than the shape; it is listed after the basic ones. cyclic: a decimal in `cycles` whose range is one
-    cycle wide and which wraps into it (a phase). Other keywords go to pydantic's `Field`.
+    and range in words, and what raising it does. unit: required for a number (`seconds`, `beats`, `hertz`, `cycles`,
+    `fraction`, `decibels`, `ratio`, `semitones`, `count`), not allowed otherwise. min, max: the inclusive range, both
+    required for a number, not allowed otherwise. advanced: the field tunes the technique rather than the shape; it is
+    listed after the basic ones. cyclic: a decimal in `cycles` whose range is one cycle wide and which wraps into it.
     """
-    extra: dict[str, Any] = {"unit": unit, "advanced": advanced, "cyclic": cyclic}
-    limits: dict[str, Any] = {key: value for key, value in (("ge", min), ("le", max)) if value is not None}
-    return Field(default, description=doc, json_schema_extra=extra, **limits, **field_kwargs)
+    return _Declared(default, doc, unit, min, max, advanced, cyclic)
 
 
-class FieldDoc(NamedTuple):
-    """The documentation of one parameter, in parts (see `Params.fields_doc`)."""
+class _Builtin:
+    """The table the core declares for the built-in `name`, read as a `ParamTable` is."""
 
-    name: str
-    unit: str | None
-    minimum: float | None
-    maximum: float | None
-    default: Any
-    doc: str
-    advanced: bool
-    cyclic: bool
+    def __init__(self, name: str) -> None:
+        self.name = name
 
+    def parse(self, values: Mapping[str, object]) -> dict[str, Any]:
+        return _core.parse_parameters(self.name, values)
 
-class Params(ValidatedModel):
-    """The parameters of a source, shaper or operation: subclass it with a docstring, declare fields with `param`."""
-
-    # strict: a plain float or int is as strict as Finite and Whole; validate_default: defaults obey the same rules
-    model_config = ConfigDict(strict=True, validate_default=True)
-    error: ClassVar[type[InvalidError]] = ParameterError
-
-    @classmethod
-    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
-        """Check the declaration of every field as the class is made."""
-        super().__pydantic_init_subclass__(**kwargs)
-        for name, info in cls.model_fields.items():
-            _check(f"{cls.__name__}.{name}", name, info, _extra(info))
-        try:
-            cls.parse({})
-        except ParameterError as error:
-            raise ValueError(f"{cls.__name__}: a default is not valid: {error}") from None
-
-    @classmethod
-    def fields_doc(cls) -> tuple[FieldDoc, ...]:
-        """Every field described, basic ones first, then the advanced ones, each group in declaration order."""
-        docs = [
-            FieldDoc(
-                name,
-                extra["unit"],
-                extra["min"],
-                extra["max"],
-                info.default,
-                info.description or "",
-                extra["advanced"],
-                extra["cyclic"],
-            )
-            for name, info in cls.model_fields.items()
-            for extra in [_extra(info)]
-        ]
-        return tuple(sorted(docs, key=lambda field: field.advanced))
-
-    @model_validator(mode="before")
-    @classmethod
-    def _wrap_cyclic_numbers(cls, data: Any) -> Any:
-        """A real outside the range of a cyclic field becomes the same position inside it; anything else is left for
-        the strict field types to accept or refuse."""
-        if not isinstance(data, dict):
-            return data
-        wrapped = dict(data)
-        for name, info in cls.model_fields.items():
-            extra = _extra(info)
-            if not extra["cyclic"] or name not in data:
-                continue
-            value, low, high = data[name], extra["min"], extra["max"]
-            is_real = isinstance(value, int | float) and not isinstance(value, bool)
-            if is_real and (isinstance(value, int) or math.isfinite(value)) and not low <= value <= high:
-                # a whole number is a whole number of cycles from `low` however large, so its position needs no float
-                # conversion (which a number of 400 digits would overflow)
-                offset = (-low) % 1 if isinstance(value, int) else (value - low) % 1
-                wrapped[name] = low + offset
-        return wrapped
+    def describe(self) -> dict[str, dict[str, Any]]:
+        return _core.parameters(self.name)
 
 
-def _bounds(info: Any) -> tuple[Any, Any]:
-    """The inclusive range `param` declared, which pydantic holds as `ge` and `le` constraints (None for an end not
-    declared)."""
-    low = high = None
-    for constraint in info.metadata:
-        match constraint:
-            case object(ge=value):
-                low = value
-            case object(le=value):
-                high = value
-    return low, high
+def _entry(name: str, annotation: object, declared: object) -> dict[str, object]:
+    """The core's declaration of one field from its annotation and what the class body gave it (`param(...)`, a plain
+    default, or `_NOTHING`). A type the core has no kind for is handed on by its text, for the core to refuse."""
+    if get_origin(annotation) is Literal:
+        entry: dict[str, object] = {"name": name, "kind": "choice", "choices": list(get_args(annotation))}
+    else:
+        entry = {"name": name, "kind": _KINDS.get(annotation, str(annotation))}
+    if isinstance(declared, _Declared):
+        return {**entry, **asdict(declared)}
+    return entry if declared is _NOTHING else {**entry, "default": declared}
 
 
-def _extra(info: Any) -> dict[str, Any]:
-    """What `param` recorded for a field; a field not declared with `param` has nothing recorded."""
-    declared = info.json_schema_extra
-    nothing: dict[str, Any] = {"unit": None, "advanced": False, "cyclic": False}
-    low, high = _bounds(info)
-    return {**nothing, **(declared if isinstance(declared, dict) else {}), "min": low, "max": high}
+class Params:
+    """The parameters of a source, shaper or operation: subclass it with a docstring, declare fields with `param`.
 
+    A built-in's class is `class XParams(Params, builtin="x")`, with a docstring only: its fields are the core's."""
 
-def _check(where: str, name: str, info: Any, extra: dict[str, Any]) -> None:
-    unit, low, high = extra["unit"], extra["min"], extra["max"]
-    annotation = info.annotation
-    if name in DISCOURAGED:
-        raise ValueError(f"{where}: do not name a parameter {name!r}; use {DISCOURAGED[name]}")
-    if name in UNITS:
-        raise ValueError(f"{where}: do not name a parameter after its unit ({name!r}); say what it is")
-    if info.alias is not None or info.validation_alias is not None or info.serialization_alias is not None:
-        raise ValueError(f"{where}: a parameter has one name; remove the alias")
-    if info.is_required():
-        raise ValueError(f"{where}: needs a default (param(<default>, doc=...))")
-    if not _supported(annotation):
-        raise ValueError(
-            f"{where}: this type is not supported (got {annotation!r}); a parameter is a number, a bool, a str or a"
-            " Literal choice of strings"
+    _table: ClassVar[_core.ParamTable | _Builtin]
+
+    def __init_subclass__(cls, *, builtin: str | None = None, **kwargs: Any) -> None:
+        """Build the class's table from its annotations and `param` declarations (`ParameterError` naming each broken
+        field), or take the core's table of `builtin`."""
+        super().__init_subclass__(**kwargs)
+        if builtin is not None:
+            cls._table = _Builtin(builtin)
+            return
+        annotations = inspect.get_annotations(cls, eval_str=True)
+        declared = {name: cls.__dict__.get(name, _NOTHING) for name in annotations}
+        cls._table = _core.ParamTable(
+            [_entry(name, annotation, declared[name]) for name, annotation in annotations.items()], name=cls.__name__
         )
-    if annotation in (int, float):
-        if unit not in UNITS:
-            raise ValueError(f"{where}: a number needs a unit, one of {', '.join(UNITS)} (got {unit!r})")
-        if low is None or high is None:
-            raise ValueError(f"{where}: a number needs both min and max (got min={low!r}, max={high!r})")
-        if not (math.isfinite(low) and math.isfinite(high)):
-            raise ValueError(f"{where}: min and max must be finite numbers (got min={low!r}, max={high!r})")
-        default = info.default
-        if not isinstance(default, int | float) or isinstance(default, bool) or not low <= default <= high:
-            raise ValueError(f"{where}: the default {default!r} must lie in the range {low} to {high}")
-    elif unit is not None or low is not None or high is not None:
-        raise ValueError(f"{where}: a field that is not a number takes no unit, min or max")
-    if extra["cyclic"] and (annotation is not float or unit != "cycles" or high != low + 1):
-        raise ValueError(
-            f"{where}: cyclic is for a decimal in cycles whose range is exactly one cycle (max = min + 1);"
-            f" got unit {unit!r}, min {low!r}, max {high!r}"
-        )
-    doc = info.description
-    if not doc or not doc.strip():
-        raise ValueError(f"{where}: needs a description (param(..., doc=...))")
+        for name in annotations:  # the class holds no values: `P.depth` would be a declaration, not a number
+            if name in cls.__dict__:
+                delattr(cls, name)
 
+    def __init__(self, **values: object) -> None:
+        """The parameters for these values; see `parse`."""
+        self.__dict__.update(self._table.parse(values))
 
-def _supported(annotation: object) -> bool:
-    """Whether a field of this type is one a parameter may be: a number, a bool, a str, or a Literal of strings."""
-    if annotation in (int, float, bool, str):
-        return True
-    return get_origin(annotation) is Literal and all(isinstance(choice, str) for choice in get_args(annotation))
+    @classmethod
+    def parse(cls, values: Mapping[str, object]) -> Self:
+        """The parameters for `values` (a mapping of field to value), defaults filled in; or a `ParameterError` listing
+        every broken rule."""
+        params = cls.__new__(cls)
+        params.__dict__.update(cls._table.parse(values))
+        return params
+
+    @classmethod
+    def describe(cls) -> dict[str, dict[str, Any]]:
+        """Each field's description by name, basic fields first, then advanced, each in declaration order (a copy)."""
+        return cls._table.describe()
+
+    def to_dict(self) -> dict[str, Any]:
+        """Every field's value by name."""
+        return dict(self.__dict__)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(f"{type(self).__name__} is frozen: {name!r} cannot be set")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError(f"{type(self).__name__} is frozen: {name!r} cannot be deleted")
+
+    def __eq__(self, other: object) -> bool:
+        if type(other) is not type(self):
+            return NotImplemented
+        return self.__dict__ == other.__dict__
+
+    def __hash__(self) -> int:
+        return hash((type(self), tuple(self.__dict__.items())))
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({', '.join(f'{name}={value!r}' for name, value in self.__dict__.items())})"
+
+    if TYPE_CHECKING:  # a built-in's fields are the core's, unknown to a type checker (R3 types them)
+
+        def __getattr__(self, name: str) -> Any: ...

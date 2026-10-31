@@ -2,22 +2,11 @@
 
 import numpy as np
 
-from ..plugin import Event, Grid, Params, operation, param
+from ..plugin import Event, Grid, Params, operation
 
 
-class BeatsParams(Params):
+class BeatsParams(Params, builtin="beats"):
     """How finely to divide each beat."""
-
-    division: int = param(
-        1,
-        doc=(
-            "Events per beat, 1 to 64: 1 gives the beats alone, 2 adds one `sub` event halfway between neighbouring"
-            " beats, 4 adds three, and so on. Raising it gives a finer pulse."
-        ),
-        unit="count",
-        min=1,
-        max=64,
-    )
 
 
 @operation(params=BeatsParams)

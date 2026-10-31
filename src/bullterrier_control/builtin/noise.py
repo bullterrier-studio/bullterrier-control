@@ -1,57 +1,16 @@
 """noise: seeded random values, held, straight or smooth between them: a wobble, a drift, a flicker."""
 
-from typing import Literal
-
 import numpy as np
 from numpy.typing import NDArray
 
-from ..plugin import Finite, Params, Positions, Signal, between, counter, param, source, uniform
+from ..plugin import Params, Positions, Signal, between, counter, source, uniform
 
 # a position is reduced to the index the hash reads: whole numbers wrap at 2^64 (and the float 2^64 is exact)
 _INDEX_PERIOD = 2.0**64
 
 
-class NoiseParams(Params):
+class NoiseParams(Params, builtin="noise"):
     """The noise: how it moves between its random values, how often it draws a new one, and its seed and range."""
-
-    shape: Literal["hold", "linear", "smooth"] = param(
-        "smooth",
-        doc=(
-            "How the value moves from one random value to the next: 'hold' (steps), 'linear' (straight lines, with"
-            " corners) or 'smooth' (eased, no corners)."
-        ),
-    )
-    rate: Finite = param(
-        4.0,
-        doc="Random values per second: a new one every 1 / rate seconds. Raising it makes the noise busier.",
-        unit="hertz",
-        min=0.001,
-        max=1000,
-    )
-    seed: int = param(
-        0,
-        doc=(
-            "Which noise, 0 to 4294967295: the same seed gives the same values on every machine, read in any order;"
-            " another seed gives other values."
-        ),
-        unit="count",
-        min=0,
-        max=4294967295,
-    )
-    low: Finite = param(
-        0.0,
-        doc="The bottom of the range the values fall in; set above `high` to flip the noise.",
-        unit="ratio",
-        min=-1e6,
-        max=1e6,
-    )
-    high: Finite = param(
-        1.0,
-        doc="The top of the range the values fall in.",
-        unit="ratio",
-        min=-1e6,
-        max=1e6,
-    )
 
 
 class _Noise(Signal):

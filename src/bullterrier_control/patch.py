@@ -166,10 +166,10 @@ def _node(
                 inputs[key] = INPUTS[key].check(value)
             except ParameterError as error:
                 problems.extend((f"{name}.{where}", rule) for where, rule in error.problems)
-        elif key in thing.params_model.model_fields:
+        elif key in thing.params_model.describe():
             parameters[key] = value
         else:
-            takes = [*thing.inputs, *thing.params_model.model_fields]
+            takes = [*thing.inputs, *thing.params_model.describe()]
             taken = ", ".join(takes) or "nothing"
             problems.append((path, f"is neither an input nor a parameter of {thing.kind} {use!r} (it takes {taken})"))
     for key, required in thing.inputs.items():

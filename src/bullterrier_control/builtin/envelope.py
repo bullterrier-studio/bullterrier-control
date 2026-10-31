@@ -2,12 +2,11 @@
 
 import math
 from collections.abc import Callable
-from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
 
-from ..plugin import Event, Finite, Params, Signal, Text, matching, param, source
+from ..plugin import Event, Params, Signal, matching, source
 
 # The share of a fall still left a given number of seconds into it.
 _Left = Callable[[NDArray[np.float64]], NDArray[np.float64]]
@@ -17,56 +16,8 @@ _Left = Callable[[NDArray[np.float64]], NDArray[np.float64]]
 _TIME_CONSTANTS_TO_A_BILLIONTH = math.log(1e9)
 
 
-class EnvelopeParams(Params):
+class EnvelopeParams(Params, builtin="envelope"):
     """Which events count, and the shape each one gives the value: attack, decay, sustain, release."""
-
-    label: Text = param("", doc="Only events with this label count; empty takes every event, unlabelled ones too.")
-    attack: Finite = param(
-        0.0,
-        doc="Seconds an event takes to rise from 0 to its strength; 0 jumps at once. Raising it softens the onset.",
-        unit="seconds",
-        min=0,
-        max=60,
-    )
-    decay: Finite = param(
-        0.25,
-        doc=(
-            "Seconds the value takes to fall from the strength toward the sustain level after the attack: the time"
-            " constant of an exponential curve, the whole fall of a linear one; 0 falls at once. Raising it lengthens"
-            " the tail."
-        ),
-        unit="seconds",
-        min=0,
-        max=3600,
-    )
-    sustain: Finite = param(
-        0.0,
-        doc=(
-            "The level, as a share of the strength, an event with a duration holds until it ends, 0 to 1; an event"
-            " without a duration falls to 0."
-        ),
-        unit="fraction",
-        min=0,
-        max=1,
-    )
-    release: Finite = param(
-        0.0,
-        doc=(
-            "Seconds the value takes to fall to 0 after an event with a duration ends, from wherever it was (time"
-            " constant or whole fall, as for decay); 0 drops at once."
-        ),
-        unit="seconds",
-        min=0,
-        max=3600,
-    )
-    curve: Literal["exponential", "linear"] = param(
-        "exponential",
-        doc="How decay and release fall: 'exponential' (fast, then a long tail) or 'linear' (straight to its end).",
-    )
-    mix: Literal["max", "sum"] = param(
-        "max",
-        doc="Where events overlap: 'max' takes the larger value, 'sum' adds them (and can exceed 1).",
-    )
 
 
 def _fade(curve: str, span: float) -> tuple[_Left, float]:

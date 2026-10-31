@@ -43,4 +43,4 @@ def test_the_written_whitelist_names_the_fields_of_the_rust_shapers_and_of_no_ot
     target = tmp_path / "whitelist.py"
     assert vulture_whitelist.main([str(target)]) == 0
     written = {line.split()[0].removeprefix("_.") for line in target.read_text(encoding="utf-8").splitlines()}
-    assert written == {field for name in _core.shapers() for field in registry.get(name).params_model.model_fields}
+    assert written == {field for name in _core.shapers() for field in registry.get(name).params_model.describe()}

@@ -3,27 +3,11 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from ..plugin import Event, Finite, Params, Signal, Text, matching, param, source
+from ..plugin import Event, Params, Signal, matching, source
 
 
-class LatchParams(Params):
+class LatchParams(Params, builtin="latch"):
     """Which events count, and the level before and after the first of them."""
-
-    label: Text = param("", doc="Only events with this label count; empty takes every event, unlabelled ones too.")
-    before: Finite = param(
-        0.0,
-        doc="The level until the first matching event, 0 to 1; it is also the level when no event matches.",
-        unit="fraction",
-        min=0,
-        max=1,
-    )
-    after: Finite = param(
-        1.0,
-        doc="The level from the first matching event on, 0 to 1; lower than `before` makes an inverted latch.",
-        unit="fraction",
-        min=0,
-        max=1,
-    )
 
 
 class _Latched(Signal):

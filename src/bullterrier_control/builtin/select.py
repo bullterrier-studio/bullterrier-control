@@ -1,22 +1,10 @@
 """select: keep the events with a label and at least a strength: the kicks that are loud enough to matter."""
 
-from ..plugin import Event, Finite, Params, Text, matching, operation, param
+from ..plugin import Event, Params, matching, operation
 
 
-class SelectParams(Params):
+class SelectParams(Params, builtin="select"):
     """Which events to keep: by label and by strength."""
-
-    label: Text = param("", doc="Keep only events with this label; empty keeps every event, unlabelled ones too.")
-    threshold: Finite = param(
-        0.0,
-        doc=(
-            "The weakest strength kept, 0 to 1: an event is kept when its strength is at least this. Raising it keeps"
-            " only the stronger events; 0 keeps them all."
-        ),
-        unit="fraction",
-        min=0,
-        max=1,
-    )
 
 
 @operation(params=SelectParams)

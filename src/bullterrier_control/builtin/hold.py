@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 from ..plugin import Event, Params, Signal, shaper
 
 
-class HoldParams(Params):
+class HoldParams(Params, builtin="hold"):
     """Hold has no parameters: the events say when the value is taken."""
 
 

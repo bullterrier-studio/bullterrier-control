@@ -7,9 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from bullterrier_control import BullterrierControlError, Event, ParameterError, Series, UnknownNameError, lib, registry
-from bullterrier_control.params import Params, param
-from bullterrier_control.plugin import Constant, Keyframe, Signal, operation, shaper, source
-from bullterrier_control.validated import Finite
+from bullterrier_control.plugin import Constant, Finite, Keyframe, Params, Signal, operation, param, shaper, source
 
 
 class Level(Params):
@@ -53,7 +51,7 @@ def test_the_registered_thing_knows_its_name_kind_and_parameters():
 
     assert (level.name, level.kind, level.params_model) == ("level", "source", Level)
     assert level.summary == "A constant level."
-    assert [field.name for field in level.params_model.fields_doc()] == ["value"]
+    assert list(level.params_model.describe()) == ["value"]
 
 
 def test_a_call_with_the_wrong_number_of_signals_is_a_type_error():

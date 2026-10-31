@@ -119,8 +119,8 @@ def _arguments(one: Registered[Any, Any]) -> list[Argument]:
 
 
 def _parameter(name: str, schema: Mapping[str, Any]) -> Argument:
-    """A parameter from its JSON Schema. A choice is `enum`, or `const` for one choice (which pydantic writes with or
-    without an `enum` beside it, depending on its version); limits are numbers either way, shown as `:g`."""
+    """A parameter from its JSON Schema. A choice is `enum`, or `const` for one choice; limits are numbers, shown as
+    `:g`."""
     choices = schema["enum"] if "enum" in schema else [schema["const"]] if "const" in schema else None
     if choices is not None:
         annotation = f"Literal[{', '.join(json.dumps(choice) for choice in choices)}]"

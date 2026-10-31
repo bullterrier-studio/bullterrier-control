@@ -134,7 +134,7 @@ class Registered[P: Params, R]:
             "summary": self.summary,
             "returns": self.returns,
             "inputs": {name: {"required": required, "doc": INPUTS[name].doc} for name, required in self.inputs.items()},
-            "parameters": self.params_model.model_json_schema(),
+            "parameters": _schema(self.params_model),
         }
 
     def validate(self, values: Mapping[str, object]) -> P:
@@ -147,6 +147,15 @@ class Registered[P: Params, R]:
             return check(value)
         except ParameterError as error:
             raise ParameterError(f"{self.kind} {self.name!r}: {error}", error.problems) from None
+
+
+def _schema(params: type[Params]) -> dict[str, Any]:
+    """The JSON Schema of `params`: an object of its fields' descriptions (without the help text of a range)."""
+    properties = {name: {k: v for k, v in field.items() if k != "range"} for name, field in params.describe().items()}
+    schema: dict[str, Any] = {"additionalProperties": False, "properties": properties}
+    if params.__doc__:
+        schema["description"] = inspect.cleandoc(params.__doc__)
+    return {**schema, "title": params.__name__, "type": "object"}
 
 
 def _documentation(registered: "Registered[Any, Any]", described: str) -> str:
@@ -166,14 +175,14 @@ def _documentation(registered: "Registered[Any, Any]", described: str) -> str:
         for name, required in registered.inputs.items():
             lines += [f"  {name} ({'required' if required else 'optional'})", f"      {INPUTS[name].doc}"]
         lines.append("")
-    fields = registered.params_model.fields_doc()
+    fields = registered.params_model.describe()
     if fields:
         lines.append("Parameters:")
-    for one in fields:
-        measure = f" ({one.unit}, {one.minimum:g} to {one.maximum:g})" if one.unit else ""
-        flags = "".join(f", {flag}" for flag, on in (("advanced", one.advanced), ("cyclic", one.cyclic)) if on)
-        lines.append(f"  {one.name}{measure}, default {one.default!r}{flags}")
-        lines.append(f"      {one.doc}")
+    for name, one in fields.items():
+        measure = f" ({one['unit']}, {one['range']})" if "range" in one else ""
+        flags = "".join(f", {flag}" for flag in ("advanced", "cyclic") if one[flag])
+        lines.append(f"  {name}{measure}, default {one['default']!r}{flags}")
+        lines.append(f"      {one['description']}")
     return "\n".join(lines).rstrip()
 
 
@@ -223,7 +232,7 @@ def _register[P: Params, R](function: Callable[..., R], kind: _Kind, params: typ
         raise ValueError(
             f"{kind} {name!r}: a name is lower case letters, digits and underscores, starting with a letter"
         )
-    clashing = sorted((INPUTS.keys() | NODE_KEYS) & params.model_fields.keys())
+    clashing = sorted((INPUTS.keys() | NODE_KEYS) & params.describe().keys())
     if clashing:
         raise ValueError(f"{kind} {name!r}: the parameter {clashing[0]!r} has the name of an input or a patch key")
     inputs = _declared_inputs(function, kind)

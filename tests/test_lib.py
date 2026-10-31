@@ -2,9 +2,7 @@ import numpy as np
 import pytest
 
 from bullterrier_control import Event, Series, Unit, from_series, lib, registry
-from bullterrier_control.params import Params, param
-from bullterrier_control.plugin import Constant, Keyframe, Signal, operation, shaper, source
-from bullterrier_control.validated import Finite
+from bullterrier_control.plugin import Constant, Finite, Keyframe, Params, Signal, operation, param, shaper, source
 
 
 class Level(Params):

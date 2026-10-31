@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 from ..plugin import Keyframe, Params, Signal, curve, source
 
 
-class KeyframesParams(Params):
+class KeyframesParams(Params, builtin="keyframes"):
     """Keyframes have no parameters: the points, with their eases, say everything."""
 
 

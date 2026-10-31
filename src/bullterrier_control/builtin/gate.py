@@ -2,45 +2,12 @@
 
 import numpy as np
 from numpy.typing import NDArray
-from pydantic import model_validator
 
-from ..plugin import Finite, InvalidError, Params, Rendered, Signal, param, shaper
+from ..plugin import Params, Rendered, Signal, shaper
 
 
-class GateParams(Params):
+class GateParams(Params, builtin="gate"):
     """The two levels the gate opens and closes at."""
-
-    open: Finite = param(
-        0.5,
-        doc="The level at which a closed gate opens: the input at or above it. Raising it asks for a stronger input.",
-        unit="ratio",
-        min=-1e6,
-        max=1e6,
-    )
-    close: Finite = param(
-        0.4,
-        doc=(
-            "The level an open gate closes below: the input under it. At most `open`; the gap between the two is the"
-            " band in which the gate keeps its state, which stops a flicker. Equal to `open` is a plain threshold."
-        ),
-        unit="ratio",
-        min=-1e6,
-        max=1e6,
-    )
-    rate: Finite = param(
-        1000.0,
-        doc="Internal samples per second; the gate changes on one of them. Raising it is more exact and slower.",
-        unit="hertz",
-        min=10,
-        max=48000,
-        advanced=True,
-    )
-
-    @model_validator(mode="after")
-    def _close_is_not_above_open(self) -> "GateParams":
-        if self.close > self.open:
-            raise InvalidError.at("close", f"{self.close} is above open = {self.open}")
-        return self
 
 
 @shaper(params=GateParams)

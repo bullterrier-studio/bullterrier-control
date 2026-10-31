@@ -25,13 +25,12 @@ from .errors import FormatError, InvalidError, ParameterError
 from .formats import Event, Grid, Series, Unit
 from .hashing import uniform
 from .inputs import Keyframe, matching
-from .params import Params, param
+from .params import Finite, Params, Switch, Text, Whole, param
 from .registry import operation, shaper, source
 from .rendered import Rendered
 from .rounding import at_least, more_than
 from .scaling import between
 from .signal import Constant, Signal, maximum, minimum
-from .validated import Finite, Switch, Text, Whole
 
 __all__ = [
     "EASES",

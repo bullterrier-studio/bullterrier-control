@@ -3,19 +3,11 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from ..plugin import Finite, Params, Signal, param, shaper
+from ..plugin import Params, Signal, shaper
 
 
-class DelayParams(Params):
+class DelayParams(Params, builtin="delay"):
     """How far the output trails its input."""
-
-    lag: Finite = param(
-        0.1,
-        doc="Seconds the output trails its input, 0 to 3600; raising it shows the input later. 0 passes it through.",
-        unit="seconds",
-        min=0,
-        max=3600,
-    )
 
 
 class _Delayed(Signal):

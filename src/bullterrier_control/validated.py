@@ -1,4 +1,4 @@
-"""The base of every validated model (a source's parameters, a keyframe): frozen, strict, one way in from outside.
+"""The base of the validated models of the inputs (a keyframe): frozen, strict, one way in from outside.
 
     frame = Keyframe.parse({"t": 2.5, "value": -0.75})   # the model, or a ParameterError
 

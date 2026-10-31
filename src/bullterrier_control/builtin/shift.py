@@ -1,21 +1,10 @@
 """shift: move events earlier or later in time: a flash that leads its kick, a cue that lags the beat."""
 
-from ..plugin import Event, Finite, Params, at_least, more_than, operation, param
+from ..plugin import Event, Params, at_least, more_than, operation
 
 
-class ShiftParams(Params):
+class ShiftParams(Params, builtin="shift"):
     """How far to move the events."""
-
-    offset: Finite = param(
-        0.0,
-        doc=(
-            "Seconds to move every event, -3600 to 3600: positive moves them later (a lag), negative earlier (a lead)."
-            " What would start before time 0 is cut off there."
-        ),
-        unit="seconds",
-        min=-3600,
-        max=3600,
-    )
 
 
 @operation(params=ShiftParams)

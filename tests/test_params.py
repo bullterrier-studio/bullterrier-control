@@ -3,8 +3,7 @@ from typing import Literal
 import pytest
 
 from bullterrier_control import ParameterError
-from bullterrier_control.params import UNITS, Params, param
-from bullterrier_control.validated import Finite, Switch, Whole
+from bullterrier_control.plugin import Finite, Params, Switch, Whole, param
 
 
 class Wave(Params):
@@ -31,19 +30,44 @@ def test_values_given_replace_the_defaults_and_a_whole_number_is_fine_for_a_deci
     assert (wave.depth, wave.steps, wave.shape, wave.smooth) == (1.0, 8, "saw", False)
 
 
+def test_the_constructor_reads_keywords_as_parse_reads_a_mapping():
+    assert Wave(depth=0.25, steps=2) == Wave.parse({"depth": 0.25, "steps": 2})
+    with pytest.raises(ParameterError, match="depth"):
+        Wave(depth=2)
+
+
+def test_a_model_is_a_frozen_value():
+    wave = Wave.parse({"depth": 0.25})
+    with pytest.raises(AttributeError):
+        wave.depth = 0.75  # the point: a field cannot be rebound
+    assert wave.depth == 0.25
+    assert wave == Wave.parse({"depth": 0.25})
+    assert wave != Wave.parse({"depth": 0.75})
+    assert hash(wave) == hash(Wave.parse({"depth": 0.25}))
+    assert "depth=0.25" in repr(wave)
+
+
+def test_to_dict_holds_every_field_with_defaults_filled_in():
+    assert Wave.parse({"steps": 8}).to_dict() == {
+        "depth": 0.5,
+        "steps": 8,
+        "shape": "sine",
+        "smooth": True,
+        "rate": 1.0,
+    }
+
+
 def test_the_fields_are_described_basic_ones_first_then_advanced():
-    fields = {field.name: field for field in Wave.fields_doc()}
+    fields = Wave.describe()
     assert list(fields) == ["depth", "steps", "shape", "smooth", "rate"]
-    assert (fields["depth"].unit, fields["depth"].minimum, fields["depth"].maximum, fields["depth"].default) == (
-        "fraction",
-        0,
-        1,
-        0.5,
-    )
-    assert fields["shape"].unit is None
-    assert fields["shape"].minimum is None
-    assert [field.advanced for field in fields.values()] == [False, False, False, False, True]
-    assert "speeds the wave up" in fields["rate"].doc
+    depth = fields["depth"]
+    assert (depth["unit"], depth["minimum"], depth["maximum"], depth["default"]) == ("fraction", 0, 1, 0.5)
+    assert depth["range"] == "0 to 1"
+    assert fields["shape"]["unit"] is None
+    assert "minimum" not in fields["shape"]
+    assert fields["shape"]["enum"] == ["sine", "saw"]
+    assert [field["advanced"] for field in fields.values()] == [False, False, False, False, True]
+    assert "speeds the wave up" in fields["rate"]["description"]
 
 
 class Reordered(Params):
@@ -54,7 +78,7 @@ class Reordered(Params):
 
 
 def test_advanced_fields_are_listed_after_the_basic_ones_whatever_the_declaration_order():
-    assert [field.name for field in Reordered.fields_doc()] == ["main", "fine"]
+    assert list(Reordered.describe()) == ["main", "fine"]
 
 
 EDGES = {
@@ -91,6 +115,13 @@ def test_an_invalid_value_is_refused_naming_the_field(values, named, reports):
     with pytest.raises(ParameterError) as refused:
         Wave.parse(values)
     reports(refused.value, named)
+    assert [path for path, _ in refused.value.problems] == [named]
+
+
+def test_every_broken_rule_is_listed():
+    with pytest.raises(ParameterError) as refused:
+        Wave.parse({"depth": 2, "steps": 1.0, "fps": 30})
+    assert {path for path, _ in refused.value.problems} == {"depth", "steps", "fps"}
 
 
 def declared(annotation, spec, name="amount"):
@@ -99,7 +130,7 @@ def declared(annotation, spec, name="amount"):
 
 
 DECLARATIONS = {
-    "a field without a description": (Finite, param(1.0, doc="", unit="ratio", min=0, max=2), "amount"),
+    "a field without a description": (Finite, param(1.0, doc="", unit="ratio", min=0, max=2), "description"),
     "a number without a unit": (Finite, param(1.0, doc="Some number.", min=0, max=2), "unit"),
     "a unit that is not one of the units": (
         Finite,
@@ -108,16 +139,16 @@ DECLARATIONS = {
     ),
     "a number without a range": (Finite, param(1.0, doc="Some number.", unit="ratio"), "min"),
     "a number with half a range": (Finite, param(1.0, doc="Some number.", unit="ratio", min=0), "max"),
-    "a default below its range": (Finite, param(-1.0, doc="Some number.", unit="ratio", min=0, max=2), "default"),
-    "a default above its range": (Finite, param(3.0, doc="Some number.", unit="ratio", min=0, max=2), "default"),
+    "a default below its range": (Finite, param(-1.0, doc="Some number.", unit="ratio", min=0, max=2), "range"),
+    "a default above its range": (Finite, param(3.0, doc="Some number.", unit="ratio", min=0, max=2), "range"),
     "a switch with a unit": (Switch, param(True, doc="A switch.", unit="count"), "unit"),
     "a choice with a range": (Literal["a", "b"], param("a", doc="A choice.", min=0, max=1), "min"),
     "a number not declared with param": (Finite, 1.0, "unit"),
     "a discouraged name": (Finite, param(1.0, doc="Some number.", unit="ratio", min=0, max=2), "strength"),
     "a name that is a unit": (Finite, param(1.0, doc="Some number.", unit="ratio", min=0, max=2), "seconds"),
-    "an optional number": (Finite | None, param(None, doc="Maybe a number."), "supported"),
-    "a list of numbers": (list[Finite], param([1.0], doc="Some numbers."), "supported"),
-    "a choice of numbers": (Literal[1, 2], param(1, doc="A choice."), "supported"),
+    "an optional number": (Finite | None, param(None, doc="Maybe a number."), "None"),
+    "a list of numbers": (list[Finite], param([1.0], doc="Some numbers."), "list"),
+    "a choice of numbers": (Literal[1, 2], param(1, doc="A choice."), "names"),
     "a range with no top": (Finite, param(1.0, doc="Some number.", unit="ratio", min=0, max=float("inf")), "finite"),
     "a range with a nan end": (Finite, param(1.0, doc="Some number.", unit="ratio", min=float("nan"), max=2), "finite"),
     "a choice whose default is not offered": (Literal["a", "b"], param("zzz", doc="A choice."), "default"),
@@ -139,23 +170,22 @@ DECLARATIONS = {
         "cyclic",
     ),
     "a cyclic switch": (Switch, param(True, doc="A switch.", cyclic=True), "cyclic"),
-    "a field with an alias": (
-        Finite,
-        param(1.0, doc="Some number.", unit="ratio", min=0, max=2, alias="other"),
-        "alias",
-    ),
 }
 
 
 @pytest.mark.parametrize(("annotation", "spec", "named"), DECLARATIONS.values(), ids=DECLARATIONS.keys())
-def test_a_broken_declaration_fails_when_the_class_is_made_naming_the_field_or_rule(annotation, spec, named):
+def test_a_broken_declaration_fails_when_the_class_is_made_naming_the_field_and_rule(annotation, spec, named):
     field = named if named in ("strength", "seconds") else "amount"
-    with pytest.raises(ValueError, match=named):
+    with pytest.raises(ParameterError, match=named) as refused:
         declared(annotation, spec, field)
+    assert {path for path, _ in refused.value.problems} == {field}
+
+
+UNITS = ["seconds", "beats", "hertz", "cycles", "fraction", "decibels", "ratio", "semitones", "count"]
 
 
 @pytest.mark.parametrize("unit", UNITS)
-def test_every_declared_unit_can_be_used(unit):
+def test_every_documented_unit_can_be_used(unit):
     declared(Finite, param(1.0, doc="Some number.", unit=unit, min=0, max=2))
 
 
@@ -184,7 +214,7 @@ def test_a_number_declared_with_a_plain_float_or_int_is_as_strict_as_the_shared_
 
 
 def test_a_field_without_a_default_is_refused_when_the_class_is_made():
-    with pytest.raises(ValueError, match="default"):
+    with pytest.raises(ParameterError, match="default"):
         type("NoDefault", (Params,), {"__annotations__": {"amount": Finite}, "__doc__": "No default."})
 
 
@@ -204,8 +234,6 @@ WRAPPED = {
     "several cycles past": ({"phase": 3.5}, {"phase": 0.5}),
     "a whole number of cycles below": ({"phase": -1}, {"phase": 0.0}),
     "a whole number given for a decimal": ({"phase": 2}, {"phase": 0.0}),
-    "a huge whole number of cycles": ({"phase": 10**400}, {"phase": 0.0}),
-    "a huge negative whole number, range centred on 0": ({"centred": -(10**400)}, {"centred": 0.0}),
     "a range centred on 0, past its end": ({"centred": 0.75}, {"centred": -0.25}),
     "a range centred on 0, before its start": ({"centred": -0.75}, {"centred": 0.25}),
 }
@@ -223,6 +251,7 @@ NOT_A_POSITION = {
     "nothing": None,
     "NaN": float("nan"),
     "an infinity": float("inf"),
+    "a whole number beyond 64 bits": 10**400,
 }
 
 
@@ -238,29 +267,30 @@ def test_a_cyclic_range_may_start_anywhere_a_cycle_wide():
     declared(Finite, param(0.5, doc="Some number.", unit="cycles", min=-0.5, max=0.5, cyclic=True))
 
 
-def test_the_description_says_which_fields_are_cyclic():
-    fields = {field.name: field for field in Turn.fields_doc()}
-    assert [fields["phase"].cyclic, fields["centred"].cyclic] == [True, True]
-    assert not any(field.cyclic for field in Wave.fields_doc())
+def test_the_description_keeps_the_turn_as_minimum_and_maximum_beside_cyclic():
+    phase = Turn.describe()["phase"]
+    assert (phase["minimum"], phase["maximum"], phase["unit"], phase["cyclic"]) == (0, 1, "cycles", True)
+    assert not any(field["cyclic"] for field in Wave.describe().values())
 
 
-def test_the_json_schema_keeps_the_turn_as_minimum_and_maximum_beside_cyclic():
-    cyclic = Turn.model_json_schema()["properties"]["phase"]
-    assert (cyclic["minimum"], cyclic["maximum"], cyclic["unit"], cyclic["cyclic"]) == (0, 1, "cycles", True)
-    plain = Wave.model_json_schema()["properties"]["depth"]
-    assert (plain["minimum"], plain["maximum"], plain["unit"], plain["cyclic"], plain["advanced"]) == (
-        0,
-        1,
-        "fraction",
-        False,
-        False,
-    )
-    assert plain["default"] == 0.5
-    assert plain["description"].startswith("How far the wave moves")
+class Probe(Params, builtin="lfo"):
+    """A class made from the table the core declares for a built-in."""
 
 
-def test_the_json_schema_states_a_range_once():
-    # `min` and `max` beside `minimum` and `maximum` would be two spellings of one fact for a consumer to reconcile
-    for field in Turn.model_json_schema()["properties"].values():
-        assert "min" not in field
-        assert "max" not in field
+class Clipped(Params, builtin="clip"):
+    """The table of a built-in with a rule between its fields."""
+
+
+def test_a_built_in_class_has_the_fields_defaults_and_wrapping_its_table_declares():
+    assert list(Probe.describe()) == ["shape", "rate", "per", "phase", "low", "high", "duty"]
+    probe = Probe.parse({"phase": 1.25})
+    assert (probe.shape, probe.rate, probe.phase, probe.high) == ("sine", 1.0, 0.25, 1.0)
+
+
+def test_a_built_in_class_refuses_what_its_table_refuses_including_a_rule_between_fields(reports):
+    assert Clipped.parse({"low": 0.5, "high": 0.5}).to_dict() == {"low": 0.5, "high": 0.5}
+    with pytest.raises(ParameterError) as refused:
+        Clipped.parse({"low": 0.5, "high": 0.2})
+    reports(refused.value, "high")
+    with pytest.raises(ParameterError, match="rise"):
+        Probe.parse({"rise": 0.1})

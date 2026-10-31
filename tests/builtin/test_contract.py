@@ -5,7 +5,7 @@ moment it is registered and no test names it. The signal tests run over sources 
 not a signal); the parameter and input tests run over every kind.
 """
 
-from typing import Any
+from typing import Any, NamedTuple
 
 import jsonschema
 import numpy as np
@@ -175,12 +175,27 @@ def test_every_one_gives_a_finite_value_or_a_signal_error_at_any_time_never_a_wa
     assert np.isfinite(values).all()
 
 
+class Field(NamedTuple):
+    """A numeric parameter as its description gives it."""
+
+    name: str
+    minimum: float
+    maximum: float
+    whole: bool
+    cyclic: bool
+
+
 def numeric_fields(name):
-    return [field for field in registry.get(name).params_model.fields_doc() if field.minimum is not None]
+    described = registry.get(name).params_model.describe()
+    return [
+        Field(field, one["minimum"], one["maximum"], one["type"] == "integer", one["cyclic"])
+        for field, one in described.items()
+        if "minimum" in one
+    ]
 
 
 def value_at(field, bound):
-    return int(bound) if isinstance(field.default, int) else float(bound)
+    return int(bound) if field.whole else float(bound)
 
 
 NUMBERS = sorted({(name, field.name) for name in ALL for field in numeric_fields(name)})
@@ -287,7 +302,7 @@ def test_every_description_is_a_json_schema_that_accepts_the_defaults(name):
     """A consumer checks a pipeline against `description()["parameters"]` before running it."""
     schema = registry.get(name).description()["parameters"]
     jsonschema.Draft202012Validator.check_schema(schema)
-    defaults = {field.name: field.default for field in registry.get(name).params_model.fields_doc()}
+    defaults = {field: one["default"] for field, one in registry.get(name).params_model.describe().items()}
     jsonschema.validate(defaults, schema)
 
 
