@@ -12,7 +12,6 @@
 use std::sync::OnceLock;
 
 use bullterrier_control::{Error, Interpolation, Rendering, Signal};
-use numpy::{PyArray1, PyArrayDyn, PyArrayMethods};
 use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pyclass_init::PyClassInitializer;
@@ -20,7 +19,7 @@ use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyTuple, PyType};
 
 use crate::callback;
-use crate::data::shown;
+use crate::data::{float64s, shaped, shown};
 use crate::error;
 use crate::formats::PySeries;
 use crate::params;
@@ -325,18 +324,11 @@ fn read<'py>(signal: &Signal, times: &Bound<'py, PyAny>, how: Read) -> PyResult<
             },
         ));
     }
-    let order = PyDict::new(py);
-    order.set_item("dtype", "float64")?;
-    order.set_item("order", "C")?;
-    // a copy of its own, row by row, which no other code holds
-    let moments = numpy
-        .call_method("array", (&raw,), Some(&order))?
-        .cast_into::<PyArrayDyn<f64>>()?
-        .to_vec()?;
+    let (moments, shape) = float64s(&raw)?;
     let mut values = vec![0.0; moments.len()];
     py.detach(|| how(signal, &moments, &mut values))
         .map_err(|error| error::raised(py, error))?;
-    PyArray1::from_vec(py, values).call_method1("reshape", (raw.getattr("shape")?,))
+    shaped(py, values, &shape)
 }
 
 /// `first` and `second` combined by `operation`, or `NotImplemented` (for Python to raise its `TypeError`) if either

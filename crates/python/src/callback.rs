@@ -10,10 +10,11 @@
 use std::cell::Cell;
 
 use bullterrier_control::{Error, Rendering, Signal};
-use numpy::{PyArray1, PyArrayDyn, PyArrayMethods, PyUntypedArrayMethods};
+use numpy::PyArray1;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+use crate::data::float64s;
 use crate::error;
 
 /// How many calls into Python a read may nest on one thread. A level takes about 2.5 KB of stack in a release build
@@ -63,7 +64,7 @@ pub(crate) fn computed(instance: Py<PyAny>) -> Signal {
             let _nested = Nested::enter(py)?;
             let given = PyArray1::from_slice(py, times);
             let values = instance.bind(py).call_method1("compute", (given,))?;
-            let values = float64s(&values, times.len(), |shape| {
+            let values = numbers(&values, times.len(), |shape| {
                 format!(
                     "compute of {} returned an array of shape {shape} for times of shape ({},)",
                     instance.bind(py).get_type(),
@@ -87,7 +88,7 @@ pub(crate) fn rendered(input: &Signal, rendering: Rendering, run: Py<PyAny>) -> 
             let _nested = Nested::enter(py)?;
             let given = PyArray1::from_slice(py, inputs);
             let outputs = run.bind(py).call1((given,))?;
-            float64s(&outputs, inputs.len(), |shape| {
+            numbers(&outputs, inputs.len(), |shape| {
                 format!(
                     "the recurrence returned an array of shape {shape} for an input of shape ({},)",
                     inputs.len()
@@ -97,17 +98,12 @@ pub(crate) fn rendered(input: &Signal, rendering: Rendering, run: Py<PyAny>) -> 
     })
 }
 
-/// `values` as `length` float64 numbers, copied by numpy into an array no one else holds before Rust reads it; a
-/// `ValueError` with `wrong(shape)` if numpy gives another shape than `(length,)`, and numpy's own error if it cannot
-/// make float64 of `values`.
-fn float64s(values: &Bound<'_, PyAny>, length: usize, wrong: impl FnOnce(String) -> String) -> PyResult<Vec<f64>> {
-    let copy = values
-        .py()
-        .import("numpy")?
-        .call_method1("array", (values, "float64"))?
-        .cast_into::<PyArrayDyn<f64>>()?;
-    if copy.shape() != [length] {
-        return Err(PyValueError::new_err(wrong(copy.getattr("shape")?.repr()?.to_string())));
+/// `values` as `length` float64 numbers ([`float64s`]); a `ValueError` with `wrong(shape)` if numpy gives another
+/// shape than `(length,)`.
+fn numbers(values: &Bound<'_, PyAny>, length: usize, wrong: impl FnOnce(String) -> String) -> PyResult<Vec<f64>> {
+    let (numbers, shape) = float64s(values)?;
+    if shape.extract::<Vec<usize>>()? != [length] {
+        return Err(PyValueError::new_err(wrong(shape.repr()?.to_string())));
     }
-    Ok(copy.to_vec()?)
+    Ok(numbers)
 }

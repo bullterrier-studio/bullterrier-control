@@ -1,6 +1,7 @@
 //! Python values read as the formats' data: [`Data`], a serde deserializer over a Python object that the core's readers
 //! (`Event::from_deserializer`, ...) read exactly as they read JSON, and [`numbers`], the one conversion of an array-like
-//! into owned float64 numbers.
+//! into owned float64 numbers. Arrays a computation reads and gives (times, values, progress) are [`float64s`] and
+//! [`shaped`].
 //!
 //! Python can hold what JSON cannot, and each is refused or turned into its JSON form here, so a Python object is held to
 //! the rules a file is: a `bool` is `true` or `false` (never a number), a `str` that cannot be written as UTF-8 (a lone
@@ -11,7 +12,9 @@
 
 use std::fmt;
 
-use numpy::{PyArrayDescrMethods, PyArrayDyn, PyArrayMethods, PyUntypedArray, PyUntypedArrayMethods};
+use numpy::{
+    Element, PyArray1, PyArrayDescrMethods, PyArrayDyn, PyArrayMethods, PyUntypedArray, PyUntypedArrayMethods,
+};
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyMapping, PyString, PyTuple, PyType};
@@ -357,4 +360,29 @@ pub(crate) fn shown(value: &Bound<'_, PyAny>) -> String {
     } else {
         text
     }
+}
+
+/// `values` (anything numpy makes float64 of: an array of any dtype, shape and layout, a list, a number) as float64
+/// numbers in row-major order, and the shape numpy gave them. numpy copies them into an array no other code holds
+/// before Rust reads it, so no other thread can change them meanwhile; numpy's own error if it cannot.
+pub(crate) fn float64s<'py>(values: &Bound<'py, PyAny>) -> PyResult<(Vec<f64>, Bound<'py, PyAny>)> {
+    let py = values.py();
+    let layout = PyDict::new(py);
+    layout.set_item("dtype", "float64")?;
+    layout.set_item("order", "C")?;
+    let copy = py
+        .import("numpy")?
+        .call_method("array", (values,), Some(&layout))?
+        .cast_into::<PyArrayDyn<f64>>()?;
+    let shape = copy.getattr("shape")?;
+    Ok((copy.to_vec()?, shape))
+}
+
+/// `values` as a numpy array of `shape` (a tuple numpy gave, of as many items in all).
+pub(crate) fn shaped<'py, T: Element>(
+    py: Python<'py>,
+    values: Vec<T>,
+    shape: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    PyArray1::from_vec(py, values).call_method1("reshape", (shape,))
 }

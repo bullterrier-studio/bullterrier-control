@@ -3,15 +3,19 @@
 # (`bullterrier_control.Event`, ...): their `__module__` is `bullterrier_control`.
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, ClassVar, Literal, Self, final
+from typing import Any, ClassVar, Literal, Self, final, overload
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from typing_extensions import disjoint_base
 
 __all__ = [
+    "EASES",
+    "TOLERANCE",
     "Bundle",
     "Constant",
+    "Counter",
+    "Ease",
     "Event",
     "Grid",
     "ParamTable",
@@ -19,20 +23,26 @@ __all__ = [
     "Series",
     "SignalBase",
     "Unit",
+    "at_least",
+    "between",
     "builtins",
     "bundle_schema",
+    "counter",
     "dumps",
+    "ease",
     "from_series",
     "from_values",
     "is_bundle_name",
     "make_signals_as",
     "maximum",
     "minimum",
+    "more_than",
     "parameters",
     "parse_parameters",
     "render",
     "shape",
     "shapers",
+    "uniform",
 ]
 
 def render(name: str, inputs: NDArray[np.float64], params: Mapping[str, object]) -> NDArray[np.float64]: ...
@@ -217,3 +227,27 @@ def maximum(first: SignalBase | float, second: SignalBase | float) -> SignalBase
 def minimum(first: SignalBase | float, second: SignalBase | float) -> SignalBase: ...
 def shape(name: str, signal: SignalBase, params: Mapping[str, object]) -> SignalBase: ...
 def make_signals_as(cls: type[SignalBase]) -> None: ...
+
+EASES: tuple[str, ...]
+TOLERANCE: float
+
+@final
+class Ease:
+    def __call__(self, progress: ArrayLike) -> NDArray[np.float64]: ...
+
+@final
+class Counter:
+    def __call__(self, times: ArrayLike) -> NDArray[np.float64]: ...
+
+def ease(name: str) -> Ease: ...
+def uniform(seed: int, index: NDArray[np.uint64]) -> NDArray[np.float64]: ...
+def between(low: float, high: float, fraction: ArrayLike) -> NDArray[np.float64]: ...
+def counter(rate: float, per: Literal["second", "beat"], grid: Grid | None) -> Counter: ...
+@overload
+def at_least(value: float, bound: float) -> bool: ...
+@overload
+def at_least(value: NDArray[np.float64], bound: float) -> NDArray[np.bool_]: ...
+@overload
+def more_than(value: float, bound: float) -> bool: ...
+@overload
+def more_than(value: NDArray[np.float64], bound: float) -> NDArray[np.bool_]: ...

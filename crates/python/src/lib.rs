@@ -12,6 +12,7 @@ mod data;
 mod error;
 mod formats;
 mod params;
+mod primitives;
 mod signal;
 
 use std::convert::Infallible;
@@ -31,16 +32,19 @@ mod _core {
     #[pymodule_export]
     use super::params::{PyParamTable, builtins, parameters, parse_parameters};
     #[pymodule_export]
+    use super::primitives::{Counter, PyEase, at_least, between, counter, ease, more_than, uniform};
+    #[pymodule_export]
     use super::signal::{
         Constant, Rendered, SignalBase, from_series, from_values, make_signals_as, maximum, minimum, shape,
     };
     #[pymodule_export]
     use super::{render, shapers};
 
-    /// Every unit of the core becomes a member of `Unit`.
+    /// Every unit of the core becomes a member of `Unit`; the primitives' constants are added.
     #[pymodule_init]
-    fn init(py: Python<'_>) -> PyResult<()> {
-        super::formats::add_units(py)
+    fn init(module: &Bound<'_, PyModule>) -> PyResult<()> {
+        super::formats::add_units(module.py())?;
+        super::primitives::add_constants(module)
     }
 }
 
