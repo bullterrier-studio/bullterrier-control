@@ -31,6 +31,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 serde_path_to_error = "0.1"
 syn = "3"
+# toml: a patch file is TOML; only the parser (no serde, no writer), which keeps the file order through its spans
+toml = { version = "1", default-features = false, features = ["parse"] }
 
 # Warnings, not errors, so a newer compiler's new lint never breaks a user's install; the gate (`poe check`) runs clippy
 # and rustdoc with `-D warnings`, so every one fails it.

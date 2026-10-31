@@ -25,6 +25,7 @@ pub mod formats;
 pub mod hashing;
 pub mod inputs;
 pub mod params;
+pub mod patch;
 pub mod registry;
 pub mod rounding;
 pub mod scaling;
@@ -32,6 +33,7 @@ mod signal;
 
 pub use error::Error;
 pub use params::{Choice, Params};
+pub use patch::Patch;
 pub use registry::{Operation, Registry, Shaper, Source};
 pub use signal::{FromValues, Interpolation, MAX_DEPTH, Rendering, Signal, maximum, minimum};
 
