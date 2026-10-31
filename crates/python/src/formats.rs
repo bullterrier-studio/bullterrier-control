@@ -44,7 +44,7 @@ fn read_only(dict: Bound<'_, PyDict>) -> PyResult<Bound<'_, PyAny>> {
 }
 
 /// `value` as Python shows it.
-fn shown<'py>(py: Python<'py>, value: impl IntoPyObject<'py>) -> PyResult<String> {
+pub(crate) fn shown<'py>(py: Python<'py>, value: impl IntoPyObject<'py>) -> PyResult<String> {
     Ok(value.into_bound_py_any(py)?.repr()?.to_string())
 }
 
@@ -82,7 +82,10 @@ fn number_list<'py>(about: &str, field: &str, value: &Bound<'py, PyAny>) -> PyRe
 }
 
 /// A dict of the keyword arguments given (`None` is left out, as a file leaves out an optional field).
-fn fields<'py>(py: Python<'py>, given: &[(&str, Option<Bound<'py, PyAny>>)]) -> PyResult<Bound<'py, PyDict>> {
+pub(crate) fn fields<'py>(
+    py: Python<'py>,
+    given: &[(&str, Option<Bound<'py, PyAny>>)],
+) -> PyResult<Bound<'py, PyDict>> {
     let dict = PyDict::new(py);
     for (name, value) in given {
         if let Some(value) = value {
@@ -95,7 +98,7 @@ fn fields<'py>(py: Python<'py>, given: &[(&str, Option<Bound<'py, PyAny>>)]) -> 
 // ---- hashing: equal values hash equally (0.0 and -0.0 are equal); every number of a format is finite ----
 
 /// Feed `value` to `hasher` so that `0.0` and `-0.0` feed the same.
-fn feed(hasher: &mut DefaultHasher, value: f64) {
+pub(crate) fn feed(hasher: &mut DefaultHasher, value: f64) {
     // adding 0.0 turns -0.0 into 0.0 and leaves every other finite number as it is
     (value + 0.0).to_bits().hash(hasher);
 }
@@ -363,7 +366,8 @@ impl PySeries {
         &self.inner
     }
 
-    fn wrap(py: Python<'_>, inner: Series) -> PyResult<Self> {
+    /// The series `inner`, its values a read-only array of its own.
+    pub(crate) fn wrap(py: Python<'_>, inner: Series) -> PyResult<Self> {
         // over an immutable `bytes` copy: numpy cannot make such an array writeable, nor reach the memory another way
         let bytes: Vec<u8> = inner.values().iter().flat_map(|value| value.to_ne_bytes()).collect();
         let values = py

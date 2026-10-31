@@ -10,7 +10,9 @@
 //! A numpy array is read as its own copy (`tolist()`), never as a view of the caller's memory. A value nested more
 //! than 128 lists or mappings deep (one that holds itself) is refused, never read until the stack overflows.
 
+use std::cell::RefCell;
 use std::fmt;
+use std::rc::Rc;
 
 use numpy::{
     Element, PyArray1, PyArrayDescrMethods, PyArrayDyn, PyArrayMethods, PyUntypedArray, PyUntypedArrayMethods,
@@ -21,8 +23,10 @@ use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyMapping, PyString, P
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Unexpected, Visitor};
 
 use bullterrier_control::formats::Problem;
+use bullterrier_control::inputs::Keyframe;
 
-use crate::formats::PyUnit;
+use crate::formats::{PyEvent, PyGrid, PySeries, PyUnit};
+use crate::inputs::PyKeyframe;
 
 /// The rule a `str` breaks that cannot be written as UTF-8 (it holds a lone surrogate).
 pub(crate) const NOT_UTF8: &str = "text must be writable as UTF-8";
@@ -54,10 +58,24 @@ impl de::Error for Refusal {
     }
 }
 
-/// A Python failure while reading (a `tolist()` or `.items()` that raised): its message, as a refusal of that value.
-#[expect(clippy::needless_pass_by_value, reason = "map_err passes the error by value")]
-fn failed(error: PyErr) -> Refusal {
-    Refusal(error.to_string())
+/// Where one reading keeps the first Python exception a value raised while it was read, shared by every part read.
+type Raised = Rc<RefCell<Option<PyErr>>>;
+
+/// A Python failure while reading (a `tolist()` or `.items()` that raised): its message, as a refusal of that value;
+/// the first one of a reading is kept in `raised`.
+fn failed(raised: &Raised, error: PyErr) -> Refusal {
+    let refusal = Refusal(error.to_string());
+    raised.borrow_mut().get_or_insert(error);
+    refusal
+}
+
+/// `read` run over `value` as [`Data`]: what it made of it, or the Python exception the value raised while it was read
+/// (a mapping's `items()`, an array's `tolist()`), unchanged, whatever `read` made of that.
+pub(crate) fn read<'py, T>(value: Bound<'py, PyAny>, read: impl FnOnce(Data<'py>) -> T) -> PyResult<T> {
+    let data = Data::new(value);
+    let raised = Rc::clone(&data.raised);
+    let made = read(data);
+    raised.take().map_or(Ok(made), Err)
 }
 
 /// The most lists, tuples or mappings a value may be nested in. A Python value can nest without bound, or hold itself,
@@ -66,19 +84,27 @@ fn failed(error: PyErr) -> Refusal {
 const DEEPEST: usize = 128;
 
 /// A Python object as serde data: `None` is null, `bool`, `int`, `float` and `str` are themselves, a list or tuple is
-/// a sequence, a mapping with text keys an object, a numpy array its `tolist()`, a numpy scalar its `item()` and a
-/// `Unit` its name. Anything else is a wrong type for the field it is read for, and a list, tuple or mapping inside
-/// [`DEEPEST`] others (a list that holds itself) is refused as nested too deeply.
+/// a sequence, a mapping with text keys an object, a numpy array its `tolist()`, a numpy scalar its `item()`, a
+/// `Unit` its name and an `Event`, `Keyframe`, `Grid` or `Series` the object a file holds for it. Anything else is a
+/// wrong type for the field it is read for, and a list, tuple or mapping inside [`DEEPEST`] others (a list that holds
+/// itself) is refused as nested too deeply.
 pub(crate) struct Data<'py> {
     value: Bound<'py, PyAny>,
     /// How many lists, tuples or mappings `value` is inside.
     depth: usize,
+    /// The first Python exception raised while reading: once there is one, nothing more is read.
+    raised: Raised,
 }
 
 impl<'py> Data<'py> {
-    /// `value`, read as a whole.
-    pub(crate) const fn new(value: Bound<'py, PyAny>) -> Self {
-        Self { value, depth: 0 }
+    /// `value`, read as a whole. A Python exception it raises while read is a refusal with its message; [`read`] raises
+    /// it instead.
+    pub(crate) fn new(value: Bound<'py, PyAny>) -> Self {
+        Self {
+            value,
+            depth: 0,
+            raised: Raised::default(),
+        }
     }
 }
 
@@ -95,9 +121,11 @@ impl<'de> Deserializer<'de> for Data<'_> {
     type Error = Refusal;
 
     fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Refusal> {
-        let depth = self.depth;
-        let value = self.value;
-        if value.is_none() {
+        let Self { value, depth, raised } = self;
+        let failed = |error| failed(&raised, error);
+        if raised.borrow().is_some() {
+            Err(Refusal("not read: reading raised an exception".to_owned()))
+        } else if value.is_none() {
             visitor.visit_unit()
         } else if let Ok(flag) = value.cast::<PyBool>() {
             visitor.visit_bool(flag.is_true())
@@ -114,23 +142,37 @@ impl<'de> Deserializer<'de> for Data<'_> {
         } else if let Ok(text) = value.cast::<PyString>() {
             visitor.visit_str(text.to_str().map_err(|_| Refusal(NOT_UTF8.to_owned()))?)
         } else if let Ok(list) = value.cast::<PyList>() {
-            visitor.visit_seq(Items::new(list.iter().collect(), inside(depth)?))
+            visitor.visit_seq(Items::new(list.iter().collect(), inside(depth)?, &raised))
         } else if let Ok(tuple) = value.cast::<PyTuple>() {
-            visitor.visit_seq(Items::new(tuple.iter().collect(), inside(depth)?))
+            visitor.visit_seq(Items::new(tuple.iter().collect(), inside(depth)?, &raised))
         } else if let Ok(dict) = value.cast::<PyDict>() {
-            visitor.visit_map(Pairs::new(dict.iter().collect(), inside(depth)?))
+            visitor.visit_map(Pairs::new(dict.iter().collect(), inside(depth)?, &raised))
         } else if let Ok(unit) = value.cast::<PyUnit>() {
             visitor.visit_str(unit.get().0.as_str())
+        } else if let Some(held) = held(&value)? {
+            held.deserialize_any(visitor).map_err(de::Error::custom)
         } else if value.cast::<PyUntypedArray>().is_ok() {
             let items = value.call_method0("tolist").map_err(failed)?;
-            Data { value: items, depth }.deserialize_any(visitor)
+            let raised = Rc::clone(&raised);
+            Data {
+                value: items,
+                depth,
+                raised,
+            }
+            .deserialize_any(visitor)
         } else if is_numpy_scalar(&value).map_err(failed)? {
             let item = value.call_method0("item").map_err(failed)?;
             // a numpy scalar with no Python equivalent (a long double) gives itself back
             if is_numpy_scalar(&item).map_err(failed)? {
                 Err(wrong_type(&value, &visitor))
             } else {
-                Data { value: item, depth }.deserialize_any(visitor)
+                let raised = Rc::clone(&raised);
+                Data {
+                    value: item,
+                    depth,
+                    raised,
+                }
+                .deserialize_any(visitor)
             }
         } else if let Ok(mapping) = value.cast::<PyMapping>() {
             let inside = inside(depth)?;
@@ -140,7 +182,7 @@ impl<'de> Deserializer<'de> for Data<'_> {
                 .map(|pair| pair.extract::<(Bound<'_, PyAny>, Bound<'_, PyAny>)>())
                 .collect::<PyResult<_>>()
                 .map_err(failed)?;
-            visitor.visit_map(Pairs::new(pairs, inside))
+            visitor.visit_map(Pairs::new(pairs, inside, &raised))
         } else {
             Err(wrong_type(&value, &visitor))
         }
@@ -158,6 +200,25 @@ impl<'de> Deserializer<'de> for Data<'_> {
         bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf unit unit_struct
         newtype_struct seq tuple tuple_struct map struct enum identifier ignored_any
     }
+}
+
+/// The data a file holds for `value` if it is one of the package's objects (an `Event`, a `Keyframe`, a `Grid`, a
+/// `Series`): what it was read from, so it is read again as it was then.
+fn held(value: &Bound<'_, PyAny>) -> Result<Option<serde_json::Value>, Refusal> {
+    // every number an object holds is finite and every key text, so writing it cannot fail
+    let written = if let Ok(event) = value.cast::<PyEvent>() {
+        serde_json::to_value(&event.get().0)
+    } else if let Ok(frame) = value.cast::<PyKeyframe>() {
+        let Keyframe { t, value, ease } = frame.get().0;
+        Ok(serde_json::json!({"t": t, "value": value, "ease": ease.to_string()}))
+    } else if let Ok(grid) = value.cast::<PyGrid>() {
+        serde_json::to_value(&grid.get().0)
+    } else if let Ok(series) = value.cast::<PySeries>() {
+        serde_json::to_value(series.get().series())
+    } else {
+        return Ok(None);
+    };
+    written.map(Some).map_err(de::Error::custom)
 }
 
 /// The refusal of `value`, a Python type the field (what `visitor` expects) cannot be: `invalid type: set, expected a
@@ -178,15 +239,18 @@ fn is_numpy_scalar(value: &Bound<'_, PyAny>) -> PyResult<bool> {
 
 /// The items of a sequence, read in order, each inside `depth` lists, tuples or mappings.
 struct Items<'py> {
-    items: std::vec::IntoIter<Bound<'py, PyAny>>,
+    /// The items not read yet.
+    rest: std::vec::IntoIter<Bound<'py, PyAny>>,
     depth: usize,
+    raised: Raised,
 }
 
 impl<'py> Items<'py> {
-    fn new(items: Vec<Bound<'py, PyAny>>, depth: usize) -> Self {
+    fn new(items: Vec<Bound<'py, PyAny>>, depth: usize, raised: &Raised) -> Self {
         Self {
-            items: items.into_iter(),
+            rest: items.into_iter(),
             depth,
+            raised: Rc::clone(raised),
         }
     }
 }
@@ -196,14 +260,17 @@ impl<'de> SeqAccess<'de> for Items<'_> {
 
     fn next_element_seed<T: DeserializeSeed<'de>>(&mut self, seed: T) -> Result<Option<T::Value>, Refusal> {
         let depth = self.depth;
-        self.items
+        self.rest
             .next()
-            .map(|value| seed.deserialize(Data { value, depth }))
+            .map(|value| {
+                let raised = Rc::clone(&self.raised);
+                seed.deserialize(Data { value, depth, raised })
+            })
             .transpose()
     }
 
     fn size_hint(&self) -> Option<usize> {
-        Some(self.items.len())
+        Some(self.rest.len())
     }
 }
 
@@ -214,14 +281,16 @@ struct Pairs<'py> {
     rest: std::vec::IntoIter<(Bound<'py, PyAny>, Bound<'py, PyAny>)>,
     value: Option<Bound<'py, PyAny>>,
     depth: usize,
+    raised: Raised,
 }
 
 impl<'py> Pairs<'py> {
-    fn new(pairs: Vec<(Bound<'py, PyAny>, Bound<'py, PyAny>)>, depth: usize) -> Self {
+    fn new(pairs: Vec<(Bound<'py, PyAny>, Bound<'py, PyAny>)>, depth: usize, raised: &Raised) -> Self {
         Self {
             rest: pairs.into_iter(),
             value: None,
             depth,
+            raised: Rc::clone(raised),
         }
     }
 }
@@ -238,7 +307,13 @@ impl<'de> MapAccess<'de> for Pairs<'_> {
             return Err(Refusal(format!("a key must be text (got {shown})")));
         }
         self.value = Some(value);
-        seed.deserialize(Data::new(key)).map(Some)
+        let (depth, raised) = (self.depth, Rc::clone(&self.raised));
+        seed.deserialize(Data {
+            value: key,
+            depth,
+            raised,
+        })
+        .map(Some)
     }
 
     fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, Refusal> {
@@ -250,6 +325,7 @@ impl<'de> MapAccess<'de> for Pairs<'_> {
         seed.deserialize(Data {
             value,
             depth: self.depth,
+            raised: Rc::clone(&self.raised),
         })
     }
 

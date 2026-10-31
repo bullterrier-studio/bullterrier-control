@@ -27,8 +27,8 @@ static SIGNAL_ERROR: PyOnceLock<Py<PyType>> = PyOnceLock::new();
 static INVALID_ERROR: PyOnceLock<Py<PyType>> = PyOnceLock::new();
 
 /// The Python exception for `error`: a signal that cannot be read, or is too deep, is a `SignalError`, a text naming no
-/// easing curve an `InvalidError`, data breaking a format's rules a `FormatError`, parameters breaking theirs a
-/// `ParameterError`; a callback's error is the exception the Python callback raised, unchanged. Anything else is a
+/// easing curve an `InvalidError`, data breaking a format's rules a `FormatError`, parameters or an input breaking theirs
+/// a `ParameterError`; a callback's error is the exception the Python callback raised, unchanged. Anything else is a
 /// bug of the caller: a `ValueError`.
 pub(crate) fn raised(py: Python<'_>, error: Error) -> PyErr {
     match error {
@@ -40,6 +40,7 @@ pub(crate) fn raised(py: Python<'_>, error: Error) -> PyErr {
             problems,
             omitted,
         } => parameter_error(py, &shaper, &problems, omitted),
+        Error::Input { problems, omitted } => parameter_error(py, "", &problems, omitted),
         // every callback the bindings give the core fails with the Python exception it raised
         Error::Node { source } => match source.downcast_ref::<PyErr>() {
             Some(raised) => raised.clone_ref(py),

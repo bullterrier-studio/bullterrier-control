@@ -3,15 +3,16 @@
 //! rounding) and its formats (`Unit`, `Event`, `Series`, `Grid`, `Bundle`) to Python as the package's classes.
 //! Generic: it names no shaper, so porting one never changes it.
 //!
-//! It also gives the core's parameter tables (`ParamTable`, a built-in's through `parameters` and `parse_parameters`).
-//! A format that breaks a rule raises the package's `bullterrier_control.errors.FormatError`, parameters that do
-//! `ParameterError`, each imported when the first one is raised: importing the extension imports nothing of the
-//! package.
+//! It also gives the core's parameter tables (`ParamTable`, a built-in's through `parameters` and `parse_parameters`)
+//! and its inputs (`Keyframe`, `check_input`, `input_docs`). A format that breaks a rule raises the package's
+//! `bullterrier_control.errors.FormatError`, parameters or an input that do `ParameterError`, each imported when the
+//! first one is raised: importing the extension imports nothing of the package.
 
 mod callback;
 mod data;
 mod error;
 mod formats;
+mod inputs;
 mod params;
 mod primitives;
 mod signal;
@@ -26,6 +27,8 @@ mod _core {
 
     #[pymodule_export]
     use super::formats::{PyBundle, PyEvent, PyGrid, PySeries, PyUnit, bundle_schema, dumps, is_bundle_name};
+    #[pymodule_export]
+    use super::inputs::{PyKeyframe, check_input, input_docs};
     #[pymodule_export]
     use super::params::{PyParamTable, builtins, parameters, parse_parameters};
     #[pymodule_export]
