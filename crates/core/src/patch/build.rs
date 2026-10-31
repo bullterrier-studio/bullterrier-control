@@ -63,9 +63,7 @@ fn needed<'a>(patch: &'a Patch, names: &[&str]) -> Result<BTreeSet<&'a str>, Pat
                     Given::Data(_) => None,
                 }));
             for reference in references {
-                if let Reference::Node(used) = reference
-                    && let Some((used, _)) = patch.nodes.iter().find(|(known, _)| known == used)
-                {
+                if let Reference::Node(used) = reference {
                     needed.insert(used.as_str());
                 }
             }

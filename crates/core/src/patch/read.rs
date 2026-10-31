@@ -99,7 +99,10 @@ impl Report {
     /// The error for what was found, if anything was.
     fn into_error(self) -> Option<PatchError> {
         let (problems, omitted) = match self.problems.into_error() {
-            Some(error) => (error.problems.clone(), error.omitted()),
+            Some(error) => {
+                let omitted = error.omitted();
+                (error.problems, omitted)
+            }
             None => (Vec::new(), 0),
         };
         let omitted = omitted + self.omitted;
