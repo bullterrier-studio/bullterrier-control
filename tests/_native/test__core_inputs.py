@@ -606,6 +606,8 @@ def test_a_value_nested_deeply_is_refused_where_its_kind_needs_no_list(kind, giv
 
 # each in a fresh interpreter: a reader that recursed without a limit would crash it, not fail a test
 NESTING = """
+import numpy
+
 from bullterrier_control._native import _core
 from bullterrier_control.errors import ParameterError
 
@@ -616,6 +618,8 @@ for _ in range(1_000_000):
     deep = [deep]
 frame = {"t": 0, "value": 1}
 frame["ease"] = frame
+held = numpy.empty((), dtype=object)  # an array whose tolist() is itself
+held[()] = held
 try:
     READ
 except ParameterError as error:
@@ -635,6 +639,12 @@ except ParameterError as error:
                      "ParameterError grid.beats[0]: ", id="grid, 1M deep"),
         pytest.param("_core.Keyframe.parse({'t': deep, 'value': 0})", "ParameterError Keyframe: t: ",
                      id="a keyframe, 1M deep"),
+        pytest.param("_core.check_input('values', held)", "ParameterError values: nested too deeply",
+                     id="values, an array that holds itself"),
+        pytest.param("_core.check_input('values', [held])", "ParameterError values[0]: nested too deeply",
+                     id="a value, an array that holds itself"),
+        pytest.param("_core.Keyframe(t=held, value=0)", "ParameterError Keyframe: t: nested too deeply",
+                     id="a keyframe's t, an array that holds itself"),
     ],
 )  # fmt: skip
 def test_a_cyclic_or_a_million_deep_value_is_refused_without_crashing(read, said):

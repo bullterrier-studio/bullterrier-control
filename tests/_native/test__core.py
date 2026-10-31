@@ -352,6 +352,8 @@ def test_a_value_is_read_through_at_most_128_levels_of_nesting(read, depth, refu
 
 # each in a fresh interpreter: a reader that recursed without a limit would crash it, not fail a test
 NESTING = """
+import numpy
+
 from bullterrier_control import Series
 from bullterrier_control._native import _core
 from bullterrier_control.errors import BullterrierControlError
@@ -361,6 +363,8 @@ cyclic.append(cyclic)
 deep = []
 for _ in range(1_000_000):
     deep = [deep]
+held = numpy.empty((), dtype=object)  # an array whose tolist() is itself
+held[()] = held
 table = _core.ParamTable([{"name": "rate", "kind": "float", "default": 1.0, "doc": "d", "unit": "hertz", "min": 0,
                           "max": 10}], name="X")
 try:
@@ -379,6 +383,8 @@ except (BullterrierControlError, ValueError) as error:
                      id="a built-in, a cycle"),
         pytest.param("_core.parse_parameters('lfo', {'rate': deep})", "ParameterError lfo: rate: nested too deeply",
                      id="a built-in, 1M deep"),
+        pytest.param("table.parse({'rate': held})", "ParameterError X: rate: nested too deeply",
+                     id="table, an array that holds itself"),
         pytest.param("_core.ParamTable([{'name': 'rate', 'kind': 'text', 'default': cyclic, 'doc': 'd'}], name='X')",
                      "ParameterError X: rate: the default is not valid: nested too deeply", id="a default, a cycle"),
         pytest.param("_core.shape('slew', _core.Constant(0.0), {'rise': deep})", "ValueError",
@@ -387,6 +393,8 @@ except (BullterrierControlError, ValueError) as error:
                      id="a format, a cycle"),
         pytest.param("Series.parse({'rate': 1.0, 'unit': 'ratio', 'values': deep})", "FormatError Series: values[0]",
                      id="a format, 1M deep"),
+        pytest.param("_core.Event.parse(held)", "FormatError Event: nested too deeply",
+                     id="a format, an array that holds itself"),
     ],
 )  # fmt: skip
 def test_a_cyclic_or_a_million_deep_value_is_refused_without_crashing(read, said):

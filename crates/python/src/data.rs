@@ -9,7 +9,8 @@
 //! where a number is wanted). A `float` NaN or infinity is passed on, so the core lists it beside the other rules broken.
 //! A numpy array is read as its own copy (`tolist()`), never as a view of the caller's memory. One of the package's
 //! objects (an `Event`, a `Keyframe`, a `Grid`, a `Series`) is read as the data a file holds for it. A value nested
-//! more than 128 lists or mappings deep (one that holds itself) is refused, never read until the stack overflows. An
+//! more than 128 lists, mappings or arrays deep (one that holds itself) is refused, never read until the stack
+//! overflows. An
 //! exception a value raises while read (a mapping's `__getitem__`) is a refusal with its message, or, through
 //! [`read`], raised unchanged.
 
@@ -81,7 +82,7 @@ pub(crate) fn read<'py, T>(value: Bound<'py, PyAny>, read: impl FnOnce(Data<'py>
     raised.take().map_or(Ok(made), Err)
 }
 
-/// The most lists, tuples or mappings a value may be nested in. A Python value can nest without bound, or hold itself,
+/// The most lists, tuples, mappings or numpy arrays a value may be nested in (an object array can hold itself). A Python value can nest without bound, or hold itself,
 /// and reading recurses once per level, so a deeper value would overflow the stack (about 40,000 levels crash the
 /// interpreter): 128 is far beyond any format or parameter value (a bundle's deepest is 4) and far below that.
 const DEEPEST: usize = 128;
@@ -89,11 +90,11 @@ const DEEPEST: usize = 128;
 /// A Python object as serde data: `None` is null, `bool`, `int`, `float` and `str` are themselves, a list or tuple is
 /// a sequence, a mapping with text keys an object, a numpy array its `tolist()`, a numpy scalar its `item()`, a
 /// `Unit` its name and an `Event`, `Keyframe`, `Grid` or `Series` the object a file holds for it. Anything else is a
-/// wrong type for the field it is read for, and a list, tuple or mapping inside [`DEEPEST`] others (a list that holds
-/// itself) is refused as nested too deeply.
+/// wrong type for the field it is read for, and a list, tuple, mapping or array inside [`DEEPEST`] others (a list
+/// that holds itself) is refused as nested too deeply.
 pub(crate) struct Data<'py> {
     value: Bound<'py, PyAny>,
-    /// How many lists, tuples or mappings `value` is inside.
+    /// How many lists, tuples, mappings or arrays `value` is inside.
     depth: usize,
     /// The first Python exception raised while reading: once there is one, nothing more is read.
     raised: Raised,
@@ -155,6 +156,8 @@ impl<'de> Deserializer<'de> for Data<'_> {
         } else if let Some(held) = held(&value)? {
             held.deserialize_any(visitor).map_err(de::Error::custom)
         } else if value.cast::<PyUntypedArray>().is_ok() {
+            // a level of its own: a 0-d object array holding itself gives itself back as its `tolist()`
+            let depth = inside(depth)?;
             let items = value.call_method0("tolist").map_err(failed)?;
             let raised = Rc::clone(&raised);
             Data {
