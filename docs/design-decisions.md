@@ -639,6 +639,13 @@ Design:
   rounding}.rs`); the Python modules keep their docstring contracts and re-export. Hashing and the curve ends are
   bit-exact with the numpy they replace; cubic, overshoot and bezier agree within about 1e-12. The curves use explicit
   multiplication, no `powi` or `powf`, so every target gives the same bits.
+- **A differential over 2000 seeded graphs** (old numpy graph against the new, report-only) found no regression. Leaves
+  of constants, held series, hashing and the plain eases are bit-identical. A linear series read differs by one rounding
+  of the operand scale in about 8 % of reads on arm64, where numpy's `interp` fuses the multiply-add and this core
+  rounds twice. A bezier with a handle at exactly 0 or 1 drifts up to 1e-8 within 1e-6 of progress 0 or 1 (the
+  bisection is ill-conditioned there). A `Rendered` read in the last allowed sample's span is now accepted (the old
+  check was a sample stricter than the documented limit), and a plugin `compute` returning a wrong length is a
+  `ValueError` where the old code returned a wrong-length array or an `IndexError`.
 - **Messages differ a little from Python's** (`got NaN` against a list of values; `1e+300` written `1e300`); tests assert
   the error type and a short substring.
 - **Timings** (report only, `bench_baseline.py` of R0, this machine, dev build): ten slews with an lfo mix took
