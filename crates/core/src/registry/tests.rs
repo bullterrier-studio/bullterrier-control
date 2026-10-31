@@ -1423,3 +1423,29 @@ fn a_chain_of_calls_that_add_no_node_is_as_deep_as_one_that_does() -> Result<(),
     }
     Ok(())
 }
+
+#[test]
+fn a_recorded_signal_formats_as_its_thing_not_the_graph_upstream() -> Result<(), Error> {
+    // the recipe keeps the signal shaped, and a body that gives it back holds it again: printing both would double
+    // the text with every call
+    let identity = bare("identity", Kind::Shaper, |call| match call.signals.as_slice() {
+        [input] => Ok(Output::Signal(input.clone())),
+        _ => Err(Error::Signal {
+            message: "one signal".to_owned(),
+        }),
+    })?;
+    let mut chain = Signal::constant(1.0)?;
+    for _ in 0..16 {
+        chain = signal(identity.call(&Call {
+            signals: vec![chain],
+            ..Call::default()
+        }))?;
+    }
+    let text = format!("{chain:?}");
+    assert!(
+        text.contains("\"identity\"") && text.len() < 200,
+        "{} characters",
+        text.len()
+    );
+    Ok(())
+}

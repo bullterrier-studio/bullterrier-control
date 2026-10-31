@@ -1,5 +1,7 @@
 //! [`Recorded`]: a signal with the recipe the registry made it by.
 
+use std::fmt;
+
 use super::Signal;
 use super::node::{Node, Read};
 use crate::registry::Recipe;
@@ -8,7 +10,6 @@ use crate::registry::Recipe;
 /// and a drop also into the recipe's signal, so it is as deep as the deeper of `inner` (one more if `inner` is
 /// recorded too) and its recipe's signal with it: a call that makes no node of its own (a body that gives its input,
 /// or a constant) still counts toward [`MAX_DEPTH`](crate::MAX_DEPTH), while one that does costs nothing more.
-#[derive(Debug)]
 pub(crate) struct Recorded {
     recipe: Recipe,
     inner: Signal,
@@ -25,6 +26,18 @@ impl Recorded {
             recipe,
             inner,
         }
+    }
+}
+
+impl fmt::Debug for Recorded {
+    // not the signals: formatting them would recurse through every recipe upstream, twice where a body gives its input
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Recorded")
+            .field("name", &self.recipe.name)
+            .field("values", &self.recipe.values)
+            .field("depth", &self.depth)
+            .finish_non_exhaustive()
     }
 }
 
