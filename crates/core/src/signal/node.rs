@@ -5,11 +5,19 @@ use std::sync::Arc;
 
 use crate::Error;
 
+/// What a node's read gives: its error boxed, so a frame of a read (which recurses as deep as the graph) holds a
+/// pointer, not an [`Error`], for each `?`.
+pub(crate) type Read = Result<(), Box<Error>>;
+
 /// A node of a signal graph. Sealed (crate-private): code outside the crate makes one through `Signal::from_fn`.
 pub(crate) trait Node: fmt::Debug {
     /// The value at each of `times` into `out`, which is as long. Every time is finite and from 0 up: the public
     /// `Signal::sample_into` checks the times and the values once, so a node reads its inputs unchecked.
-    fn read(&self, times: &[f64], out: &mut [f64]) -> Result<(), Error>;
+    fn read(&self, times: &[f64], out: &mut [f64]) -> Read;
+
+    /// How many nodes deep the graph is from this one, counting it: 1 for a node without inputs. A read and a drop
+    /// recurse this deep, so `Signal` refuses to build a graph deeper than its `MAX_DEPTH`.
+    fn depth(&self) -> usize;
 }
 
 /// The same value at every time.
@@ -17,9 +25,12 @@ pub(crate) trait Node: fmt::Debug {
 pub(crate) struct Constant(pub(crate) f64);
 
 impl Node for Constant {
-    fn read(&self, _times: &[f64], out: &mut [f64]) -> Result<(), Error> {
+    fn read(&self, _times: &[f64], out: &mut [f64]) -> Read {
         out.fill(self.0);
         Ok(())
+    }
+    fn depth(&self) -> usize {
+        1
     }
 }
 
@@ -50,9 +61,13 @@ impl fmt::Debug for FromFn {
 }
 
 impl Node for FromFn {
-    fn read(&self, times: &[f64], out: &mut [f64]) -> Result<(), Error> {
+    fn read(&self, times: &[f64], out: &mut [f64]) -> Read {
         out.fill(0.0);
-        (self.0)(times, out)
+        (self.0)(times, out).map_err(Box::new)
+    }
+
+    fn depth(&self) -> usize {
+        1
     }
 }
 
@@ -61,7 +76,11 @@ impl Node for FromFn {
 pub(crate) struct Refused(pub(crate) Error);
 
 impl Node for Refused {
-    fn read(&self, _times: &[f64], _out: &mut [f64]) -> Result<(), Error> {
-        Err(self.0.clone())
+    fn read(&self, _times: &[f64], _out: &mut [f64]) -> Read {
+        Err(Box::new(self.0.clone()))
+    }
+
+    fn depth(&self) -> usize {
+        1
     }
 }

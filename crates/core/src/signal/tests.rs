@@ -7,7 +7,7 @@ use std::fmt;
 use proptest::prelude::*;
 
 use crate::formats::{Series, SeriesOptions, Unit};
-use crate::{Error, FromValues, Interpolation, Signal, maximum, minimum};
+use crate::{Error, FromValues, Interpolation, MAX_DEPTH, Signal, maximum, minimum};
 
 /// A signal that is its own time, written as a plugin author would write one.
 fn echo() -> Signal {
@@ -648,4 +648,63 @@ proptest! {
         prop_assert_eq!(&together, &halves);
         prop_assert_eq!(&together, &backwards);
     }
+}
+
+/// `depth` nodes deep: a constant 0 with 1 added `depth - 1` times, `alternate`ly as a number and as a signal.
+fn chain(depth: usize, alternate: bool) -> Result<Signal, Error> {
+    let one = Signal::constant(1.0)?;
+    let mut sum = Signal::constant(0.0)?;
+    for step in 1..depth {
+        sum = if alternate && step % 2 == 0 {
+            &one + sum
+        } else {
+            sum + 1.0
+        };
+    }
+    Ok(sum)
+}
+
+#[test]
+fn a_graph_as_deep_as_the_limit_reads_and_one_deeper_is_refused() -> Result<(), Error> {
+    let deepest = chain(MAX_DEPTH, false)?;
+    // 0 plus 1 for each node above the constant
+    assert_eq!(deepest.at(5.0)?, 999.0);
+    assert_eq!(chain(MAX_DEPTH, true)?.sample(&[0.0, 1.0])?, [999.0, 999.0]);
+    let too_deep = format!("at most {MAX_DEPTH} nodes deep (this one would be {})", MAX_DEPTH + 1);
+    for (signal, rule) in [
+        (&deepest + 1.0, "a number"),
+        (1.0 - &deepest, "a number first"),
+        (&deepest * &deepest, "two signals"),
+        (-&deepest, "negation"),
+        (maximum(&Signal::constant(0.0)?, &deepest), "the larger of two"),
+    ] {
+        let message = signal_error(&signal.sample(&[0.0]));
+        assert!(message.contains(&too_deep), "{rule}: {message}");
+    }
+    // the refusal comes through whatever is built on it
+    let message = signal_error(&((&deepest + 1.0) * 2.0 + &echo()).sample(&[0.0]));
+    assert!(message.contains(&too_deep), "{message}");
+    Ok(())
+}
+
+#[test]
+fn a_sum_of_a_hundred_thousand_terms_is_refused_and_dropped_without_overflowing_the_stack() -> Result<(), Error> {
+    let term = Signal::constant(0.5)?;
+    let mut sum = term.clone();
+    for _ in 1..100_000 {
+        sum = sum + &term;
+    }
+    let message = signal_error(&sum.sample(&[0.0, 1.0]));
+    assert!(message.contains("nodes deep"), "{message}");
+    drop(sum);
+    // the deepest graph there can be, dropped as its last handle goes
+    drop(chain(MAX_DEPTH, true)?);
+    Ok(())
+}
+
+#[test]
+fn a_deep_graph_is_debugged_without_walking_it() -> Result<(), Error> {
+    let text = format!("{:?}", chain(MAX_DEPTH, false)?);
+    assert!(text.contains("Add") && text.contains("1000"), "{text}");
+    Ok(())
 }

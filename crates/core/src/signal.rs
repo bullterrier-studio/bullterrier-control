@@ -35,6 +35,25 @@ use combine::Operation;
 use node::{Constant, FromFn, Node};
 use series::SeriesNode;
 
+/// How many nodes deep a signal's graph may be, counting the signal and its deepest input: reading and dropping a
+/// graph recurse this deep. An operator that would go deeper gives a signal refusing every read with
+/// [`Error::Signal`]; a sum of more terms than this fits as a balanced tree (`(a + b) + (c + d)`), not as a chain.
+///
+/// ```
+/// use bullterrier_control::{MAX_DEPTH, Signal};
+///
+/// let mut sum = Signal::constant(0.0)?; // 1 deep
+/// for _ in 1..MAX_DEPTH {
+///     sum = sum + 1.0;
+/// }
+/// assert_eq!(sum.at(0.0)?, 999.0);
+/// assert!((sum + 1.0).at(0.0).is_err()); // one more is too deep
+/// # Ok::<(), bullterrier_control::Error>(())
+/// ```
+// A level of a read takes about 400 bytes of stack in a debug build and 80 in a release one (a drop less): 1000 fits a
+// 2 MiB test thread five times over and wasm's 1 MiB stack ten times over.
+pub const MAX_DEPTH: usize = 1000;
+
 /// How a signal made from a series reads a time between two samples.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -248,7 +267,7 @@ impl Signal {
         } else {
             Cow::Borrowed(times)
         };
-        self.0.read(&from_zero, values)?;
+        self.0.read(&from_zero, values).map_err(|error| *error)?;
         match values.iter().zip(times).find(|(value, _)| !value.is_finite()) {
             Some((_, time)) => Err(Error::Signal {
                 message: format!("the signal is not finite at time {time:?} (an overflow?)"),
@@ -276,9 +295,25 @@ impl Signal {
         Ok(value)
     }
 
-    /// The signal holding `node`.
+    /// The signal holding `node`, which has no inputs.
     fn of(node: impl Node + Send + Sync + 'static) -> Self {
         Self(Arc::new(node))
+    }
+
+    /// The signal holding `node`, which may have inputs.
+    ///
+    /// # Errors
+    /// [`Error::Signal`] if the graph from `node` is deeper than [`MAX_DEPTH`].
+    pub(crate) fn checked(node: impl Node + Send + Sync + 'static) -> Result<Self, Error> {
+        match node.depth() {
+            depth if depth > MAX_DEPTH => Err(Error::Signal {
+                message: format!(
+                    "a signal can be at most {MAX_DEPTH} nodes deep (this one would be {depth}): combine many signals \
+                     as a balanced tree, not a chain"
+                ),
+            }),
+            _ => Ok(Self::of(node)),
+        }
     }
 }
 
