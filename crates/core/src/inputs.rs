@@ -28,7 +28,7 @@
 //!   item of a wrong type, or a keyframe or event with an unknown field, is one problem at that item; the other items
 //!   are still read and checked.
 //! - `points`: a non-empty list of keyframes `{t, value, ease}` ([`Keyframe::from_deserializer`]'s rules); `t`
-//!   strictly increases, each `t` compared with the one before it where both are numbers. Checked, it is
+//!   strictly increases, each `t` compared with the one before it where both are finite numbers. Checked, it is
 //!   [`Input::Points`].
 //! - `events`: a list of events as in a bundle, possibly empty, in any order, each one's problems under `events[i]`.
 //!   Checked, it is [`Input::Events`], sorted by `t`; events at the same time keep the order they were given in.
