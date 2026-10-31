@@ -4,7 +4,8 @@
 //! the code may read signals again, from this thread or another. What the code is given is a fresh numpy array of its
 //! own; what it returns is copied (as float64, whatever its dtype or layout) before Rust reads it, so an array it keeps
 //! and changes later changes nothing read. An exception it raises is the error of the read, and reaches the caller of
-//! `sample` unchanged. Calls that nest (a `compute` reading a signal whose `compute` reads another, ...) are counted
+//! `sample` unchanged. numpy's floating-point warnings are off while it runs: a value that is not finite is refused by
+//! the read as a `SignalError`, not warned about. Calls that nest (a `compute` reading a signal whose `compute` reads another, ...) are counted
 //! per thread: one nested [`NESTED`] deep is a `SignalError`, raised before the stack can overflow.
 
 use std::cell::Cell;
@@ -13,6 +14,7 @@ use bullterrier_control::{Error, Rendering, Signal};
 use numpy::PyArray1;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 
 use crate::data::float64s;
 use crate::error;
@@ -65,7 +67,7 @@ pub(crate) fn computed(instance: Py<PyAny>) -> Signal {
         Python::attach(|py| {
             let _nested = Nested::enter(py)?;
             let given = PyArray1::from_slice(py, times);
-            let values = instance.bind(py).call_method1("compute", (given,))?;
+            let values = quietly(py, || instance.bind(py).call_method1("compute", (given,)))?;
             let values = numbers(&values, times.len(), |shape| {
                 format!(
                     "compute of {} returned an array of shape {shape} for times of shape ({},)",
@@ -89,7 +91,7 @@ pub(crate) fn rendered(input: &Signal, rendering: Rendering, run: Py<PyAny>) -> 
         Python::attach(|py| {
             let _nested = Nested::enter(py)?;
             let given = PyArray1::from_slice(py, inputs);
-            let outputs = run.bind(py).call1((given,))?;
+            let outputs = quietly(py, || run.bind(py).call1((given,)))?;
             numbers(&outputs, inputs.len(), |shape| {
                 format!(
                     "the recurrence returned an array of shape {shape} for an input of shape ({},)",
@@ -98,6 +100,18 @@ pub(crate) fn rendered(input: &Signal, rendering: Rendering, run: Py<PyAny>) -> 
             })
         })
     })
+}
+
+/// What `call` gives, called with numpy's floating-point warnings off (`numpy.errstate(all="ignore")`, made for this
+/// call: one is not reentrant, and calls nest).
+fn quietly<'py>(py: Python<'py>, call: impl FnOnce() -> PyResult<Bound<'py, PyAny>>) -> PyResult<Bound<'py, PyAny>> {
+    let ignore = PyDict::new(py);
+    ignore.set_item("all", "ignore")?;
+    let quiet = py.import("numpy")?.call_method("errstate", (), Some(&ignore))?;
+    quiet.call_method0("__enter__")?;
+    let called = call();
+    quiet.call_method1("__exit__", (py.None(), py.None(), py.None()))?;
+    called
 }
 
 /// `values` as `length` float64 numbers ([`float64s`]); a `ValueError` with `wrong(shape)` if numpy gives another

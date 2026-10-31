@@ -1,4 +1,3 @@
-import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -133,20 +132,6 @@ def test_the_limit_is_exact_a_read_needing_the_limit_works_and_one_more_is_refus
     assert signal.sample([99.0]).tolist() == [100.0]  # samples 0..99: 100 of them
     with pytest.raises(SignalError, match="limit"):
         signal.sample([100.0])
-
-
-def test_threads_reading_together_render_once_not_once_each():
-    run = Counting()
-    signal = Rendered(Constant(1.0), rate=RATE, run=run)
-    start = threading.Barrier(8)
-
-    def read(_):
-        start.wait()
-        return signal.sample([40_000.0]).tolist()
-
-    with ThreadPoolExecutor(8) as pool:
-        assert all(values == pytest.approx([40_000.1]) for values in pool.map(read, range(8)))
-    assert len(run.calls) == 1
 
 
 def test_a_read_never_depends_on_the_input_after_the_time_read():

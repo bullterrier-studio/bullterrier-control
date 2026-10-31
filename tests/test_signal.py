@@ -351,3 +351,12 @@ def test_every_built_in_shaper_is_a_method_of_a_signal_giving_what_the_lib_funct
 def test_a_chain_method_takes_its_parameters_by_keyword_only():
     with pytest.raises(TypeError):
         RAMP.clip(0.25, 0.75)  # type: ignore[call-arg]  # positional on purpose: the call is refused
+
+
+class Unwritten(Signal):
+    """A plugin's signal whose author forgot `compute`."""
+
+
+def test_a_signal_that_does_not_implement_compute_is_a_type_error_naming_it_when_read():
+    with pytest.raises(TypeError, match="Unwritten"):
+        Unwritten().sample(1.0)

@@ -4,14 +4,19 @@
     both = ramp * 0.5 + Constant(0.25)              # signals combine with arithmetic
     values = both.sample([0.0, 12.4, 100.0])        # values at times in seconds (a number or an array of any shape)
 
+A signal is a graph of the Rust core (`_native._core.SignalBase` holds it): reading one made of the package's signals
+runs in Rust, without the GIL. A plugin's signal is a subclass implementing `compute`, read through a call back.
+
 Promises:
 - A signal has a value at every time. A time before 0 reads as time 0; a signal made from a Series holds its first and
   last value beyond its ends.
 - `sample(times)` returns float64 values in the shape of `times`. It refuses a time that is not a finite number (text,
   a bool, NaN, an infinity) and a value that is not finite (an overflow) with a `SignalError`. The same times give the
   same values, whatever was read before.
-- A signal is written by implementing `compute(times)`, which is only ever called with finite times from 0 up, as a
-  float64 array, and returns values of the same shape.
+- A signal is written by implementing `compute(times)`, which is only ever called with a 1-D float64 array of finite
+  times from 0 up, and returns as many values (a `compute` written for times of any shape works). An exception it
+  raises reaches the caller of `sample` unchanged. A subclass that does not implement it is a `TypeError` naming it
+  when read.
 - `signal.pipe(shaper, **params)` is `shaper(signal, **params)` and must give a signal (`TypeError` naming the
   callable if not): any registered shaper (`lib.clip`) or plain function shapes a signal, and the result can be piped
   again.
@@ -19,23 +24,18 @@ Promises:
   `maximum`; the result is a signal that can be combined again. A crossfade is `a * (1 - m) + b * m`.
 """
 
-import numbers
-from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal, final
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 
 from ._chain import Chain
-from .errors import SignalError
-from .formats import Series, Unit
+from ._native import _core
+from .formats import Series
 
 __all__ = ["Constant", "Signal", "connect_shapers", "from_series", "from_values", "maximum", "minimum"]
-
-# float rounding of (time - start) * rate: a time that is a sample time to within this share of a sample is that sample
-_ROUNDING = 1e-9
 
 
 def _not_connected(name: str) -> Callable[..., "Signal"]:
@@ -58,32 +58,8 @@ def connect_shapers(lookup: Callable[[str], Callable[..., "Signal"]]) -> None:
     _SHAPERS.find = lookup
 
 
-class Signal(Chain["Signal"], ABC):
+class Signal(_core.SignalBase, Chain["Signal"]):
     """A value that changes over time, readable at any moment in seconds. Subclasses implement `compute`."""
-
-    # numpy defers to the operators below: an array times a signal is an error, not an array of signals
-    __array_ufunc__ = None
-
-    @final
-    def sample(self, times: ArrayLike) -> NDArray[np.float64]:
-        """The values at `times` (a number, or an array of any shape; the result has its shape)."""
-        raw = np.asarray(times)
-        if raw.dtype.kind not in "iuf":  # not text, a bool, nothing, or an integer too large for a float
-            raise SignalError(f"times must be numbers (got {times!r})")
-        moments = raw.astype(np.float64)
-        if not np.isfinite(moments).all():
-            raise SignalError(f"times must be finite (got {moments[~np.isfinite(moments)].tolist()})")
-        with np.errstate(all="ignore"):  # an overflow is reported below as a SignalError, not as a warning
-            values = np.asarray(self.compute(np.maximum(moments, 0.0)), dtype=np.float64)
-        if not np.isfinite(values).all():
-            raise SignalError(
-                f"the signal is not finite at time {moments[~np.isfinite(values)].flat[0]} (an overflow?)"
-            )
-        return values
-
-    @abstractmethod
-    def compute(self, times: NDArray[np.float64]) -> NDArray[np.float64]:
-        """The values at `times`: finite, from 0 up, float64, any shape. Return an array of the same shape."""
 
     def pipe(self, shaper: Callable[..., "Signal"], /, **params: object) -> "Signal":
         """`shaper(self, **params)`: shape this signal with a registered shaper (`lib.clip`) or any function that takes
@@ -98,107 +74,28 @@ class Signal(Chain["Signal"], ABC):
         (hence the underscore); `pipe` is the public way."""
         return _SHAPERS.find(name)(self, **params)
 
-    def __add__(self, other: "Signal | float") -> "Signal":
-        return _combined(np.add, self, other)
+    if TYPE_CHECKING:  # the extension makes its results as `Signal` (`make_signals_as` below): typed as such here
 
-    def __radd__(self, other: "Signal | float") -> "Signal":
-        return _combined(np.add, other, self)
-
-    def __sub__(self, other: "Signal | float") -> "Signal":
-        return _combined(np.subtract, self, other)
-
-    def __rsub__(self, other: "Signal | float") -> "Signal":
-        return _combined(np.subtract, other, self)
-
-    def __mul__(self, other: "Signal | float") -> "Signal":
-        return _combined(np.multiply, self, other)
-
-    def __rmul__(self, other: "Signal | float") -> "Signal":
-        return _combined(np.multiply, other, self)
-
-    def __neg__(self) -> "Signal":
-        return _combined(np.negative, self)
+        def __add__(self, other: "_core.SignalBase | float", /) -> "Signal": ...
+        def __radd__(self, other: "_core.SignalBase | float", /) -> "Signal": ...
+        def __sub__(self, other: "_core.SignalBase | float", /) -> "Signal": ...
+        def __rsub__(self, other: "_core.SignalBase | float", /) -> "Signal": ...
+        def __mul__(self, other: "_core.SignalBase | float", /) -> "Signal": ...
+        def __rmul__(self, other: "_core.SignalBase | float", /) -> "Signal": ...
+        def __neg__(self) -> "Signal": ...
 
 
-class Constant(Signal):
-    """The same finite value at every time."""
-
-    def __init__(self, value: float) -> None:
-        """A signal that is `value` everywhere; `value` must be a finite number."""
-        try:
-            number = float(value)
-        except OverflowError:
-            number = float("inf")
-        if not np.isfinite(number):
-            raise SignalError(f"a constant must be finite (got {value!r})")
-        self._value = number
-
-    def compute(self, times: NDArray[np.float64]) -> NDArray[np.float64]:
-        """`value`, once for every time."""
-        return np.full(times.shape, self._value)
+_core.make_signals_as(Signal)
 
 
-class _Combined(Signal):
-    def __init__(self, operation: Callable[..., NDArray[np.float64]], operands: tuple[Signal, ...]) -> None:
-        self._operation = operation
-        self._operands = operands
-
-    def compute(self, times: NDArray[np.float64]) -> NDArray[np.float64]:
-        return self._operation(*(operand.compute(times) for operand in self._operands))
-
-
-class _SeriesSignal(Signal):
-    def __init__(self, series: Series, interpolation: Literal["linear", "hold"]) -> None:
-        self._start, self._rate, self._interpolation = series.start, series.rate, interpolation
-        self._values = np.asarray(series.values, dtype=np.float64)
-
-    def compute(self, times: NDArray[np.float64]) -> NDArray[np.float64]:
-        position = (times - self._start) * self._rate
-        last = len(self._values) - 1
-        if self._interpolation == "linear":
-            return np.interp(position, np.arange(last + 1), self._values)
-        return self._values[np.clip(np.floor(position + _ROUNDING), 0, last).astype(np.int64)]
-
-
-def _signal_of(operand: object) -> Signal | None:
-    """The operand as a signal: a signal is itself, a real number (numpy's included, a bool not) is a constant."""
-    if isinstance(operand, Signal):
-        return operand
-    if isinstance(operand, numbers.Real) and not isinstance(operand, bool):
-        return Constant(operand)  # type: ignore[arg-type]  # a Real is a number float() accepts
-    return None
-
-
-def _combined(operation: Callable[..., NDArray[np.float64]], *operands: object) -> Signal:
-    signals = tuple(_signal_of(operand) for operand in operands)
-    if any(signal is None for signal in signals):
-        return NotImplemented  # Python raises the TypeError, naming the operator and both types
-    return _Combined(operation, tuple(signal for signal in signals if signal is not None))
-
-
-def minimum(first: Signal | float, second: Signal | float) -> Signal:
-    """The smaller of two signals (or numbers) at every time."""
-    return _checked(_combined(np.minimum, first, second))
-
-
-def maximum(first: Signal | float, second: Signal | float) -> Signal:
-    """The larger of two signals (or numbers) at every time."""
-    return _checked(_combined(np.maximum, first, second))
-
-
-def _checked(combined: Signal) -> Signal:
-    """A function, unlike an operator, has no Python to raise the TypeError for an operand that is not a signal."""
-    if combined is NotImplemented:
-        raise TypeError("a signal combines with signals and numbers only")
-    return combined
+class Constant(_core.Constant, Signal):
+    """The same finite value at every time: `Constant(value)`, `value` a finite number (else `SignalError`)."""
 
 
 def from_series(series: Series, *, interpolation: Literal["linear", "hold"] = "linear") -> Signal:
     """The signal that reads `series`: sample *i* is at `start + i / rate` seconds, the first and last values hold
     beyond the ends, and between samples the value is interpolated `linear`ly or `hold`s the earlier sample's."""
-    if interpolation not in ("linear", "hold"):
-        raise ValueError(f"interpolation must be 'linear' or 'hold' (got {interpolation!r})")
-    return _SeriesSignal(series, interpolation)
+    return cast("Signal", _core.from_series(series, interpolation=interpolation))
 
 
 def from_values(
@@ -210,5 +107,14 @@ def from_values(
 ) -> Signal:
     """The signal that reads `values` as plain ratios, sample *i* at `start + i / rate` seconds (`from_series` of a
     `Series` in unit `ratio`). A `FormatError` names the field that breaks a `Series` rule."""
-    series = Series(start=start, rate=rate, values=values, unit=Unit.RATIO)
-    return from_series(series, interpolation=interpolation)
+    return cast("Signal", _core.from_values(values, rate, start=start, interpolation=interpolation))
+
+
+def minimum(first: Signal | float, second: Signal | float) -> Signal:
+    """The smaller of two signals (or numbers) at every time."""
+    return cast("Signal", _core.minimum(first, second))
+
+
+def maximum(first: Signal | float, second: Signal | float) -> Signal:
+    """The larger of two signals (or numbers) at every time."""
+    return cast("Signal", _core.maximum(first, second))

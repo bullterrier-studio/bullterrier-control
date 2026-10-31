@@ -17,7 +17,7 @@ from fractions import Fraction
 import numpy as np
 import pytest
 
-from bullterrier_control import Series
+from bullterrier_control import Series, Signal
 from bullterrier_control._native import _core  # noqa: PLC2701  architecture: the boundary the package's Signal is
 from bullterrier_control.errors import FormatError, ParameterError, SignalError
 
@@ -678,32 +678,20 @@ print(said)
 
 # ---- make_signals_as ----
 
-MADE_AS = """
-from bullterrier_control._native import _core
-class Signal(_core.SignalBase):
-    pass
+
 class Other(_core.SignalBase):
-    pass
-class Written(_core.SignalBase):
-    def compute(self, times):
-        return times
-before = type(_core.Constant(1.0) + 1).__name__
-_core.make_signals_as(Signal)
-_core.make_signals_as(Signal)  # the same class again: nothing changes
-made = [_core.Constant(1.0) + 1, _core.from_values([1.0], 1.0), _core.maximum(1, 2), -Written()]
-print(before, {type(signal).__name__ for signal in made}, made[0].sample(5.0), made[3].sample(5.0))
-for wrong in (Other, Written, int):
-    try:
-        _core.make_signals_as(wrong)
-    except (TypeError, ValueError) as error:
-        print(type(error).__name__, str(error).split(" (")[0])
-"""
+    """A class that does not implement compute, which is not the one signals are made as."""
 
 
 def test_the_signals_the_extension_makes_are_of_the_class_make_signals_as_names_once():
-    assert isolated(MADE_AS).splitlines() == [
-        "SignalBase {'Signal'} 2.0 -5.0",
-        "ValueError signals are already made as Signal",
-        "TypeError signals are made as a subclass of SignalBase that does not implement compute",
-        "TypeError signals are made as a subclass of SignalBase that does not implement compute",
-    ]
+    # importing the package named its `Signal`
+    made = [_core.Constant(1.0) + 1, _core.from_values([1.0], 1.0), _core.maximum(1, 2), -Echo(1.0)]
+    assert {type(signal) for signal in made} == {Signal}
+    assert [made[0].sample(5.0).tolist(), made[3].sample(5.0).tolist()] == [2.0, -5.0]
+    _core.make_signals_as(Signal)  # the same class again: nothing changes
+    with pytest.raises(ValueError, match="already made as Signal"):
+        _core.make_signals_as(Other)
+    with pytest.raises(TypeError, match="does not implement compute"):
+        _core.make_signals_as(Echo)
+    with pytest.raises(TypeError, match="does not implement compute"):
+        _core.make_signals_as(int)  # type: ignore[arg-type]  # not a signal class, on purpose

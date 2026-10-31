@@ -311,6 +311,13 @@ ignore_names = [
     "__getattr__",  # module-level hooks (PEP 562) of `lib`: Python calls them for `lib.<name>` and `dir(lib)`
     "__dir__",
     "__doc__",  # `Registered.__doc__`: what `help()` shows
+    # `Signal`'s operators, declared for the type checker only (the extension's are the ones that run)
+    "__add__",
+    "__radd__",
+    "__sub__",
+    "__rsub__",
+    "__mul__",
+    "__rmul__",
     "downbeats",  # `Grid`: the public conversions of a format, called by users and other packages' readers, not in the package yet
     "seconds_at",
     "beat_at",
