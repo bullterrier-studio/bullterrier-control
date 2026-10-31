@@ -29,11 +29,11 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
 
 ## Dependencies
 
-- **numpy and pydantic are the runtime dependencies, each added with the first code that imports it** (deptry fails on a
-  dependency nothing imports, so none is declared in the scaffold). *Reason:* control must install in a second on a machine
-  with no media libraries, and `bullterrier-audio` carries the heavy ones (librosa, torch). pydantic declared parameters the
-  way bullterrier-image does; since R2 parameters are Rust's, and pydantic remains only for `Keyframe` and the inputs'
-  models until R4.
+- **numpy is the one runtime dependency, added with the first code that imports it** (deptry fails on a dependency nothing
+  imports, so none is declared in the scaffold). *Reason:* control must install in a second on a machine with no media
+  libraries, and `bullterrier-audio` carries the heavy ones (librosa, torch). pydantic was the second until R4a: it
+  declared parameters the way bullterrier-image does, parameters became Rust's in R2, and the inputs followed in R4a
+  ("Inputs in Rust").
 
 ## Agreed with the owner (2026-10-26)
 
@@ -105,7 +105,7 @@ Checked once, with a quick search (four queries; a first pass, not a survey):
   one if it is small, typed and maintained; check cubic-bezier easing and the overshoot ("slam") curve against `easings` and
   `easing-functions`. Do not port photo-fx's old `timing.py` curves without the same check.
 - **Filters and slew (C3).** `scipy.signal` would do some of it, but scipy is not a dependency and control installs with numpy
-  and pydantic only; the filters stay ours (a causal recurrence each, tested against a hand-computed response).
+  (and pydantic, until R4a) only; the filters stay ours (a causal recurrence each, tested against a hand-computed response).
 - **LFOs, envelopes on events, tempo sync, the Grid (C2).** No standalone Python library found that reads a value at any time in
   seconds; synthesis libraries (SignalFlow, Pyo) are real-time engines with their own graphs. New code.
 - **JAMS** is a JSON annotation format for music (beats, onsets, segments, chords) with a schema, validation and a mir_eval bridge.
@@ -117,7 +117,7 @@ Checked once, with a quick search (four queries; a first pass, not a survey):
 
 Every decision above was looked at again before more sources were built on it. Kept: one bundle file, Grid as beat times,
 no `NaN` in files; total signals; causal `Rendered` read by holding; closed, strict parameter declarations; entry-point
-registry with `plugin` as the one door; numpy and pydantic only; offline only; easing written here; keyframes instead of a
+registry with `plugin` as the one door; numpy and pydantic only (pydantic left in R4a); offline only; easing written here; keyframes instead of a
 separate ramp. Changed:
 
 - **`lib` is how sources and shapers are used** (`lib.slew(signal, rise=0.2)`), not `registry.get("slew")`. *Reason:* the
@@ -128,7 +128,7 @@ separate ramp. Changed:
 - **Errors by kind.** A bad parameter value is a `ParameterError`, a bad file or format value a `FormatError`; both are
   `InvalidError`s with the same `path: rule (got value)` wording. *Reason:* `FormatError` for `rise=-1` told a caller to look
   at a file that does not exist.
-- **The model base and the strict value types live in `validated`**, below both `formats` and `params`. *Reason:* parameters
+- **The model base and the strict value types live in `validated`**, below both `formats` and `params` (until R4a removed them). *Reason:* parameters
   depended on the formats package for something that is not a format.
 - **A source's inputs are a closed set (`events`, `grid`, `points`, `values`), passed by keyword.** *Reason:* parameters stay
   named scalars (drivable, listable); data (events, keyframes, a step list) is not a parameter.
@@ -344,8 +344,8 @@ separate ramp. Changed:
   refuses more than ten million samples. *Reason:* `0.29 * 100` is `28.999999999999996`, and a range written in decimals
   must not lose its last sample to it; a typo (`--rate 1e9`) must not fill the memory first. Its JSON output is a bundle
   (a series of unit `ratio` per node, starting at `--from`), so what `sample` writes is what the rest of the ecosystem reads.
-- **matplotlib is an optional extra (`plot`), imported when a picture is drawn.** *Reason:* control installs with numpy and
-  pydantic only; a picture is a convenience of the command line and the gallery. Without it `plot` is a
+- **matplotlib is an optional extra (`plot`), imported when a picture is drawn.** *Reason:* control installs with numpy
+  (and pydantic, until R4a) only; a picture is a convenience of the command line and the gallery. Without it `plot` is a
   `BackendUnavailableError` (as in image) naming the extra. A PNG carries no version or date, so a rerun writes the same
   bytes. matplotlib writes its font cache with the locale's encoding when first imported, which the warning gate reports,
   and before 3.10.7 it calls pyparsing names that pyparsing 3.3 deprecates (the floor, 3.8, fails the lowest-dependency
@@ -369,7 +369,7 @@ separate ramp. Changed:
   (ten of them over a four-minute song take about 2 s: fine offline, too slow for interactive editing); a core that builds
   for WebAssembly can edit curves in a browser. *Consequence:* contributors need rustup (`rust-toolchain.toml` installs the
   rest), wheels are per platform (abi3: one per platform for every Python from 3.12), runtime Python dependencies stay
-  numpy and pydantic.
+  numpy and pydantic (pydantic left in R4a).
 - **One generic boundary, `_core.render(name, inputs, params)`, and it was transitional.** It took the shaper's input
   sampled at its rate from time 0 and returned a series of the same length, with the GIL released; the bindings named no
   shaper, so porting one never changed them. R3 removed it, when `Signal` and `Rendered` moved to Rust (below).
@@ -555,7 +555,7 @@ Taught in `docs/api.md`, Python and Rust side by side; every Python example ther
   involved.
 - **`_native` imports `errors`, lazily.** The extension raises `FormatError`, a Python class in `errors`, and imports it the
   first time it raises one. *Reason:* `FormatError` stays in the one hierarchy callers catch (`BullterrierControlError`).
-  *Cost:* `_native` is no longer an import-free leaf; the layers read `formats > validated > _native > errors`, and the
+  *Cost:* `_native` is no longer an import-free leaf; the layers read `formats > validated > _native > errors` (`validated` left in R4a), and the
   extension must not import anything else of the package.
 - **`Unit` is defined once, in Rust, and the Python members are created from it.** `Unit.FRACTION`, ... are made from
   `Unit::ALL` when the extension loads; a member copies, pickles and hashes as itself. *Reason:* the list of units cannot
@@ -595,7 +595,7 @@ Owner decisions (2026-10-31):
 - **One batch.** *Reason:* the graph, `Rendered`, the numeric helpers and the Python switch only make sense together; a
   half-moved `Signal` would need a boundary of its own.
 - **Pydantic leaves in R4, with the inputs.** R3 moves only easing, so `Keyframe`'s ease check calls Rust
-  (`Ease::from_str`) and `Keyframe`, the inputs' models and `validated` stay pydantic.
+  (`Ease::from_str`) and `Keyframe`, the inputs' models and `validated` stay pydantic. (Done in R4a, below.)
 - **A polish task came first** (boundary minors carried from R1 and R2).
 
 Rulings:
@@ -655,3 +655,62 @@ Design:
 Breaking for plugin authors: a signal's `compute` gets 1-D times; a `Rendered` subclass with its own `__init__` signature is
 not supported; native signals (`Constant`, `Rendered`, results of operators) cannot be pickled or
 copied; `at_least`/`more_than` take a number bound; a missing `compute` is found at the first read.
+
+## Inputs in Rust (batch R4a)
+
+Owner decisions (2026-10-31):
+- **The inputs (`points`, `events`, `grid`, `values`, `series`) are checked in the core, in a module `inputs`
+  (`crates/core/src/inputs.rs`).** `InputKind` names a kind and checks data as it (`check`), `Input` is the checked form,
+  `Keyframe` is a Rust type, and `matching` picks events by label. *Reason:* what an input is, and every rule that checks
+  it, has one definition that Rust, the web app and the CLI share, as the formats and parameters have since R1 and R2.
+  Python's `INPUTS` only names the kinds (docs, the stub annotation text, `check`).
+- **Pydantic is removed**: the dependency, `validated.py` and its layer. A test fails if a source file imports it or
+  `pyproject.toml` asks for it (`tests/test_no_pydantic.py`). It remains in `uv.lock` only as a development dependency of
+  a packaging check. *Reason:* with parameters (R2), formats (R1) and inputs in Rust, nothing used it; the wheel's one
+  Python dependency is numpy.
+- **`Keyframe` is a Rust class of the extension** (frozen, keyword-only init, `parse`, `==`, `hash`, `repr`, pickles),
+  like `Event`. *Reason:* the rule for one keyframe (finite numbers, `t` from 0, a known ease) is the core's.
+
+Rulings:
+- **A refused input is `Error::Input`, a list of problems (path and rule): the first 100 kept, the rest counted and
+  shown as `... and N more`; Python raises it as a `ParameterError`.** *Reason:* the cap of the formats and parameters, so
+  one rule everywhere. It also fixes the loss of "N more" that the Python re-wrap in `inputs.py` caused.
+- **The items of a list are checked as they are read, not collected first.** A bad item is recorded, or discarded once the
+  problems are full, and the next is read. *Reason:* memory stays bounded for a hostile input. Measured on 1M items
+  (release build): `[true] * 1M` as `values` held 283 MB more than the input before, 0.5 MB after. *Cost:* `check` takes
+  a value held in memory; a reader that streams JSON text cannot go on after a broken item (documented on `check`).
+- **`check` is generic over a serde `Deserializer`, not `&serde_json::Value`.** *Reason:* a `Value` cannot hold NaN, which
+  the Python reader delivers and which must be listed as a problem beside the others (as in "The formats in Rust").
+  `check(&json!(..))` works as it would on a `Value`.
+- **One set of strict number rules**: the formats' (`Number`, `field::{check, finite, required}`), also used by
+  parameters: no `bool`, text or `null` for a number, NaN and the infinities refused, a whole number beyond 2^53
+  refused. *Reason:* a duplicate list of rules (the Python aliases `Finite`, `Whole`, `Switch` and `Text`) can drift.
+- **The Python reader (`data.rs`) reads the package's own objects as their file data**: an `Event`, `Keyframe`, `Grid` or
+  `Series` in a list or field is read as the mapping of its fields. *Reason:* callers mix `Event` objects and mappings in
+  one `events` list, and the same object must pass or fail the same rules as its file form. *Cost:* every reader of
+  `data.rs` now accepts them: `Event.parse(Event(...))` and `Bundle.parse` with `Event` objects inside are accepted
+  (they were refused).
+- **An exception a user's object raises passes through unchanged** (a mapping whose `__getitem__` raises, an `__iter__` or
+  `tolist` that raises): the first one is kept, nothing more is read, and it reaches the caller. *Reason:* it is the
+  caller's own bug, not a bad value, as for a Python `compute` (R3). The formats and parameters still turn such an
+  exception into a refusal message; the same pass-through there is a follow-up. An overridden `__iter__`,
+  `__getitem__` or `items` of a list or dict subclass is not called: its contents are read.
+- **Unchecked construction stays possible in Rust**: `Keyframe::at` and an `Input` variant built by hand skip the rules
+  (documented). *Reason:* newtypes with private fields would add types for no consumer yet; R4b revisits it if sources
+  take `Input` and rely on the promise.
+
+Accepted differences from the Python inputs (a break, accepted before the first release; every path and verdict of
+`tests/test_inputs.py` is unchanged):
+- `ease: null` (`ease=None`) is linear, as a `null` event field is absent; it was refused. A `null` `t` reads as missing.
+- A whole number beyond 2^53 (`values=[2**60]`, `t=2**60`) is refused; it was accepted, rounded.
+- `np.bool_` in `values` is refused (it read as 1.0); a numpy array is accepted for `values` (it was refused). numpy
+  scalars of every width are numbers; `longdouble` and numpy NaN are refused.
+- A key that is not text is a `ParameterError` at its item; it was `TypeError: keywords must be strings`.
+- A bezier ease is written back tidied (`" cubic-bezier( 0.25, 0.1 ,0.25, 1.0 ) "` reads `cubic-bezier(0.25, 0.1, 0.25,
+  1)`); it was kept as written.
+- Messages use the Rust wording (serde's type errors, `is not after the previous t = ..`). Every out-of-order pair is
+  listed (not the first); a type error or an unknown field stops the reading of that keyframe or event, so fewer of its
+  other problems are listed at once.
+- A raising user mapping in `events` reaches the caller unchanged (it was wrapped as `ParameterError: events[0]: ...`;
+  `points` already behaved so).
+- `Event.parse(Event)` and `Bundle.parse` with `Event` objects are accepted.

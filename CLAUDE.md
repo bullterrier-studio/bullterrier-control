@@ -35,7 +35,7 @@ the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `no
 `gate`, `hold`, `remap` and `delay`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`,
 patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. The Rust core's foundation
 (R0) exists: `slew` and `follow` run in Rust, and CI builds the core and a wheel per platform (R0b; first GitHub run pending).
-The formats are in Rust (R1): `Series`, `Event`, `Grid`, `Bundle` and `Unit` are classes of the extension. Parameters are in Rust (R2): every built-in declares them there (`#[derive(Params)]`), and the core checks every parameter, a plugin's too. The signal graph is in Rust (R3): `Signal`, arithmetic, `Rendered`, `slew` and `follow` (as Rust `Signal` shapers) and easing, cadence, hashing, scaling and rounding run in the core, and Python's `Signal` is a handle over it. Next: R4 to R6, then C5, the first release (`docs/roadmap.md`).
+The formats are in Rust (R1): `Series`, `Event`, `Grid`, `Bundle` and `Unit` are classes of the extension. Parameters are in Rust (R2): every built-in declares them there (`#[derive(Params)]`), and the core checks every parameter, a plugin's too. The signal graph is in Rust (R3): `Signal`, arithmetic, `Rendered`, `slew` and `follow` (as Rust `Signal` shapers) and easing, cadence, hashing, scaling and rounding run in the core, and Python's `Signal` is a handle over it. The inputs are in Rust (R4a): the core's `inputs` module checks every input, `Keyframe` is a class of the extension, and pydantic is gone. Next: R4b (registry, `lib`, patches), R5, R6, then C5, the first release (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.
@@ -100,10 +100,10 @@ _native    home of the Rust extension `_native._core`      (imports `errors` onl
 ```
 
 **Rust core:** `crates/core` (pure Rust: no PyO3, no numpy, safe code, builds for `wasm32-unknown-unknown`; one
-`src/builtin/<name>.rs` per built-in, found by `build.rs`; `signal.rs` and `signal/` the graph; `easing`, `cadence`, `hashing`, `scaling`, `rounding` the primitives), `crates/macros` (the `Params` and `Choice` derives; the core
+`src/builtin/<name>.rs` per built-in, found by `build.rs`; `signal.rs` and `signal/` the graph; `easing`, `cadence`, `hashing`, `scaling`, `rounding` the primitives; `inputs.rs` the one place that says what each input (`points`, `events`, `grid`, `values`, `series`) is and checks it, with `Error::Input` listing up to 100 problems), `crates/macros` (the `Params` and `Choice` derives; the core
 re-exports them; they only write code) and `crates/python` (PyO3 bindings building
 `bullterrier_control._native._core`; generic, names no shaper; `signal.rs` is the `SignalBase` handle, `callback.rs` the nodes that call Python). The formats are `crates/core/src/formats/` (rules, JSON
-reading and writing, schema); the bindings are `crates/python/src/{formats,params,data,error}.rs`. They read a Python object with
+reading and writing, schema); the bindings are `crates/python/src/{formats,params,inputs,data,error}.rs` (`inputs.rs`: `Keyframe`, `check_input`; `data.rs` reads the package's own objects as their file data, and an exception a user's object raises reaches the caller unchanged). They read a Python object with
 their own deserializer over Python objects (`data.rs`), so a NaN reaches the core and is listed with every other problem,
 and `FormatError.problems` lists the broken rules, the first 100 (`FormatError::omitted()` counts the others; a value of the wrong JSON type, an unknown field and the like stop
 the reading at that value). A ported shaper keeps its Python docstring and `@shaper`; its params class is `class SlewParams(Params, builtin="slew")` (a
@@ -257,7 +257,7 @@ load, naming source, field, constraint and value. Not parameters: the fields of 
    `help(lib.<name>)` shows). Data that is not a parameter (keyframes, events, a grid) is a keyword-only argument after
    `params`, named in `inputs.INPUTS` (`def name(params, *, points)`; `= None` makes it optional); the registry checks it and
    passes it on. An operation takes its data this way and declares its result by its return annotation
-   (`tuple[Event, ...]` or `Series`). A new kind of input is one `INPUTS` entry and one row in each of `SAMPLE_INPUTS` and
+   (`tuple[Event, ...]` or `Series`). A new kind of input is a variant of `InputKind` and of `Input` in `crates/core/src/inputs.rs` (its rules and tests), its conversion in `crates/python/src/inputs.rs`, a stub annotation in `inputs.py`, and one row in each of `SAMPLE_INPUTS` and
    `SMALLEST_INPUTS` in `tests/builtin/test_contract.py` (and in `INPUTS` of `test_operation_contract.py`, if an operation takes it).
 3. **Test:** what it promises, each expected number worked out by hand; the contract tests already cover shapes, ranges,
    determinism, read order and causality for every registered one. If `docs/examples.md` names it under **Needs**, that

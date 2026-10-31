@@ -23,7 +23,8 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | R1 | Rust core: the formats | M | done |
 | R2 | Rust core: parameters | M | done |
 | R3 | Rust core: the signal graph | L | done |
-| R4 | Rust core: registry, inputs, `lib`, patches | M | |
+| R4a | Rust core: the inputs; pydantic leaves | S | done |
+| R4b | Rust core: registry, `lib`, patches | M | |
 | R5 | Rust core: the built-in sources, shapers and operations | L | |
 | R6 | Rust core: cleanup, the public crate | S | |
 | C5 | First release (after R6: it ships the Rust core) | S | |
@@ -174,9 +175,12 @@ The Python suite runs unchanged against the Rust core throughout.
   `build.rs` to R5 (19 built-ins still run in Python); `gen_api`'s own range text, pydantic for `Keyframe` and the inputs'
   models, and the duplicate `Finite`/`Whole`/`Switch`/`Text` aliases to R4 (they go with the inputs and `lib`). Decisions:
   [design-decisions.md](design-decisions.md), "The signal graph in Rust".
-- **R4 Registry and patches.** Registry, inputs, `lib` and the patch in Rust: a patch is loaded and sampled with no
-  Python. Also pydantic leaves (`Keyframe`, the inputs' models, the duplicate `Finite`/`Whole`/`Switch`/`Text` aliases),
-  and `gen_api`'s own range text goes with `lib`.
+- **R4a Inputs (done).** The core's `inputs` module checks `points`, `events`, `grid`, `values` and `series` (`Error::Input`,
+  at most 100 problems); `Keyframe` is a Rust class; pydantic, `validated` and the duplicate `Finite`/`Whole`/`Switch`/`Text`
+  aliases are gone, and numpy is the one Python dependency. Decisions and accepted differences:
+  [design-decisions.md](design-decisions.md), "Inputs in Rust".
+- **R4b Registry and patches.** Registry, `lib` and the patch in Rust: a patch is loaded and sampled with no Python.
+  `gen_api`'s own range text goes with `lib`.
 - **R5 Built-ins.** Every other source, shaper and operation ported. Then `Params.__getattr__` and the `PARAMS`/`SHAPERS`
   split of `build.rs` go (no Python body is left to read a field or to need the difference).
 - **R6 Cleanup.** No Python duplicate left, crate documentation, final speed and memory measured against R0's baseline.

@@ -7,7 +7,7 @@ of the core. The Python blocks run as tests (`tests/test_api_doc.py`); a `# arra
 to. Implemented: the formats (`Event::new`, `Series::new`, `Grid::new`, `Bundle::from_json`), the parameters
 (`#[derive(Params)]` structs, `ParamTable`, `ParamUnit`, `parameters(name)`, `builtins()`) and the signal graph (R3):
 `Signal` (`constant`, `from_series`, `from_values`, `sample`, `sample_into`, `at`, `+ - *` and negation, `maximum`,
-`minimum`, `from_fn`, `rendered`), the `slew` and `follow` shapers and the primitives (`Ease`, `hashing::uniform`,
+`minimum`, `from_fn`, `rendered`), the inputs (R4a: `InputKind::check`, `Input::from_*`, `Keyframe`, `matching`), the `slew` and `follow` shapers and the primitives (`Ease`, `hashing::uniform`,
 `scaling::between`, `rounding`, `cadence::positions`). Their rustdoc examples (`crates/core/src/`) run with
 `cargo test --doc -p bullterrier-control`.
 
@@ -183,6 +183,35 @@ ramp.sample([1.0, 2.5, 7.0])  # 0.9 * (3 * 0.2^2 - 2 * 0.2^3) = 0.0936, then hal
 
 ```rust
 let ramp = btc::lib::keyframes(&[Keyframe::at(0.0, 0.0).ease(Ease::InOut), Keyframe::at(5.0, 0.9)])?;
+```
+
+Every input is checked by the Rust core, once, where it enters. Keyframes must start at 0 or later and strictly
+increase in `t`; a broken rule is a `ParameterError` that lists each one as `path: rule`, up to 100, then
+`... and N more`.
+
+```python
+import bullterrier_control as btc
+
+try:
+    btc.lib.keyframes(points=[btc.Keyframe(t=0, value=0), btc.Keyframe(t=0, value=1)])
+except btc.ParameterError as error:
+    print(error)  # source 'keyframes': points[1].t: 0.0 is not after the previous t = 0.0
+```
+
+The checking itself (**implemented**) is `bullterrier_control::inputs`: data, by the input's name, or typed values, held to
+the same rules (`Error::Input`).
+
+```rust
+use bullterrier_control::easing::Ease;
+use bullterrier_control::inputs::{Input, InputKind, Keyframe};
+use serde_json::json;
+
+let kind: InputKind = "points".parse()?;
+let points = kind.check(&json!([{"t": 0, "value": 0, "ease": "in-out"}, {"t": 5, "value": 0.9}]))?;
+assert_eq!(points, Input::Points(vec![Keyframe::at(0.0, 0.0).ease(Ease::InOut), Keyframe::at(5.0, 0.9)]));
+
+let refused = Input::from_points(vec![Keyframe::at(1.0, 0.0), Keyframe::at(1.0, 2.0)]);
+assert_eq!(refused.map_err(|error| error.to_string()), Err("points[1].t: 1.0 is not after the previous t = 1.0".into()));
 ```
 
 ## 6. Combine

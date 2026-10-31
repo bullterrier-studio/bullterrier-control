@@ -28,6 +28,6 @@ bullterrier-control is before 1.0: only the latest release receives security fix
   permissive licences, with no PyO3 in the core (`deny.toml`, in every `poe check`).
 - **Release files** are built in CI without a build cache. Each wheel is installed on its own platform from the built
   file alone and run, and the sdist is built and run, before anything is published.
-- **Two Python runtime dependencies** (numpy and pydantic), so there is little to audit and nothing that downloads or
+- **One Python runtime dependency** (numpy), so there is little to audit and nothing that downloads or
   executes at import.
 - **Plugins** are Python packages: installing one runs its code, as with any package.
