@@ -28,4 +28,5 @@ __all__ = ["Rendered"]
 
 class Rendered(_core.Rendered, Signal):
     """A signal made by a causal recurrence `run` over `signal` sampled at `rate`, rendered lazily and cached:
-    `Rendered(signal, *, rate, run, limit=20_000_000)`."""
+    `Rendered(signal, *, rate, run, limit=20_000_000)`. A subclass with arguments of its own overrides `__new__`
+    (`super().__new__(cls, signal, rate=..., run=...)`), not `__init__`: the native `__new__` makes the signal."""

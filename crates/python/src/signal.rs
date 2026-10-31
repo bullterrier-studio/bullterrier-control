@@ -26,7 +26,9 @@ use crate::params;
 
 /// A value that changes over time, readable at any moment in seconds: the base of every signal. A subclass implements
 /// `compute(times)`; its `__init__` may take any arguments and need not call `super().__init__()`. A class inheriting
-/// `Constant` or `Rendered` lists it first in its bases (else making one is a `TypeError`).
+/// `Constant` or `Rendered` lists it first in its bases (else making one is a `TypeError`) and takes its own arguments
+/// through `__new__`, which calls `super().__new__(cls, ...)`: their native `__new__` makes the signal, so an `__init__`
+/// with other arguments is never reached.
 ///
 /// `sample(times)` takes a number or an array of any shape and returns float64 values of its shape (0-d for a
 /// number), reading a time before 0 as 0. A time that is not a finite number (text, a bool, NaN, an infinity, an

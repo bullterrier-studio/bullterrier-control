@@ -218,3 +218,11 @@ def test_rendering_a_graph_too_deep_is_a_signal_error_not_a_wrong_argument():
         deep = deep + 1.0
     with pytest.raises(SignalError, match="nodes deep"):
         Rendered(deep, rate=RATE, run=integrate)
+
+
+def test_a_subclass_with_arguments_of_its_own_builds_through_new():
+    class Integrated(Rendered):
+        def __new__(cls, signal, tau):
+            return super().__new__(cls, signal, rate=RATE, run=lambda inputs: integrate(inputs) * tau)
+
+    assert Integrated(Constant(1.0), 2.0).sample([0.0, 0.3]).tolist() == pytest.approx([0.2, 0.8])
