@@ -157,6 +157,43 @@ def test_a_subclass_without_compute_is_refused_when_read():
         Empty().sample(1.0)
 
 
+class Chained(_core.SignalBase):
+    """A signal class with methods of its own, as the package's `Signal` is."""
+
+    def doubled(self):
+        return self * 2
+
+
+MIXED = [
+    pytest.param(_core.Constant, (3.0,), 3.0, id="Constant"),
+    pytest.param(_core.Rendered, (RAMP,), 2.5, id="Rendered"),
+]
+MIXED_ARGUMENTS = {"rate": 2.0, "run": lambda inputs: inputs}
+
+
+@pytest.mark.parametrize(("made", "arguments", "value"), MIXED)
+def test_constant_or_rendered_listed_before_a_signal_class_makes_a_signal_with_its_methods(made, arguments, value):
+    mixed = type("Mixed", (made, Chained), {})
+    keywords = MIXED_ARGUMENTS if made is _core.Rendered else {}
+    signal = mixed(*arguments, **keywords)
+    assert signal.sample(2.5).tolist() == value
+    assert signal.doubled().sample(2.5).tolist() == 2 * value
+
+
+@pytest.mark.parametrize(
+    ("made", "arguments", "keywords"),
+    [
+        pytest.param(_core.Constant, (3.0,), {}, id="Constant"),
+        pytest.param(_core.Rendered, (RAMP,), MIXED_ARGUMENTS, id="Rendered"),
+    ],
+)
+def test_constant_or_rendered_listed_after_a_signal_class_is_refused_when_made(made, arguments, keywords):
+    # Python makes such a class with the first base's `__new__`, which would never see the arguments
+    mixed = type("Mixed", (Chained, made), {})
+    with pytest.raises(TypeError, match=f"list {made.__name__} first"):
+        mixed(*arguments, **keywords)
+
+
 @pytest.mark.parametrize(
     ("body", "expected"),
     [

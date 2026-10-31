@@ -25,7 +25,8 @@ use crate::formats::PySeries;
 use crate::params;
 
 /// A value that changes over time, readable at any moment in seconds: the base of every signal. A subclass implements
-/// `compute(times)`; its `__init__` may take any arguments and need not call `super().__init__()`.
+/// `compute(times)`; its `__init__` may take any arguments and need not call `super().__init__()`. A class inheriting
+/// `Constant` or `Rendered` lists it first in its bases (else making one is a `TypeError`).
 ///
 /// `sample(times)` takes a number or an array of any shape and returns float64 values of its shape (0-d for a
 /// number), reading a time before 0 as 0. A time that is not a finite number (text, a bool, NaN, an infinity, an
@@ -64,12 +65,27 @@ static REAL: PyOnceLock<Py<PyType>> = PyOnceLock::new();
 
 #[pymethods]
 impl SignalBase {
+    // A class listing `Constant` or `Rendered` after another subclass of this one is made with this `__new__` (the
+    // first base's), never theirs: it would get no signal and swallow their arguments, so it is refused.
     #[new]
+    #[classmethod]
     #[pyo3(signature = (*_args, **_kwargs), text_signature = "(*args, **kwargs)")]
-    fn new(_args: &Bound<'_, PyTuple>, _kwargs: Option<&Bound<'_, PyDict>>) -> Self {
-        Self {
-            handle: OnceLock::new(),
+    fn new(cls: &Bound<'_, PyType>, _args: &Bound<'_, PyTuple>, _kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<Self> {
+        for (skipped, name) in [
+            (cls.is_subclass_of::<Constant>()?, "Constant"),
+            (cls.is_subclass_of::<Rendered>()?, "Rendered"),
+        ] {
+            if skipped {
+                return Err(PyTypeError::new_err(format!(
+                    "{} inherits {name} after another base, which makes it without {name}'s arguments: list {name} \
+                     first in its bases",
+                    cls.name()?
+                )));
+            }
         }
+        Ok(Self {
+            handle: OnceLock::new(),
+        })
     }
 
     /// The values at `times` (a number, or an array of any shape; the result has its shape).
