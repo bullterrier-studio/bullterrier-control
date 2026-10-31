@@ -1,0 +1,954 @@
+//! The registry through its public face: the rules for getting in, the checks of a call, the queries, and what a
+//! thing says about itself, each expected text worked out by hand from the Python package's rules (`registry.py`).
+
+use std::collections::BTreeMap;
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
+
+use serde_json::json;
+
+use super::{About, Call, Declared, Kind, Output, Registry, Returns, Thing};
+use crate::formats::{Event, EventOptions, Grid};
+use crate::inputs::{Input, InputKind};
+use crate::params::{Kind as ParamKind, Param, ParamTable, ParamUnit};
+use crate::{Error, Signal};
+
+/// A decimal field in `unit` from `min` to `max`.
+fn number(name: &str, default: f64, unit: ParamUnit, (min, max): (f64, f64)) -> Param {
+    Param {
+        name: name.to_owned(),
+        kind: ParamKind::Float,
+        default: default.into(),
+        doc: format!("The {name}."),
+        unit: Some(unit),
+        min: Some(min),
+        max: Some(max),
+        advanced: false,
+        cyclic: false,
+    }
+}
+
+/// A field of `kind` (not a number) with `default`.
+fn plain(name: &str, kind: ParamKind, default: serde_json::Value) -> Param {
+    Param {
+        name: name.to_owned(),
+        kind,
+        default,
+        doc: format!("The {name}."),
+        unit: None,
+        min: None,
+        max: None,
+        advanced: false,
+        cyclic: false,
+    }
+}
+
+/// A switch, on by default.
+fn switch(name: &str) -> Param {
+    plain(name, ParamKind::Switch, true.into())
+}
+
+fn table(params: Vec<Param>) -> Result<ParamTable, String> {
+    ParamTable::new(params).map_err(|error| error.to_string())
+}
+
+/// What a thing of each kind gives when called: a constant 1, or the events it was given.
+fn echo(call: &Call) -> Result<Output, Error> {
+    match call.inputs.get("events") {
+        Some(Input::Events(events)) => Ok(Output::Events(events.clone())),
+        _ => Ok(Output::Signal(Signal::constant(1.0)?)),
+    }
+}
+
+/// The thing `name` of `kind`, `params`, `inputs` and `returns`, defined as `identity`, whose body is [`echo`].
+fn thing(
+    (name, identity): (&str, &str),
+    kind: Kind,
+    params: Vec<Param>,
+    inputs: &[(InputKind, bool)],
+    returns: Returns,
+) -> Result<Thing, Error> {
+    let about = About {
+        name: name.to_owned(),
+        doc: format!("The thing {name}."),
+        ..About::default()
+    };
+    let table = ParamTable::new(params).map_err(|error| Error::params(name, error))?;
+    let declared = Declared {
+        kind,
+        identity: identity.to_owned(),
+        table,
+        inputs: inputs.to_vec(),
+        returns,
+    };
+    Thing::custom(about, declared, echo)
+}
+
+/// `result`'s registration refusal, or `None` if it is not one.
+fn registration<T>(result: Result<T, Error>) -> Option<String> {
+    match result {
+        Err(Error::Registration { message }) => Some(message),
+        _ => None,
+    }
+}
+
+/// A row of [`a_thing_gets_in_only_if_it_keeps_every_rule`]: (row, name, kind, parameters, inputs, returns, the
+/// refusal or `None`).
+type RuleRow<'a> = (
+    &'a str,
+    &'a str,
+    Kind,
+    Vec<&'a str>,
+    Vec<(InputKind, bool)>,
+    Returns,
+    Option<String>,
+);
+
+/// A row of [`a_call_is_checked_before_the_thing_runs`]: (row, thing, signals, inputs, values, the refusal: a call
+/// error's message, or the fields of a parameter error).
+type CallRow<'a> = (
+    &'a str,
+    &'a Thing,
+    Vec<Signal>,
+    BTreeMap<String, Input>,
+    serde_json::Value,
+    Option<&'a str>,
+);
+
+const NAME_RULE: &str = "a name is lower case letters, digits and underscores, starting with a letter";
+
+#[test]
+fn a_thing_gets_in_only_if_it_keeps_every_rule() {
+    let events = (InputKind::Events, true);
+    let rows: Vec<RuleRow<'_>> = vec![
+        (
+            "plain name",
+            "level",
+            Kind::Source,
+            vec!["on"],
+            vec![],
+            Returns::Signal,
+            None,
+        ),
+        (
+            "digits and _",
+            "every_2nd",
+            Kind::Source,
+            vec![],
+            vec![],
+            Returns::Signal,
+            None,
+        ),
+        (
+            "a source with an input",
+            "track",
+            Kind::Source,
+            vec![],
+            vec![(InputKind::Points, true)],
+            Returns::Signal,
+            None,
+        ),
+        (
+            "a shaper",
+            "lift",
+            Kind::Shaper,
+            vec!["on"],
+            vec![],
+            Returns::Signal,
+            None,
+        ),
+        (
+            "events from events",
+            "pick",
+            Kind::Operation,
+            vec![],
+            vec![events],
+            Returns::Events,
+            None,
+        ),
+        (
+            "a series",
+            "rate",
+            Kind::Operation,
+            vec![],
+            vec![(InputKind::Series, true)],
+            Returns::Series,
+            None,
+        ),
+        (
+            "capital",
+            "Slew",
+            Kind::Source,
+            vec![],
+            vec![],
+            Returns::Signal,
+            Some(format!("source 'Slew': {NAME_RULE}")),
+        ),
+        (
+            "digit first",
+            "2nd",
+            Kind::Shaper,
+            vec![],
+            vec![],
+            Returns::Signal,
+            Some(format!("shaper '2nd': {NAME_RULE}")),
+        ),
+        (
+            "empty",
+            "",
+            Kind::Source,
+            vec![],
+            vec![],
+            Returns::Signal,
+            Some(format!("source '': {NAME_RULE}")),
+        ),
+        (
+            "a hyphen",
+            "a-b",
+            Kind::Source,
+            vec![],
+            vec![],
+            Returns::Signal,
+            Some(format!("source 'a-b': {NAME_RULE}")),
+        ),
+        (
+            "a quote",
+            "it's",
+            Kind::Source,
+            vec![],
+            vec![],
+            Returns::Signal,
+            Some(format!("source \"it's\": {NAME_RULE}")),
+        ),
+        (
+            "name before clash",
+            "Bad",
+            Kind::Source,
+            vec!["events"],
+            vec![],
+            Returns::Signal,
+            Some(format!("source 'Bad': {NAME_RULE}")),
+        ),
+        (
+            "an input's name",
+            "level",
+            Kind::Source,
+            vec!["on", "events"],
+            vec![],
+            Returns::Signal,
+            Some("source 'level': the parameter 'events' has the name of an input or a patch key".to_owned()),
+        ),
+        (
+            "the first clash by name",
+            "level",
+            Kind::Source,
+            vec!["use", "grid"],
+            vec![],
+            Returns::Signal,
+            Some("source 'level': the parameter 'grid' has the name of an input or a patch key".to_owned()),
+        ),
+        (
+            "a patch key",
+            "lift",
+            Kind::Shaper,
+            vec!["signal"],
+            vec![],
+            Returns::Signal,
+            Some("shaper 'lift': the parameter 'signal' has the name of an input or a patch key".to_owned()),
+        ),
+        (
+            "an input twice",
+            "pick",
+            Kind::Operation,
+            vec![],
+            vec![events, (InputKind::Events, false)],
+            Returns::Events,
+            Some("operation 'pick': the input 'events' is declared twice".to_owned()),
+        ),
+        (
+            "a source of events",
+            "level",
+            Kind::Source,
+            vec![],
+            vec![],
+            Returns::Events,
+            Some("source 'level': a source returns a signal (not events)".to_owned()),
+        ),
+        (
+            "a shaper of a series",
+            "lift",
+            Kind::Shaper,
+            vec![],
+            vec![],
+            Returns::Series,
+            Some("shaper 'lift': a shaper returns a signal (not series)".to_owned()),
+        ),
+        (
+            "an operation of a signal",
+            "pick",
+            Kind::Operation,
+            vec![],
+            vec![events],
+            Returns::Signal,
+            Some("operation 'pick': an operation returns events or a series (not a signal)".to_owned()),
+        ),
+    ];
+    for (row, name, kind, params, inputs, returns, refusal) in rows {
+        let made = thing(
+            (name, "tests.thing"),
+            kind,
+            params.into_iter().map(switch).collect(),
+            &inputs,
+            returns,
+        );
+        match (&made, &refusal) {
+            (Ok(made), None) => assert_eq!((made.name(), made.kind()), (name, kind), "{row}"),
+            _ => assert_eq!(registration(made), refusal, "{row}"),
+        }
+    }
+}
+
+#[test]
+fn a_name_is_taken_by_another_thing_but_not_by_the_same_one_registered_again() -> Result<(), Error> {
+    let source = |identity: &str, doc: &str| -> Result<Thing, Error> {
+        let about = About {
+            name: "level".to_owned(),
+            doc: doc.to_owned(),
+            ..About::default()
+        };
+        let declared = Declared {
+            kind: Kind::Source,
+            identity: identity.to_owned(),
+            table: ParamTable::new(vec![]).map_err(|error| Error::params("level", error))?,
+            inputs: vec![],
+            returns: Returns::Signal,
+        };
+        Thing::custom(about, declared, echo)
+    };
+    let mut registry = Registry::new();
+    registry.register(source("a.level", "First.")?)?;
+    // the same kind and identity: a reload, which replaces it
+    registry.register(source("a.level", "Second.")?)?;
+    assert_eq!(registry.get("level")?.summary(), "Second.");
+    // another identity
+    assert_eq!(
+        registration(registry.register(source("b.level", "Third.")?)).as_deref(),
+        Some("source 'level': the name is taken by the source defined as a.level")
+    );
+    // the same identity, another kind
+    let shaper = thing(("level", "a.level"), Kind::Shaper, vec![], &[], Returns::Signal)?;
+    assert_eq!(
+        registration(registry.register(shaper)).as_deref(),
+        Some("shaper 'level': the name is taken by the source defined as a.level")
+    );
+    // a refusal leaves the registered one in place
+    assert_eq!(registry.get("level")?.summary(), "Second.");
+    // another name is free
+    registry.register(thing(("drift", "b.level"), Kind::Source, vec![], &[], Returns::Signal)?)?;
+    let names: Vec<&str> = registry.things().map(Thing::name).collect();
+    assert_eq!(names, ["drift", "level"]);
+    Ok(())
+}
+
+#[test]
+fn an_unknown_name_is_refused_listing_the_names_there_are() -> Result<(), Error> {
+    let mut registry = Registry::new();
+    for name in ["level", "drift"] {
+        registry.register(thing((name, name), Kind::Source, vec![], &[], Returns::Signal)?)?;
+    }
+    for refused in [
+        registry.get("lvl").map(|_| ()),
+        registry.clone().unregister("lvl").map(|_| ()),
+    ] {
+        assert!(
+            matches!(&refused, Err(Error::UnknownName { name, available }) if name == "lvl" && available == &["drift", "level"]),
+            "{refused:?}"
+        );
+    }
+    assert_eq!(registry.unregister("drift")?.name(), "drift");
+    let text = registry.get("drift").map(|_| ()).map_err(|error| error.to_string());
+    assert_eq!(
+        text,
+        Err("unknown source, shaper or operation 'drift'; available: level".to_owned())
+    );
+    Ok(())
+}
+
+/// Events at `times`.
+fn events(times: &[f64]) -> Result<Vec<Event>, Error> {
+    times
+        .iter()
+        .map(|&t| Event::new(t, EventOptions::default()).map_err(|source| Error::Format { source }))
+        .collect()
+}
+
+#[test]
+fn a_call_is_checked_before_the_thing_runs() -> Result<(), Error> {
+    let pick = thing(
+        ("pick", "tests.pick"),
+        Kind::Operation,
+        vec![number("threshold", 0.0, ParamUnit::Fraction, (0.0, 1.0))],
+        &[(InputKind::Events, true), (InputKind::Grid, false)],
+        Returns::Events,
+    )?;
+    let lift = thing(
+        ("lift", "tests.lift"),
+        Kind::Shaper,
+        vec![switch("on")],
+        &[],
+        Returns::Signal,
+    )?;
+    let level = thing(("level", "tests.level"), Kind::Source, vec![], &[], Returns::Signal)?;
+    let one = Signal::constant(1.0)?;
+    let kicks = Input::from_events(events(&[0.5, 1.0])?);
+    let grid = Input::Grid(Grid::new(vec![0.0, 0.5, 1.0], 4, 0).map_err(|source| Error::Format { source })?);
+    let values = Input::from_values(vec![1.0])?;
+    let with = |pairs: &[(&str, &Input)]| -> BTreeMap<String, Input> {
+        pairs
+            .iter()
+            .map(|(name, input)| ((*name).to_owned(), (*input).clone()))
+            .collect()
+    };
+    let rows: Vec<CallRow<'_>> = vec![
+        (
+            "a shaper with its signal",
+            &lift,
+            vec![one.clone()],
+            with(&[]),
+            json!({}),
+            None,
+        ),
+        ("a source with none", &level, vec![], with(&[]), json!({}), None),
+        (
+            "events, no grid",
+            &pick,
+            vec![],
+            with(&[("events", &kicks)]),
+            json!({}),
+            None,
+        ),
+        (
+            "events and grid",
+            &pick,
+            vec![],
+            with(&[("events", &kicks), ("grid", &grid)]),
+            json!({"threshold": 1}),
+            None,
+        ),
+        (
+            "a shaper without a signal",
+            &lift,
+            vec![],
+            with(&[]),
+            json!({}),
+            Some("shaper 'lift' takes 1 signal(s), not 0"),
+        ),
+        (
+            "a shaper of two",
+            &lift,
+            vec![one.clone(), one.clone()],
+            with(&[]),
+            json!({}),
+            Some("shaper 'lift' takes 1 signal(s), not 2"),
+        ),
+        (
+            "a source of one",
+            &level,
+            vec![one.clone()],
+            with(&[]),
+            json!({}),
+            Some("source 'level' takes 0 signal(s), not 1"),
+        ),
+        (
+            "the count first",
+            &lift,
+            vec![],
+            with(&[]),
+            json!({"on": 3}),
+            Some("shaper 'lift' takes 1 signal(s), not 0"),
+        ),
+        (
+            "no events",
+            &pick,
+            vec![],
+            with(&[("grid", &grid)]),
+            json!({}),
+            Some("operation 'pick' needs the input 'events'"),
+        ),
+        (
+            "an undeclared input",
+            &pick,
+            vec![],
+            with(&[("events", &kicks), ("series", &values)]),
+            json!({}),
+            Some("operation 'pick' takes no input 'series'"),
+        ),
+        (
+            "the first undeclared by name",
+            &pick,
+            vec![],
+            with(&[("values", &values), ("points", &values)]),
+            json!({}),
+            Some("operation 'pick' takes no input 'points'"),
+        ),
+        (
+            "not an input's name",
+            &level,
+            vec![],
+            with(&[("bogus", &values)]),
+            json!({}),
+            Some("source 'level' takes no input 'bogus'"),
+        ),
+        (
+            "an input of another kind",
+            &pick,
+            vec![],
+            with(&[("events", &values)]),
+            json!({}),
+            Some("operation 'pick': the input 'events' holds values"),
+        ),
+        (
+            "missing before parameters",
+            &pick,
+            vec![],
+            with(&[]),
+            json!({"threshold": 2}),
+            Some("operation 'pick' needs the input 'events'"),
+        ),
+        (
+            "a parameter out of range",
+            &pick,
+            vec![],
+            with(&[("events", &kicks)]),
+            json!({"threshold": 2}),
+            Some("threshold"),
+        ),
+        (
+            "an unknown parameter",
+            &lift,
+            vec![one.clone()],
+            with(&[]),
+            json!({"depth": 1}),
+            Some("depth"),
+        ),
+    ];
+    for (row, called, signals, inputs, values, refusal) in rows {
+        let result = called.call(&Call {
+            signals,
+            inputs,
+            values,
+        });
+        let found = match &result {
+            Ok(_) => None,
+            Err(Error::Call { message }) => Some(message.clone()),
+            Err(Error::Params { shaper, problems, .. }) if shaper == called.name() => Some(
+                problems
+                    .iter()
+                    .map(|problem| problem.path.clone())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            ),
+            Err(other) => Some(format!("another error: {other:?}")),
+        };
+        assert_eq!(found.as_deref(), refusal, "{row}");
+    }
+    Ok(())
+}
+
+#[test]
+fn the_thing_gets_its_parameters_as_the_table_read_them_and_only_its_inputs() -> Result<(), Error> {
+    let mut phase = number("phase", 0.25, ParamUnit::Cycles, (0.0, 1.0));
+    phase.cyclic = true;
+    let about = About {
+        name: "phase".to_owned(),
+        ..About::default()
+    };
+    let declared = Declared {
+        kind: Kind::Source,
+        identity: "tests.phase".to_owned(),
+        table: ParamTable::new(vec![phase, switch("on")]).map_err(|error| Error::params("phase", error))?,
+        inputs: vec![(InputKind::Grid, false)],
+        returns: Returns::Signal,
+    };
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let kept = Arc::clone(&seen);
+    let thing = Thing::custom(about, declared, move |call| {
+        if let Ok(mut seen) = kept.lock() {
+            seen.push((call.values.clone(), call.inputs.keys().cloned().collect::<Vec<_>>()));
+        }
+        Ok(Output::Signal(Signal::constant(1.0)?))
+    })?;
+    thing.call(&Call::default())?;
+    thing.call(&Call {
+        values: json!({"phase": 1.75, "on": false}),
+        ..Call::default()
+    })?;
+    let seen = seen.lock().map(|seen| seen.clone()).unwrap_or_default();
+    // the defaults filled in, the phase wrapped into its cycle
+    assert_eq!(
+        seen,
+        [
+            (json!({"phase": 0.25, "on": true}), vec![]),
+            (json!({"phase": 0.75, "on": false}), vec![]),
+        ]
+    );
+    Ok(())
+}
+
+/// The error a body gives.
+#[derive(Debug)]
+struct Broke;
+
+impl std::fmt::Display for Broke {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("the body broke")
+    }
+}
+
+impl std::error::Error for Broke {}
+
+#[test]
+fn an_error_of_the_body_reaches_the_caller_unchanged() -> Result<(), Error> {
+    let about = About {
+        name: "broken".to_owned(),
+        ..About::default()
+    };
+    let declared = Declared {
+        kind: Kind::Source,
+        identity: "tests.broken".to_owned(),
+        table: ParamTable::new(vec![]).map_err(|error| Error::params("broken", error))?,
+        inputs: vec![],
+        returns: Returns::Signal,
+    };
+    let broken = Thing::custom(about, declared, |_call| {
+        Err(Error::Node {
+            source: Arc::new(Broke),
+        })
+    })?;
+    let result = broken.call(&Call::default());
+    let source = match &result {
+        Err(error) => std::error::Error::source(error).and_then(|source| source.downcast_ref::<Broke>()),
+        Ok(_) => None,
+    };
+    assert!(source.is_some(), "{result:?}");
+    assert_eq!(
+        result.map(|_| ()).map_err(|error| error.to_string()),
+        Err("the body broke".to_owned())
+    );
+    Ok(())
+}
+
+#[test]
+fn a_thing_that_gives_another_kind_of_result_than_it_returns_is_refused() -> Result<(), Error> {
+    let about = About {
+        name: "liar".to_owned(),
+        ..About::default()
+    };
+    let declared = Declared {
+        kind: Kind::Operation,
+        identity: "tests.liar".to_owned(),
+        table: ParamTable::new(vec![]).map_err(|error| Error::params("liar", error))?,
+        inputs: vec![],
+        returns: Returns::Series,
+    };
+    let liar = Thing::custom(about, declared, |_call| Ok(Output::Events(vec![])))?;
+    let result = liar.call(&Call::default());
+    assert!(
+        matches!(&result, Err(Error::Call { message }) if message == "operation 'liar' gave events, not the series it returns"),
+        "{result:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn a_thing_answers_what_it_is_takes_and_gives() -> Result<(), String> {
+    let about = About {
+        name: "pick".to_owned(),
+        doc: "The events\n  kept, in   order.\n\nEach one unchanged.".to_owned(),
+        ..About::default()
+    };
+    let declared = Declared {
+        kind: Kind::Operation,
+        identity: "tests.pick".to_owned(),
+        table: table(vec![switch("on"), switch("loud")])?,
+        inputs: vec![(InputKind::Grid, false), (InputKind::Events, true)],
+        returns: Returns::Events,
+    };
+    let pick = Thing::custom(about, declared, echo).map_err(|error| error.to_string())?;
+    assert_eq!(
+        (pick.name(), pick.kind(), pick.returns()),
+        ("pick", Kind::Operation, Returns::Events)
+    );
+    assert_eq!(pick.summary(), "The events kept, in order.");
+    assert_eq!(pick.inputs(), [(InputKind::Grid, false), (InputKind::Events, true)]);
+    let names: Vec<&str> = pick.table().params().iter().map(|param| param.name.as_str()).collect();
+    assert_eq!(names, ["on", "loud"]);
+    Ok(())
+}
+
+/// What `help()` says of the inputs `events` and `grid` (the core's input docs, as the Python package shows them).
+const EVENTS_DOC: &str =
+    "Events: a list of {t, strength, duration, label, pitch}, as in a bundle, in any order (checked into time order).";
+const GRID_DOC: &str = "A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly \
+                        increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.";
+
+#[test]
+fn help_shows_the_call_the_doc_the_inputs_and_each_parameter_in_its_own_terms() -> Result<(), String> {
+    let mut rate = number("rate", 1000.0, ParamUnit::Hertz, (10.0, 48000.0));
+    rate.advanced = true;
+    let mut phase = number("phase", 0.0, ParamUnit::Cycles, (0.0, 1.0));
+    phase.cyclic = true;
+    let every = Param {
+        kind: ParamKind::Whole,
+        default: 4.into(),
+        ..number("every", 0.0, ParamUnit::Count, (1.0, 64.0))
+    };
+    let params = vec![
+        rate,
+        number("threshold", 0.5, ParamUnit::Fraction, (0.0, 1.0)),
+        plain("label", ParamKind::Text, "it's".into()),
+        every,
+        phase,
+    ];
+    let declared = Declared {
+        kind: Kind::Operation,
+        identity: "tests.pick".to_owned(),
+        table: table(params)?,
+        inputs: vec![(InputKind::Events, true), (InputKind::Grid, false)],
+        returns: Returns::Events,
+    };
+    let about = About {
+        name: "pick".to_owned(),
+        doc: "The events kept.\n\nEach one unchanged.".to_owned(),
+        ..About::default()
+    };
+    let pick = Thing::custom(about, declared, echo).map_err(|error| error.to_string())?;
+    let expected = format!(
+        "operation pick(*, events, grid=None, **values) -> events
+
+The events kept.
+
+Each one unchanged.
+
+Inputs:
+  events (required)
+      {EVENTS_DOC}
+  grid (optional)
+      {GRID_DOC}
+
+Parameters:
+  threshold (fraction, 0 to 1), default 0.5
+      The threshold.
+  label, default \"it's\"
+      The label.
+  every (count, 1 to 64), default 4
+      The every.
+  phase (cycles, 0 to 1), default 0.0, cyclic
+      The phase.
+  rate (hertz, 10 to 48000), default 1000.0, advanced
+      The rate."
+    );
+    assert_eq!(pick.help(), expected);
+    Ok(())
+}
+
+#[test]
+fn help_of_a_thing_without_inputs_parameters_or_a_doc_is_its_call() -> Result<(), String> {
+    let help = |kind, doc: &str, params| -> Result<String, String> {
+        let about = About {
+            name: "lift".to_owned(),
+            doc: doc.to_owned(),
+            ..About::default()
+        };
+        let declared = Declared {
+            kind,
+            identity: "tests.lift".to_owned(),
+            table: table(params)?,
+            inputs: vec![],
+            returns: Returns::Signal,
+        };
+        Ok(Thing::custom(about, declared, echo)
+            .map_err(|error| error.to_string())?
+            .help())
+    };
+    assert_eq!(
+        help(Kind::Shaper, "Raises it.", vec![])?,
+        "shaper lift(signal, **values) -> signal\n\nRaises it."
+    );
+    assert_eq!(help(Kind::Source, "", vec![])?, "source lift(**values) -> signal");
+    assert_eq!(
+        help(Kind::Source, "", vec![switch("on")])?,
+        "source lift(**values) -> signal\n\n\n\nParameters:\n  on, default True\n      The on."
+    );
+    Ok(())
+}
+
+#[test]
+fn help_writes_each_default_as_python_writes_the_value() -> Result<(), String> {
+    let decimal = |default: f64| number("level", default, ParamUnit::Ratio, (-1e30, 1e30));
+    let whole = |default: i64| Param {
+        kind: ParamKind::Whole,
+        default: default.into(),
+        ..number("level", 0.0, ParamUnit::Count, (0.0, 4_294_967_295.0))
+    };
+    let text = |default: &str| plain("level", ParamKind::Text, default.into());
+    let choice = plain(
+        "level",
+        ParamKind::Choice(vec!["saw-down".to_owned()]),
+        "saw-down".into(),
+    );
+    // (the field, what Python's repr writes for its default: each from `python3 -c 'print(repr(...))'`)
+    let rows = [
+        (decimal(0.1), "0.1"),
+        (decimal(1000.0), "1000.0"),
+        (decimal(1e16), "1e+16"),
+        (decimal(1e15), "1000000000000000.0"),
+        (decimal(1e-5), "1e-05"),
+        (decimal(5e-5), "5e-05"),
+        (decimal(0.0001), "0.0001"),
+        (decimal(1.5e-7), "1.5e-07"),
+        (decimal(123_456.789), "123456.789"),
+        (decimal(2.5e22), "2.5e+22"),
+        (decimal(-2.5), "-2.5"),
+        (whole(4_294_967_295), "4294967295"),
+        (text("it's"), "\"it's\""),
+        (text("say \"hi\""), "'say \"hi\"'"),
+        (text("it's \"x\""), "'it\\'s \"x\"'"),
+        (text("a\\b"), "'a\\\\b'"),
+        (text("tab\there"), "'tab\\there'"),
+        (text("bell\u{7}"), "'bell\\x07'"),
+        (text("é"), "'é'"),
+        (plain("level", ParamKind::Switch, false.into()), "False"),
+        (choice, "'saw-down'"),
+    ];
+    for (param, written) in rows {
+        let declared = Declared {
+            kind: Kind::Source,
+            identity: "tests.level".to_owned(),
+            table: table(vec![param])?,
+            inputs: vec![],
+            returns: Returns::Signal,
+        };
+        let about = About {
+            name: "level".to_owned(),
+            ..About::default()
+        };
+        let help = Thing::custom(about, declared, echo)
+            .map_err(|error| error.to_string())?
+            .help();
+        let line = help
+            .lines()
+            .find(|line| line.starts_with("  level"))
+            .unwrap_or_default();
+        let default = line.split(", default ").nth(1).unwrap_or_default();
+        assert_eq!(default, written, "{help}");
+    }
+    Ok(())
+}
+
+#[test]
+fn a_description_is_what_the_python_package_lists() -> Result<(), String> {
+    let mut rate = number("rate", 1000.0, ParamUnit::Hertz, (10.0, 48000.0));
+    rate.advanced = true;
+    let about = About {
+        name: "pick".to_owned(),
+        doc: "The events kept.\n\nEach one unchanged.".to_owned(),
+        params_title: "PickParams".to_owned(),
+        params_doc: "Which events to keep.".to_owned(),
+    };
+    let declared = Declared {
+        kind: Kind::Operation,
+        identity: "tests.pick".to_owned(),
+        table: table(vec![rate])?,
+        inputs: vec![(InputKind::Events, true), (InputKind::Grid, false)],
+        returns: Returns::Events,
+    };
+    let pick = Thing::custom(about, declared, echo).map_err(|error| error.to_string())?;
+    assert_eq!(
+        pick.description(),
+        json!({
+            "kind": "operation",
+            "summary": "The events kept.",
+            "returns": "events",
+            "inputs": {"events": {"required": true, "doc": EVENTS_DOC}, "grid": {"required": false, "doc": GRID_DOC}},
+            "parameters": {
+                "additionalProperties": false,
+                "properties": {"rate": {"type": "number", "default": 1000.0, "title": "Rate", "unit": "hertz",
+                    "description": "The rate.", "minimum": 10.0, "maximum": 48000.0, "advanced": true, "cyclic": false}},
+                "description": "Which events to keep.",
+                "title": "PickParams",
+                "type": "object",
+            },
+        })
+    );
+    // parameters without a doc have no description
+    let bare =
+        thing(("bare", "tests.bare"), Kind::Source, vec![], &[], Returns::Signal).map_err(|error| error.to_string())?;
+    assert_eq!(
+        bare.description()["parameters"],
+        json!({"additionalProperties": false, "properties": {}, "title": "", "type": "object"})
+    );
+    Ok(())
+}
+
+#[test]
+fn a_registry_and_its_things_go_to_any_thread() {
+    fn shared<T: Send + Sync>() {}
+    shared::<Registry>();
+    shared::<Thing>();
+    shared::<Call>();
+    shared::<Output>();
+}
+
+/// How many callbacks run at once in [`calls_from_many_threads_run_their_callbacks_at_the_same_time`].
+const THREADS: usize = 16;
+
+#[test]
+fn calls_from_many_threads_run_their_callbacks_at_the_same_time() -> Result<(), Error> {
+    // each callback waits until every thread's callback has started: it can only return if none of them holds a lock
+    // the others need (a hard deadline turns a lock held across the callback into a failure, not a hang)
+    let arrived = Arc::new((Mutex::new(0_usize), Condvar::new()));
+    let gate = Arc::clone(&arrived);
+    let about = About {
+        name: "together".to_owned(),
+        ..About::default()
+    };
+    let declared = Declared {
+        kind: Kind::Source,
+        identity: "tests.together".to_owned(),
+        table: ParamTable::new(vec![]).map_err(|error| Error::params("together", error))?,
+        inputs: vec![],
+        returns: Returns::Signal,
+    };
+    let together = Thing::custom(about, declared, move |_call| {
+        let (count, all) = &*gate;
+        let all_there = count.lock().ok().and_then(|mut count| {
+            *count += 1;
+            all.notify_all();
+            all.wait_timeout_while(count, Duration::from_secs(10), |count| *count < THREADS)
+                .ok()
+        });
+        match all_there {
+            Some((_, waited)) if !waited.timed_out() => Ok(Output::Signal(Signal::constant(1.0)?)),
+            _ => Err(Error::Signal {
+                message: "not every callback ran at once".to_owned(),
+            }),
+        }
+    })?;
+    let mut registry = Registry::new();
+    registry.register(together)?;
+    let registry = Arc::new(registry);
+    let handles: Vec<_> = (0..THREADS)
+        .map(|_| {
+            let registry = Arc::clone(&registry);
+            std::thread::spawn(move || registry.get("together")?.call(&Call::default()).map(|_| ()))
+        })
+        .collect();
+    for handle in handles {
+        let result = handle.join().map_err(|_| Error::Signal {
+            message: "a thread panicked".to_owned(),
+        })?;
+        result?;
+    }
+    Ok(())
+}

@@ -6,9 +6,10 @@ use std::sync::Arc;
 use crate::formats::{FormatError, Problem, write_problems};
 use crate::params::ParamError;
 
-/// Why a signal could not be read, a shaper could not run, or a built-in's parameters or a source's inputs could not be
-/// given. Each but [`Error::Node`] and [`Error::Input`] is a programming error of the caller, never a user's mistake:
-/// the Python package validates whatever else a user gives before it reaches the core.
+/// Why a signal could not be read, a shaper could not run, a built-in's parameters or a source's inputs could not be
+/// given, or a thing of the [`registry`](crate::registry) could not be registered, found or called. Each but
+/// [`Error::Node`], [`Error::Input`] and [`Error::UnknownName`] is a programming error of the caller, never a user's
+/// mistake: the Python package validates whatever else a user gives before it reaches the core.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Error {
@@ -63,6 +64,26 @@ pub enum Error {
         /// How deep the graph would be and what to do instead.
         message: String,
     },
+    /// A thing cannot be registered: its declaration breaks a rule of the [`registry`](crate::registry), or its name
+    /// is taken by another thing.
+    Registration {
+        /// The thing, by kind and name, and the rule it breaks.
+        message: String,
+    },
+    /// No thing of this name is registered.
+    UnknownName {
+        /// The name asked for.
+        name: String,
+        /// The names that are registered, sorted.
+        available: Vec<String>,
+    },
+    /// A thing was called as it cannot be: with another number of signals than its kind takes, an input it does not
+    /// declare or of another kind than its name says, or without an input it requires; or it gave another kind of
+    /// result than it declares.
+    Call {
+        /// The thing, by kind and name, and what was wrong with the call.
+        message: String,
+    },
 }
 
 impl Error {
@@ -81,7 +102,17 @@ impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownShaper { name } => write!(formatter, "the Rust core has no shaper called {name:?}"),
-            Self::Ease { message } | Self::Signal { message } | Self::Depth { message } => formatter.write_str(message),
+            Self::Ease { message }
+            | Self::Signal { message }
+            | Self::Depth { message }
+            | Self::Registration { message }
+            | Self::Call { message } => formatter.write_str(message),
+            Self::UnknownName { name, available } => write!(
+                formatter,
+                "unknown source, shaper or operation {}; available: {}",
+                crate::registry::quoted(name),
+                available.join(", ")
+            ),
             Self::Params {
                 shaper,
                 problems,

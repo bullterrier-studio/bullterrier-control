@@ -281,6 +281,23 @@ impl ParamTable {
     pub fn params(&self) -> &[Param] {
         &self.params
     }
+
+    /// The declarations in the order a reader is shown them (`help()`, a listing): the basic fields, then the
+    /// advanced ones, each in declaration order.
+    ///
+    /// ```
+    /// # use bullterrier_control::params::{Kind, Param, ParamTable};
+    /// let switch = |name: &str, advanced| Param { name: name.to_owned(), kind: Kind::Switch, default: true.into(),
+    ///     doc: "Whether it runs.".to_owned(), unit: None, min: None, max: None, advanced, cyclic: false };
+    /// let table = ParamTable::new(vec![switch("fine", true), switch("on", false), switch("loud", false)])?;
+    /// let names: Vec<&str> = table.listed().map(|param| param.name.as_str()).collect();
+    /// assert_eq!(names, ["on", "loud", "fine"]);
+    /// # Ok::<(), bullterrier_control::params::ParamError>(())
+    /// ```
+    pub fn listed(&self) -> impl Iterator<Item = &Param> {
+        let basic = self.params.iter().filter(|param| !param.advanced);
+        basic.chain(self.params.iter().filter(|param| param.advanced))
+    }
 }
 
 /// The description of one field (see [`ParamTable::describe`]).

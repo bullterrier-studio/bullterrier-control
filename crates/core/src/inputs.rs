@@ -338,6 +338,26 @@ impl Input {
             .map(Self::Values)
             .ok_or_else(|| refused(problems))
     }
+
+    /// The kind of input this is.
+    ///
+    /// ```
+    /// use bullterrier_control::inputs::{Input, InputKind};
+    ///
+    /// assert_eq!(Input::from_values(vec![1.0])?.kind(), InputKind::Values);
+    /// assert_eq!(Input::from_events(vec![]).kind(), InputKind::Events);
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
+    #[must_use]
+    pub fn kind(&self) -> InputKind {
+        match self {
+            Self::Points(_) => InputKind::Points,
+            Self::Events(_) => InputKind::Events,
+            Self::Grid(_) => InputKind::Grid,
+            Self::Values(_) => InputKind::Values,
+            Self::Series(_) => InputKind::Series,
+        }
+    }
 }
 
 /// The events whose label is `label`, in their order; every event, unlabelled ones too, when `label` is empty.

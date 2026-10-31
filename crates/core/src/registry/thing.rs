@@ -1,0 +1,374 @@
+//! [`Thing`]: one source, shaper or operation, its rules checked, what it says about itself, and its call.
+
+use std::fmt;
+use std::sync::Arc;
+
+use serde_json::{Map, Value, json};
+
+use super::repr::{python, quoted};
+use super::{About, Call, Declared, Kind, NODE_KEYS, Output, Returns, is_name};
+use crate::Error;
+use crate::inputs::InputKind;
+use crate::params::{ParamTable, Values};
+
+/// The body of a thing: called with a checked call and its parameters as the table read them.
+type Run = dyn Fn(&Call, &Values) -> Result<Output, Error> + Send + Sync;
+
+/// A registered source, shaper or operation: what it is, takes and gives, what it says about itself, and its call.
+/// Cheap to clone (it is shared), `Send` and `Sync`.
+#[derive(Clone)]
+pub struct Thing(Arc<Inner>);
+
+struct Inner {
+    about: About,
+    summary: String,
+    kind: Kind,
+    identity: String,
+    table: ParamTable,
+    inputs: Vec<(InputKind, bool)>,
+    returns: Returns,
+    run: Box<Run>,
+}
+
+impl fmt::Debug for Thing {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Thing")
+            .field("name", &self.0.about.name)
+            .field("kind", &self.0.kind)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Thing {
+    /// The thing `about` says, declaring `declared`, whose body is `run`: how the Python package registers a thing
+    /// whose body is Python. `run` is called with the call as [`Thing::call`] checked it.
+    ///
+    /// # Errors
+    /// [`Error::Registration`] if the thing breaks a rule of the [registry](super) (its name, a parameter's name, an
+    /// input declared twice, what its kind returns).
+    pub fn custom(
+        about: About,
+        declared: Declared,
+        run: impl Fn(&Call) -> Result<Output, Error> + Send + Sync + 'static,
+    ) -> Result<Self, Error> {
+        let Declared {
+            kind,
+            identity,
+            table,
+            inputs,
+            returns,
+        } = declared;
+        Self::checked(
+            about,
+            kind,
+            identity,
+            table,
+            inputs,
+            returns,
+            Box::new(move |call, _| run(call)),
+        )
+    }
+
+    /// The thing of these parts, if it keeps every rule of the [registry](super) but the taken name (which is the
+    /// registry's to check): the one place those rules are checked.
+    fn checked(
+        about: About,
+        kind: Kind,
+        identity: String,
+        table: ParamTable,
+        inputs: Vec<(InputKind, bool)>,
+        returns: Returns,
+        run: Box<Run>,
+    ) -> Result<Self, Error> {
+        let label = format!("{kind} {}", quoted(&about.name));
+        let refused = |rule: String| Error::Registration {
+            message: format!("{label}: {rule}"),
+        };
+        if !is_name(&about.name) {
+            return Err(refused(
+                "a name is lower case letters, digits and underscores, starting with a letter".to_owned(),
+            ));
+        }
+        let mut clashing: Vec<&str> = table
+            .params()
+            .iter()
+            .map(|param| param.name.as_str())
+            .filter(|name| InputKind::NAMES.contains(name) || NODE_KEYS.contains(name))
+            .collect();
+        clashing.sort_unstable();
+        if let Some(clash) = clashing.first() {
+            return Err(refused(format!(
+                "the parameter {} has the name of an input or a patch key",
+                quoted(clash)
+            )));
+        }
+        for (index, (input, _)) in inputs.iter().enumerate() {
+            if inputs[..index].iter().any(|(earlier, _)| earlier == input) {
+                return Err(refused(format!("the input {} is declared twice", quoted(input.name()))));
+            }
+        }
+        match (kind, returns) {
+            (Kind::Source | Kind::Shaper, Returns::Signal) | (Kind::Operation, Returns::Events | Returns::Series) => {}
+            (Kind::Source | Kind::Shaper, _) => {
+                return Err(refused(format!("a {kind} returns a signal (not {returns})")));
+            }
+            (Kind::Operation, Returns::Signal) => {
+                return Err(refused(
+                    "an operation returns events or a series (not a signal)".to_owned(),
+                ));
+            }
+        }
+        let summary = about
+            .doc
+            .split("\n\n")
+            .next()
+            .unwrap_or_default()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        Ok(Self(Arc::new(Inner {
+            about,
+            summary,
+            kind,
+            identity,
+            table,
+            inputs,
+            returns,
+            run,
+        })))
+    }
+
+    /// Its name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.0.about.name
+    }
+
+    /// Its kind.
+    #[must_use]
+    pub fn kind(&self) -> Kind {
+        self.0.kind
+    }
+
+    /// What a call gives.
+    #[must_use]
+    pub fn returns(&self) -> Returns {
+        self.0.returns
+    }
+
+    /// The first paragraph of its doc (up to the first blank line), on one line: its words joined by one space.
+    #[must_use]
+    pub fn summary(&self) -> &str {
+        &self.0.summary
+    }
+
+    /// Its parameters.
+    #[must_use]
+    pub fn table(&self) -> &ParamTable {
+        &self.0.table
+    }
+
+    /// The inputs it takes, each with whether it is required, in the order it declares them.
+    #[must_use]
+    pub fn inputs(&self) -> &[(InputKind, bool)] {
+        &self.0.inputs
+    }
+
+    /// It as plain data, for a tool that checks a pipeline before it runs (`bt-control list --json`): `kind`
+    /// ([`Kind::name`]), `summary`, `returns` ([`Returns::name`]), `inputs` (each by name: `required` and `doc`, what
+    /// [`InputKind::doc`] says) and `parameters`, the JSON Schema of its parameters: `additionalProperties` false,
+    /// `properties` as [`ParamTable::describe`] gives them, `description` (its parameters' doc, if there is one),
+    /// `title` and `type` `object`. Its objects' keys are sorted; [`ParamTable::listed`] gives the parameters in the
+    /// order a reader is shown them.
+    #[must_use]
+    pub fn description(&self) -> Value {
+        let Inner {
+            about,
+            summary,
+            kind,
+            table,
+            inputs,
+            returns,
+            ..
+        } = &*self.0;
+        let inputs: Map<String, Value> = inputs
+            .iter()
+            .map(|(input, required)| {
+                (
+                    input.name().to_owned(),
+                    json!({"required": required, "doc": input.doc()}),
+                )
+            })
+            .collect();
+        let mut parameters = json!({
+            "additionalProperties": false,
+            "properties": table.describe(),
+            "title": about.params_title,
+            "type": "object",
+        });
+        if !about.params_doc.is_empty() {
+            parameters["description"] = about.params_doc.clone().into();
+        }
+        json!({
+            "kind": kind.name(),
+            "summary": summary,
+            "returns": returns.name(),
+            "inputs": inputs,
+            "parameters": parameters,
+        })
+    }
+
+    /// What `help()` shows: how to call it (`shaper slew(signal, **values) -> signal`; an input required by its name,
+    /// an optional one as `name=None`, after `*`), its doc, its inputs (each `name (required)` or `(optional)` and what
+    /// [`InputKind::doc`] says), then each parameter in the order [`ParamTable::listed`] gives, in its own terms: a
+    /// number's unit and range (`rise (seconds, 0 to 3600)`), its default as Python writes it (`0.1`, `'linear'`,
+    /// `True`), whether it is advanced or cyclic, and its description. The words and layout are the Python
+    /// package's; trailing blank lines are dropped.
+    #[must_use]
+    pub fn help(&self) -> String {
+        let Inner {
+            about,
+            kind,
+            table,
+            inputs,
+            returns,
+            ..
+        } = &*self.0;
+        let mut takes: Vec<String> = Vec::new();
+        if *kind == Kind::Shaper {
+            takes.push("signal".to_owned());
+        }
+        if !inputs.is_empty() {
+            takes.push("*".to_owned());
+            for (input, required) in inputs {
+                takes.push(if *required {
+                    input.name().to_owned()
+                } else {
+                    format!("{input}=None")
+                });
+            }
+        }
+        takes.push("**values".to_owned());
+        let mut lines = vec![
+            format!("{kind} {}({}) -> {returns}", about.name, takes.join(", ")),
+            String::new(),
+            about.doc.clone(),
+            String::new(),
+        ];
+        if !inputs.is_empty() {
+            lines.push("Inputs:".to_owned());
+            for (input, required) in inputs {
+                let need = if *required { "required" } else { "optional" };
+                lines.push(format!("  {input} ({need})"));
+                lines.push(format!("      {}", input.doc()));
+            }
+            lines.push(String::new());
+        }
+        if !table.params().is_empty() {
+            lines.push("Parameters:".to_owned());
+        }
+        for param in table.listed() {
+            let measure = match (param.unit, param.range_text()) {
+                (Some(unit), Some(range)) => format!(" ({unit}, {range})"),
+                _ => String::new(),
+            };
+            let advanced = if param.advanced { ", advanced" } else { "" };
+            let cyclic = if param.cyclic { ", cyclic" } else { "" };
+            let flags = format!("{advanced}{cyclic}");
+            lines.push(format!(
+                "  {}{measure}, default {}{flags}",
+                param.name,
+                python(&param.default)
+            ));
+            lines.push(format!("      {}", param.doc));
+        }
+        lines.join("\n").trim_end().to_owned()
+    }
+
+    /// The result of `call`, checked first, in this order, as the Python package checks a call:
+    /// 1. the number of signals: one for a shaper, none for a source or an operation;
+    /// 2. no input it does not declare (the first by name is named);
+    /// 3. each input it declares, in its order: one given holds data of its kind, a required one is given;
+    /// 4. the parameter values, read by its table: an object by name, a value left out taking its default.
+    ///
+    /// The thing's body then gets the call with the values as the table read them (every field, a cyclic one
+    /// wrapped); what it gives must be what it [`returns`](Self::returns).
+    ///
+    /// # Errors
+    /// [`Error::Call`] naming the thing (`shaper 'slew' takes 1 signal(s), not 0`; `operation 'select' takes no input
+    /// 'grid'`; `... needs the input 'events'`; `... the input 'events' holds values`; `... gave events, not the
+    /// series it returns`); [`Error::Params`] under its name listing every rule the values break; and whatever error
+    /// its body gives, unchanged.
+    pub fn call(&self, call: &Call) -> Result<Output, Error> {
+        let Inner {
+            kind,
+            table,
+            inputs,
+            returns,
+            run,
+            ..
+        } = &*self.0;
+        let refused = |what: String| Error::Call {
+            message: format!("{} {what}", self.label()),
+        };
+        let wanted = kind.signals();
+        if call.signals.len() != wanted {
+            return Err(refused(format!("takes {wanted} signal(s), not {}", call.signals.len())));
+        }
+        if let Some(name) = call
+            .inputs
+            .keys()
+            .find(|name| !inputs.iter().any(|(input, _)| input.name() == name.as_str()))
+        {
+            return Err(refused(format!("takes no input {}", quoted(name))));
+        }
+        for (input, required) in inputs {
+            match call.inputs.get(input.name()) {
+                Some(given) if given.kind() != *input => {
+                    return Err(Error::Call {
+                        message: format!(
+                            "{}: the input {} holds {}",
+                            self.label(),
+                            quoted(input.name()),
+                            given.kind()
+                        ),
+                    });
+                }
+                None if *required => return Err(refused(format!("needs the input {}", quoted(input.name())))),
+                _ => {}
+            }
+        }
+        let values = table
+            .parse(&call.values)
+            .map_err(|error| Error::params(self.name(), error))?;
+        let checked = Call {
+            signals: call.signals.clone(),
+            inputs: call.inputs.clone(),
+            values: values.clone().into_json(),
+        };
+        let output = run(&checked, &values)?;
+        if output.returns() != *returns {
+            return Err(refused(format!(
+                "gave {}, not the {returns} it returns",
+                output.returns()
+            )));
+        }
+        Ok(output)
+    }
+
+    /// Who defined it.
+    pub(super) fn identity(&self) -> &str {
+        &self.0.identity
+    }
+
+    /// Whether `other` is this thing registered again: the same kind and identity.
+    pub(super) fn is_same(&self, other: &Self) -> bool {
+        (self.0.kind, &self.0.identity) == (other.0.kind, &other.0.identity)
+    }
+
+    /// The thing as an error names it: its kind and its name as Python writes it (`shaper 'slew'`).
+    pub(super) fn label(&self) -> String {
+        format!("{} {}", self.0.kind, quoted(self.name()))
+    }
+}

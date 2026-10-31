@@ -23,6 +23,7 @@ pub mod formats;
 pub mod hashing;
 pub mod inputs;
 pub mod params;
+pub mod registry;
 pub mod rounding;
 pub mod scaling;
 mod signal;
