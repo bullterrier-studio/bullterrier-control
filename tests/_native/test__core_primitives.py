@@ -90,12 +90,21 @@ def test_uniform_is_splitmix64_scaled_to_the_unit_interval_in_the_shape_of_the_i
         pytest.param(-1, np.zeros(1, dtype=np.uint64), OverflowError, id="a negative seed"),
         pytest.param(2**64, np.zeros(1, dtype=np.uint64), OverflowError, id="a seed beyond 64 bits"),
         pytest.param(0, np.zeros(1), TypeError, id="float indices"),
-        pytest.param(0, np.zeros(1, dtype=np.int64), TypeError, id="signed indices"),
+        pytest.param(0, np.array([1, -1]), ValueError, id="a negative index"),
     ],
 )
-def test_uniform_takes_a_64_bit_seed_and_unsigned_64_bit_indices(seed, index, error):
+def test_uniform_takes_a_64_bit_seed_and_whole_non_negative_indices(seed, index, error):
     with pytest.raises(error):
         _core.uniform(seed, index)
+
+
+def test_uniform_takes_the_indices_of_any_integer_dtype_as_the_same_whole_numbers():
+    # `np.arange(3)` is int64: the indices a caller has at hand
+    expected = _core.uniform(5, np.arange(3, dtype=np.uint64))
+    for dtype in (np.int64, np.int32, np.uint8):
+        assert _core.uniform(5, np.arange(3, dtype=dtype)).tolist() == expected.tolist()
+    assert _core.uniform(5, np.array([[2], [0]])).tolist() == [[expected[2]], [expected[0]]]
+    assert _core.uniform(5, np.array([], dtype=np.int64)).shape == (0,)
 
 
 # ---- between ----

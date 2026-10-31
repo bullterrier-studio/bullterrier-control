@@ -1,7 +1,7 @@
 """A random number that is a pure function of a seed and an index: readable at any index, in any order, the same on
 every platform.
 
-    uniform(seed, indices)    # float64 in [0, 1), the shape of `indices` (a uint64 array)
+    uniform(seed, indices)    # float64 in [0, 1), the shape of `indices` (an integer array, from 0)
 
 Promises:
 - `uniform(seed, index)` (the Rust core's `hashing::uniform`; `seed` 0 to 2^64 - 1) is output number `index` (from
