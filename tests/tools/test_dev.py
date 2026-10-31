@@ -101,6 +101,9 @@ def install_extension(checkout: Path) -> None:
     shutil.copy(target / "debug" / library, checkout / "src" / "bullterrier_control" / "_native" / installed)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="the build helper copies a unix library name (lib_core.so, _core.abi3.so)"
+)
 def test_a_new_shaper_is_found_by_the_build_and_its_rust_and_python_tests_pass_as_written(checkout):
     made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "shaper")
     assert made.returncode == 0, made.stderr
@@ -132,6 +135,9 @@ def test_a_new_shaper_is_found_by_the_build_and_its_rust_and_python_tests_pass_a
     assert built.stdout.strip() == "['fresh_one', 'input'] True"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="the build helper copies a unix library name (lib_core.so, _core.abi3.so)"
+)
 def test_a_new_shaper_scales_a_signal_by_its_depth_through_the_python_binding(checkout):
     run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "shaper")
     install_extension(checkout)
