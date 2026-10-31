@@ -129,6 +129,40 @@ pub trait Params: Default + Clone + fmt::Debug + PartialEq {
     fn parse(given: &serde_json::Value) -> Result<Self, ParamError> {
         Ok(Self::from_values(&Self::table()?.parse(given)?))
     }
+
+    /// The struct's values as an object by field name, each in the form [`ParamType::to_json`] gives: what
+    /// [`parse`](Self::parse) reads back.
+    ///
+    /// ```
+    /// use bullterrier_control::Params;
+    /// use bullterrier_control::builtin::slew;
+    ///
+    /// let value = slew::Params { rise: 0.5, ..Default::default() }.to_value();
+    /// assert_eq!(value, serde_json::json!({"rise": 0.5, "fall": 0.1, "rate": 1000.0}));
+    /// ```
+    #[must_use]
+    fn to_value(&self) -> serde_json::Value;
+
+    /// The struct as its table reads its values ([`parse`](Self::parse) of [`to_value`](Self::to_value)): the same
+    /// struct, a cyclic field wrapped into its cycle, if every field and the rule between them hold. A struct built in
+    /// code is checked by the same rules as values given by name.
+    ///
+    /// ```
+    /// use bullterrier_control::Params;
+    /// use bullterrier_control::builtin::slew;
+    ///
+    /// let fine = slew::Params { rise: 0.5, ..Default::default() };
+    /// assert_eq!(fine.check(), Ok(fine.clone()));
+    /// let refused = slew::Params { rise: -1.0, ..Default::default() }.check();
+    /// assert!(refused.is_err_and(|error| error.problems[0].path == "rise"));
+    /// ```
+    ///
+    /// # Errors
+    /// A [`ParamError`] listing every rule the values break (a value that is not finite is not a number), or the
+    /// declaration's own error.
+    fn check(&self) -> Result<Self, ParamError> {
+        Self::parse(&self.to_value())
+    }
 }
 
 /// An enum whose unit variants are the choices of a parameter, by name: what `#[derive(Choice)]` writes. A variant is
@@ -413,6 +447,69 @@ mod tests {
             matches!(&refused, Err(error) if error.problems[0].path == "rate"),
             "{refused:?}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn a_typed_struct_gives_its_values_by_field_name() {
+        let sample = Sample {
+            depth: 0.75,
+            seed: 3,
+            shape: Shape::SawDown,
+            on: false,
+            label: "hat".to_owned(),
+            centre: -0.125,
+        };
+        assert_eq!(
+            sample.to_value(),
+            json!({"depth": 0.75, "seed": 3, "shape": "saw-down", "on": false, "label": "hat", "centre": -0.125})
+        );
+        assert_eq!(Keyword::default().to_value(), json!({"type": "sine"}));
+        assert_eq!(Nothing.to_value(), json!({}));
+    }
+
+    #[test]
+    fn a_typed_struct_is_checked_by_its_table_as_its_values_would_be() -> Result<(), ParamError> {
+        // a valid struct comes back as its table reads it: a cyclic field wrapped into its cycle
+        let wrapped = Sample {
+            depth: 1.0,
+            centre: 0.75,
+            ..Sample::default()
+        };
+        assert_eq!(
+            wrapped.check()?,
+            Sample {
+                depth: 1.0,
+                centre: -0.25,
+                ..Sample::default()
+            }
+        );
+        // (struct, the fields refused with a part of each rule)
+        for (id, given, expected) in [
+            (
+                "out of range both ways",
+                Sample {
+                    depth: 1.5,
+                    seed: -1,
+                    ..Sample::default()
+                },
+                &[("depth", "<= 1"), ("seed", ">= 0")][..],
+            ),
+            (
+                "not finite",
+                Sample {
+                    depth: f64::NAN,
+                    ..Sample::default()
+                },
+                &[("depth", "must be a number")],
+            ),
+        ] {
+            let refused = given.check();
+            assert!(refused.is_err(), "{id}: accepted {refused:?}");
+            if let Err(error) = refused {
+                check_problems(id, &error.problems, expected);
+            }
+        }
         Ok(())
     }
 

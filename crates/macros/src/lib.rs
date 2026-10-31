@@ -11,7 +11,7 @@ use syn::{Data, DeriveInput, Expr, Fields, Ident, Lit, Type, UnOp, parse_macro_i
 
 /// `#[derive(Params)]` on a struct with named fields, each `#[param(default = .., unit = .., min = .., max = ..,
 /// advanced, cyclic)]` and a doc comment: writes `Default` (from each `default`) and `Params` (the table, built once,
-/// and `from_values`). `#[param(rule = path)]` on the struct adds a rule between fields to the table.
+/// `from_values` and `to_value`). `#[param(rule = path)]` on the struct adds a rule between fields to the table.
 #[proc_macro_derive(Params, attributes(param))]
 pub fn derive_params(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -73,36 +73,7 @@ fn params(input: &DeriveInput) -> syn::Result<Tokens> {
         Expr::Lit(literal) if matches!(literal.lit, Lit::Str(_)) => quote!(::std::string::String::from(#literal)),
         other => quote!(#other),
     });
-    let declared = fields.iter().map(|field| {
-        let Field {
-            ident,
-            ty,
-            doc,
-            advanced,
-            cyclic,
-            ..
-        } = field;
-        let text = ident.unraw().to_string();
-        let unit = field.unit.as_ref().map_or_else(
-            || quote!(::core::option::Option::None),
-            |unit| quote!(::core::option::Option::Some(#krate::ParamUnit::#unit)),
-        );
-        let min = bound(field.min);
-        let max = bound(field.max);
-        quote! {
-            #krate::Param {
-                name: ::std::string::String::from(#text),
-                kind: <#ty as #krate::ParamType>::kind(),
-                default: #krate::ParamType::to_json(&defaults.#ident),
-                doc: ::std::string::String::from(#doc),
-                unit: #unit,
-                min: #min,
-                max: #max,
-                advanced: #advanced,
-                cyclic: #cyclic,
-            }
-        }
-    });
+    let declared = fields.iter().map(declared);
     // a struct with no field has no defaults to read
     let read_defaults =
         (!fields.is_empty()).then(|| quote!(let defaults = <Self as ::core::default::Default>::default();));
@@ -111,6 +82,7 @@ fn params(input: &DeriveInput) -> syn::Result<Tokens> {
             .map(|table| table.with_rule(|values| #path(&<Self as #krate::Params>::from_values(values))))
         }
     });
+    let pairs = pairs(&names, &idents);
     Ok(quote! {
         impl ::core::default::Default for #name {
             fn default() -> Self {
@@ -140,8 +112,56 @@ fn params(input: &DeriveInput) -> syn::Result<Tokens> {
                         .unwrap_or(defaults.#idents),)*
                 }
             }
+
+            fn to_value(&self) -> ::serde_json::Value {
+                ::core::iter::Iterator::collect(#pairs)
+            }
         }
     })
+}
+
+/// The code of the `Param` a field declares, reading its default from `defaults`.
+fn declared(field: &Field) -> Tokens {
+    let krate = quote!(::bullterrier_control::params);
+    let Field {
+        ident,
+        ty,
+        doc,
+        advanced,
+        cyclic,
+        ..
+    } = field;
+    let text = ident.unraw().to_string();
+    let unit = field.unit.as_ref().map_or_else(
+        || quote!(::core::option::Option::None),
+        |unit| quote!(::core::option::Option::Some(#krate::ParamUnit::#unit)),
+    );
+    let min = bound(field.min);
+    let max = bound(field.max);
+    quote! {
+        #krate::Param {
+            name: ::std::string::String::from(#text),
+            kind: <#ty as #krate::ParamType>::kind(),
+            default: #krate::ParamType::to_json(&defaults.#ident),
+            doc: ::std::string::String::from(#doc),
+            unit: #unit,
+            min: #min,
+            max: #max,
+            advanced: #advanced,
+            cyclic: #cyclic,
+        }
+    }
+}
+
+/// The code of an iterator over each field's (name, `to_json` of its value) of `self`; an empty struct's is empty, its
+/// item type spelled through `to_json`, which no element does.
+fn pairs(names: &[String], idents: &[&Ident]) -> Tokens {
+    let krate = quote!(::bullterrier_control::params);
+    if idents.is_empty() {
+        quote!(::core::iter::empty::<(&str, bool)>().map(|(name, on)| (name, #krate::ParamType::to_json(&on))))
+    } else {
+        quote!(::core::iter::IntoIterator::into_iter([#((#names, #krate::ParamType::to_json(&self.#idents))),*]))
+    }
 }
 
 /// The path of the rule between fields, `#[param(rule = path)]` on the struct, if there is one.

@@ -52,4 +52,13 @@ mod tests {
             check(id, &given, expected);
         }
     }
+
+    #[test]
+    fn a_typed_struct_is_checked_by_the_rule_between_its_fields_too() {
+        let refused = Params { low: 0.5, high: 0.25 }.check();
+        assert!(refused.is_err(), "accepted {refused:?}");
+        if let Err(error) = refused {
+            check_problems("typed", &error.problems, &[("high", "must not be below low = 0.5")]);
+        }
+    }
 }
