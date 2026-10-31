@@ -16,6 +16,7 @@ pub mod builtin;
 pub mod easing;
 mod error;
 pub mod formats;
+pub mod hashing;
 pub mod params;
 
 pub use error::Error;
