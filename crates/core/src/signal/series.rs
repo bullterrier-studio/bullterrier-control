@@ -50,8 +50,9 @@ impl Node for SeriesNode {
 }
 
 impl SeriesNode {
-    /// The value on the line between the samples either side of `position`, as numpy's `interp` gives it (the slope
-    /// times the way from the earlier sample, plus its value), so both packages give the same bits.
+    /// The value on the line between the samples either side of `position`, as numpy's `interp` gives it (on a sample,
+    /// its value; else the slope times the way from the earlier sample, plus its value), so both packages give the
+    /// same bits.
     fn linear(&self, position: f64) -> f64 {
         match self.values.as_slice() {
             [first, ..] if position <= 0.0 => *first,
@@ -64,7 +65,9 @@ impl SeriesNode {
                 )]
                 let before = position.floor() as usize;
                 let (from, to) = (values[before], values[before + 1]);
-                (to - from) * (position - position.floor()) + from
+                let way = position - position.floor();
+                // on a sample its value, not `slope * 0 + value`: an overflowing slope makes NaN, a -0.0 sample 0.0
+                if way == 0.0 { from } else { (to - from) * way + from }
             }
         }
     }

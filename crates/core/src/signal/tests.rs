@@ -330,6 +330,14 @@ fn a_series_read_at_the_edge_of_the_floats_holds_its_last_value_or_is_refused() 
     let huge = Signal::from_series(&series(&[-1.7e308, 1.7e308], 0.0, 1.0)?, Interpolation::Linear);
     let message = signal_error(&huge.sample(&[0.0, 0.5]));
     assert!(message.contains("not finite at time 0.5"), "{message}");
+    // on a sample between two that far apart the value is that sample's, as numpy's interp gives it, sign of zero too
+    let apart = Signal::from_series(
+        &series(&[0.0, -1.7e308, 1.7e308, -0.0, 1.0], 0.0, 1.0)?,
+        Interpolation::Linear,
+    );
+    let values = apart.sample(&[1.0, 2.0, 3.0])?;
+    assert_eq!(values, [-1.7e308, 1.7e308, 0.0]);
+    assert!(values[2].is_sign_negative(), "{values:?}");
     Ok(())
 }
 
