@@ -5,9 +5,9 @@
 //! - **Declaration** ([`ParamTable::new`], the one place these rules live): a field is a number (a decimal or a whole
 //!   number), a switch, text or a choice of names ([`Kind`]); it has a valid default and a description; a number has a
 //!   unit ([`ParamUnit`]) and a finite range (`min` and `max`) that holds its default; any other field takes no unit
-//!   or range; a cyclic field (a phase) is a decimal in cycles whose range is one cycle wide (`max == min + 1`); no two
-//!   fields share a name, none is named after a unit or with a discouraged name (`strength`, `intensity`, `factor`,
-//!   `val`, `k`: say what it is instead).
+//!   or range; a choice offers at least one name, each once; a cyclic field (a phase) is a decimal in cycles whose
+//!   range is one cycle wide (`max == min + 1`); every field has a name, no two share one, and none is named after a
+//!   unit or with a discouraged name (`strength`, `intensity`, `factor`, `val`, `k`: say what it is instead).
 //! - **Values** ([`ParamTable::parse`]): an object of values by name, read strictly; a field left out takes its
 //!   default; every broken rule is listed, the first 100 kept ([`ParamError`]).
 //! - **Description** ([`ParamTable::describe`]): the fields as a consumer reads them, in the shape of a JSON Schema's

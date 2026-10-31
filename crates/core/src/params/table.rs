@@ -466,6 +466,11 @@ mod tests {
             ("the name k", vec![Param { name: "k".to_owned(), ..amount() }], &[("k", "use a name that says what it is")]),
             ("a name that is a unit", vec![Param { name: "seconds".to_owned(), ..amount() }], &[("seconds", r#"do not name a parameter after its unit ("seconds"); say what it is"#)]),
             ("a name declared twice", vec![amount(), Param { default: json!(2.0), ..amount() }], &[("amount", "declared more than once")]),
+            ("no name", vec![Param { name: String::new(), ..amount() }], &[("", "needs a name")]),
+            ("a choice of one", vec![plain("shape", choices(&["sine"]), json!("sine"))], &[]),
+            ("a choice offered twice", vec![plain("shape", choices(&["sine", "saw", "sine"]), json!("saw"))], &[("shape", r#"the choice "sine" is offered more than once"#)]),
+            ("a choice offered three times, said once", vec![plain("shape", choices(&["saw", "saw", "saw"]), json!("saw"))], &[("shape", r#"the choice "saw" is offered"#)]),
+            ("a choice of nothing", vec![plain("shape", choices(&[]), json!("sine"))], &[("shape", "a choice needs at least one name"), ("shape", "the default is not valid")]),
             ("every rule a field breaks", vec![Param { doc: String::new(), unit: None, default: json!(5.0), ..amount() }], &[
                 ("amount", "needs a description"), ("amount", "needs a unit"), ("amount", "the default 5.0 must lie"),
             ]),

@@ -29,8 +29,22 @@ pub(super) fn declarations(params: &mut [Param], problems: &mut Problems) {
                 rule,
             });
         };
+        if param.name.is_empty() {
+            broken("needs a name".to_owned());
+        }
         if repeated {
             broken("the name is declared more than once".to_owned());
+        }
+        if let Kind::Choice(names) = &param.kind {
+            if names.is_empty() {
+                broken("a choice needs at least one name".to_owned());
+            }
+            // once per repeated name: at its second appearance
+            for (index, name) in names.iter().enumerate() {
+                if names[..index].iter().filter(|earlier| *earlier == name).count() == 1 {
+                    broken(format!("the choice {name:?} is offered more than once"));
+                }
+            }
         }
         if let Some((_, instead)) = DISCOURAGED.iter().find(|(name, _)| *name == param.name) {
             broken(format!("do not name a parameter {:?}; use {instead}", param.name));
