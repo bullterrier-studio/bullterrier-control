@@ -33,7 +33,7 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
   dependency nothing imports, so none is declared in the scaffold). *Reason:* control must install in a second on a machine
   with no media libraries, and `bullterrier-audio` carries the heavy ones (librosa, torch). pydantic declared parameters the
   way bullterrier-image does; since R2 parameters are Rust's, and pydantic remains only for `Keyframe` and the inputs'
-  models until R3.
+  models until R4.
 
 ## Agreed with the owner (2026-10-26)
 
@@ -68,7 +68,7 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
   with `SignalError`); a signal implements `compute`. *Reason:* the check at the boundary is written once, not in every signal.
 - **Combining is arithmetic, not a registered shaper.** `+`, `-`, `*`, negation, `minimum` and `maximum` on signals (floats
   allowed). *Reason:* they have no parameters to declare, and a crossfade is `a * (1 - m) + b * m`.
-- **Stateful shapers render once and a read holds the latest sample at or before the time** (`Rendered`): the shaper's `run`
+- **Stateful shapers render on a grid, keep what they rendered, and a read holds the latest sample at or before the time** (`Rendered`): the shaper's `run`
   is a causal function from the input sampled on a grid at a declared `rate` (an advanced parameter) to an output of equal
   length. *Reason:* causality makes a read independent of what was read before, whatever the order or chunking; holding
   rather than interpolating keeps a read at time t from depending on input after t (interpolation did leak up to one
@@ -370,11 +370,9 @@ separate ramp. Changed:
   for WebAssembly can edit curves in a browser. *Consequence:* contributors need rustup (`rust-toolchain.toml` installs the
   rest), wheels are per platform (abi3: one per platform for every Python from 3.12), runtime Python dependencies stay
   numpy and pydantic.
-- **One generic boundary, `_core.render(name, inputs, params)`, and it is transitional.** It takes the shaper's input
-  sampled at its rate from time 0 and returns a series of the same length; it releases the GIL while it runs and the
-  bindings name no shaper, so porting one never changes them. It serves only shapers that need history, which is all R0
-  ports; it goes away in R3, when `Signal` and `Rendered` themselves live in Rust. A wrong name, parameter set, dtype or
-  shape is a programming error (`ValueError`): a user's values are validated before they get here.
+- **One generic boundary, `_core.render(name, inputs, params)`, and it was transitional.** It took the shaper's input
+  sampled at its rate from time 0 and returned a series of the same length, with the GIL released; the bindings named no
+  shaper, so porting one never changed them. R3 removed it, when `Signal` and `Rendered` moved to Rust (below).
 - **`Rendered` promises its `run` a fresh 1-D, C-contiguous float64 array.** *Reason:* the core reads the input in place,
   without the GIL; if each recurrence had to cope with a float32, strided or misaligned array, or the core copied it, the
   cost and the bug would be repeated per shaper. Fresh (always a copy, owned and aligned) because a plugin's `compute` may
@@ -433,7 +431,7 @@ Owner decisions (2026-10-31):
   once, in Rust; Python holds neither list.
 - **All 21 built-ins declare their parameters in Rust now; only `slew` and `follow` have a Rust body.** *Reason:* the
   declaration is the part everything else (help, `list --json`, `lib.pyi`, the check) reads, so it cannot wait for a body.
-  `build.rs` lists every built-in in `PARAMS` and those with a `run` function in `SHAPERS`; R3 deletes the difference.
+  `build.rs` lists every built-in in `PARAMS` and those with a Rust body in `SHAPERS`; R5 deletes the difference (see R3).
 
 Rulings:
 - **`Error` and `FormatError` stay two types, both `#[non_exhaustive]`, both carrying a list of problems.** `docs/api.md`
@@ -445,7 +443,7 @@ Rulings:
   live beside the fields they compare, and a field that is already broken is not compared. A Python plugin has no such hook.
 - **`remap.ease` is text, and its curve names are listed in Rust and in Python (`easing.py`).** A drift test fails when
   they differ. *Reason:* easing moves to Rust in R3; a second copy until then costs less than a Rust easing now. The
-  test is one-directional (a name only Rust knows is not caught).
+  test is one-directional (a name only Rust knows is not caught). R3 removed both: `Ease::from_str` is the one list.
 - **At the Python boundary** an integer beyond 64 bits and a non-finite float are refused (also for a cyclic field, which
   pydantic wrapped); a value nested deeper than 128 containers is refused, in the one conversion shared by parameters
   and formats. *Reason:* JSON cannot hold the first two, and a self-containing or very deep value crashed the
@@ -505,7 +503,7 @@ Taught in `docs/api.md`, Python and Rust side by side; every Python example ther
   `loom` only if lock-free code is ever hand-written, which it should not be. *The real hazard is a deadlock between a
   Rust lock and the Python GIL* (a signal written in Python is called from Rust): a Rust lock is never held while calling
   into Python; compute outside the lock, install the result under it, and let the loser of a race drop its copy. R3 tests
-  this with threads and Python-written signals.
+  this with threads and Python-written signals (below).
 - **Patch files come last, and only through the public API.** A patch is a serialisation of the same graph; saving a
   code-built graph as a patch is R4's.
 - **Costs of the method style.** (1) A built-in shaper's name is a reserved attribute name on every `Signal` subclass
@@ -590,3 +588,63 @@ Taught in `docs/api.md`, Python and Rust side by side; every Python example ther
     `parse()` (a decoded mapping) and `bundle_schema()`.
   - `Grid.seconds_at(positions)` is renamed from `beats`, since a position is a fraction of a beat.
   - `Bundle(...)` takes `Grid`, `Series` and `Event` objects; a decoded mapping goes through `Bundle.parse`.
+
+## The signal graph in Rust (batch R3)
+
+Owner decisions (2026-10-31):
+- **One batch.** *Reason:* the graph, `Rendered`, the numeric helpers and the Python switch only make sense together; a
+  half-moved `Signal` would need a boundary of its own.
+- **Pydantic leaves in R4, with the inputs.** R3 moves only easing, so `Keyframe`'s ease check calls Rust
+  (`Ease::from_str`) and `Keyframe`, the inputs' models and `validated` stay pydantic.
+- **A polish task came first** (boundary minors carried from R1 and R2).
+
+Rulings:
+- **The `PARAMS`/`SHAPERS` split of `build.rs` stays until R5.** *Reason:* 19 built-ins still run in Python. A built-in
+  file that defines `pub(crate) fn shape(input: &Signal, params: &Params) -> Result<Signal, Error>` is a shaper the core
+  runs; `shape` replaces `run`. `slew` and `follow` define `shape` over `Signal::rendered` with a private `run`.
+  `bullterrier_control::shape(name, &Signal, &Value)` replaces `render`.
+- **`Params.__getattr__` waits for R5** (its readers are the Python bodies R5 deletes); **`gen_api`'s own range text,
+  `inputs.py:127` and the O(n) problem strings in `formats.rs` wait for R4** (they go with `lib` and the inputs). Python
+  that a later batch rewrites is not polished.
+- **`Node` is sealed; `Signal::from_fn` and `Signal::rendered` are the extension points** (the Python binding, Rust
+  plugins). A callback's error is kept as the `source()` of `Error::Node`, and the binding returns the original Python
+  exception object unchanged. *Reason:* two constructors cover every outside node; a public trait would freeze the
+  read signature before R4's `Source` and `Shaper` traits.
+- **`_core.render` and `bullterrier_control::shapers()` are gone.** No shaper's input passes through Python sampling when
+  the graph is Rust. A shaper is called through `_core.shape(name, signal, params)`.
+
+Design:
+- **`MAX_DEPTH = 1000`.** A graph deeper than this is `Error::Signal` (an operator past it gives a signal that refuses
+  every read). *Reason:* reading and dropping a graph recurse; 1000 levels measured at about 380 KB of stack in a debug
+  build (a 2 MiB thread) and 80 KB in release (wasm's 1 MiB). A longer sum is a balanced tree. A callback node counts as
+  depth 1.
+- **Nested Python callbacks are capped at 100 per thread** (`SignalError`). *Reason:* a `compute` that reads its own
+  signal would recurse through Rust and Python until the stack ends; about 2.5 KB of stack a level was measured. The cap
+  does not bound the product of the two limits (100 Python levels, each over a Rust graph up to 1000 deep, can exceed a
+  2 MiB stack), and Python-owned reference cycles that pass through a Rust graph (`self.x = self + 1`) are not collected.
+- **GIL and lock rule.** `sample` releases the GIL, so a pure-Rust read lets other Python threads run. No Rust lock is
+  held while calling Python: a `Rendered` locks briefly to clone or install its history, and renders (which may call
+  Python) outside the lock. Two reads that need more history both render; the longer result is kept. *Cost:* duplicate
+  work under contention instead of a deadlock; a shorter render finishing later never replaces the longer one.
+- **A Python `compute` receives 1-D float64 times** (it used to get the caller's shape); `sample` restores the shape. Its
+  call runs under `numpy.errstate(all="ignore")`, as the old `sample` did, so an overflow is a `SignalError` naming the
+  time, not a warning.
+- **`Signal` is not abstract.** A subclass without `compute` fails at its first read (`TypeError` naming the class), not
+  when defined. *Reason:* the extension builds results (operators, `from_values`, `shape`) as instances of `Signal`, and
+  Rust cannot honour an abstract-method check.
+- **`_core.make_signals_as(Signal)`** (once per process) makes every signal the extension builds an instance of the
+  package's `Signal`, so results carry `pipe` and the chain methods. *Reason:* a pyclass cannot inherit a Python mixin.
+  The native base is listed first: `class Rendered(_core.Rendered, Signal)`, `class Constant(_core.Constant, Signal)`.
+- **Numbers.** Easing, cadence, hashing, scaling and rounding are Rust (`crates/core/src/{easing,cadence,hashing,scaling,
+  rounding}.rs`); the Python modules keep their docstring contracts and re-export. Hashing and the curve ends are
+  bit-exact with the numpy they replace; cubic, overshoot and bezier agree within about 1e-12. The curves use explicit
+  multiplication, no `powi` or `powf`, so every target gives the same bits.
+- **Messages differ a little from Python's** (`got NaN` against a list of values; `1e+300` written `1e300`); tests assert
+  the error type and a short substring.
+- **Timings** (report only, `bench_baseline.py` of R0, this machine, dev build): ten slews with an lfo mix took
+  2267-4124 ms before R3 and 541-1064 ms after; a cached slew read per frame 15-28 us before, 1.4-1.7 us after. The
+  envelope and lfo inputs are still Python and are sampled through the callback.
+
+Breaking for plugin authors: a signal's `compute` gets 1-D times; a `Rendered` subclass with its own `__init__` signature is
+not supported; native signals (`Constant`, `Rendered`, results of operators) cannot be pickled or
+copied; `at_least`/`more_than` take a number bound; a missing `compute` is found at the first read.
