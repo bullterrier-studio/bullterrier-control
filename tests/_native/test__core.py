@@ -9,14 +9,16 @@ implements. A table refuses a declaration or values with a `ParameterError` list
 """
 
 import math
+import subprocess
+import sys
 
 import numpy as np
 import pytest
 
-from bullterrier_control import registry
+from bullterrier_control import Series, registry
 from bullterrier_control._native import _core  # noqa: PLC2701  architecture: the boundary the shapers call
 from bullterrier_control.easing import EASES
-from bullterrier_control.errors import ParameterError
+from bullterrier_control.errors import FormatError, ParameterError
 
 SLEW = {"rise": 0.5, "fall": 0.5, "rate": 10.0}  # 0.1 s a sample, 0.2 a sample up or down
 STEP = np.array([0.0, 1.0, 1.0])
@@ -343,3 +345,112 @@ def test_the_core_accepts_every_ease_the_package_names(ease):
 def test_the_core_refuses_an_ease_the_package_does_not_name():
     with pytest.raises(ParameterError, match="ease"):
         _core.parse_parameters("remap", {"ease": "wobble"})
+
+
+# ---- nesting ----
+
+DEEPEST = 128  # the most lists or mappings a value read from Python may be nested in (one more is refused)
+RATE_SPEC = [{"name": "rate", "kind": "float", "default": 1.0, "doc": "d", "unit": "hertz", "min": 0, "max": 10}]
+
+
+def nested(depth):
+    """`depth` lists, each inside the next: `nested(2)` is `[[]]`."""
+    value: list[object] = []
+    for _ in range(depth - 1):
+        value = [value]
+    return value
+
+
+@pytest.mark.parametrize(
+    ("read", "depth", "refused", "part"),
+    [
+        pytest.param(
+            lambda value: _core.ParamTable(RATE_SPEC, name="X").parse({"rate": value}),
+            DEEPEST, ParameterError, "must be a number", id="a value at the limit reaches the table's rule",
+        ),
+        pytest.param(
+            lambda value: _core.ParamTable(RATE_SPEC, name="X").parse({"rate": value}),
+            DEEPEST + 1, ParameterError, "nested too deeply (limit 128)", id="a value past the limit is refused",
+        ),
+        pytest.param(
+            lambda value: _core.parse_parameters("lfo", {"rate": value}),
+            DEEPEST, ParameterError, "must be a number", id="a built-in's value at the limit",
+        ),
+        pytest.param(
+            lambda value: _core.parse_parameters("lfo", {"rate": value}),
+            DEEPEST + 1, ParameterError, "nested too deeply", id="a built-in's value past the limit",
+        ),
+        pytest.param(
+            lambda value: _core.ParamTable([{**RATE_SPEC[0], "default": value}], name="X"),
+            DEEPEST, ParameterError, "the default is not valid: must be a number", id="a default at the limit",
+        ),
+        pytest.param(
+            lambda value: _core.ParamTable([{**RATE_SPEC[0], "default": value}], name="X"),
+            DEEPEST + 1, ParameterError, "the default is not valid: nested too deeply", id="a default past the limit",
+        ),
+        pytest.param(
+            lambda value: _core.render("slew", STEP, {**SLEW, "rise": value}),
+            DEEPEST - 1, ValueError, "must be a number", id="render: the mapping is one level, a value at the limit",
+        ),
+        pytest.param(
+            lambda value: _core.render("slew", STEP, {**SLEW, "rise": value}),
+            DEEPEST, ValueError, "nested too deeply", id="render: a value past the limit",
+        ),
+        pytest.param(
+            lambda value: Series.parse({"rate": 1.0, "unit": "ratio", "values": value}),
+            DEEPEST + 1, FormatError, "values[0]: invalid type", id="a format reads no deeper than its fields",
+        ),
+    ],
+)  # fmt: skip
+def test_a_value_is_read_through_at_most_128_levels_of_nesting(read, depth, refused, part):
+    with pytest.raises(refused) as error:
+        read(nested(depth))
+    assert part in str(error.value)
+
+
+# each in a fresh interpreter: a reader that recursed without a limit would crash it, not fail a test
+NESTING = """
+from bullterrier_control import Series
+from bullterrier_control._native import _core
+from bullterrier_control.errors import BullterrierControlError
+
+cyclic = []
+cyclic.append(cyclic)
+deep = []
+for _ in range(1_000_000):
+    deep = [deep]
+table = _core.ParamTable([{"name": "rate", "kind": "float", "default": 1.0, "doc": "d", "unit": "hertz", "min": 0,
+                          "max": 10}], name="X")
+try:
+    READ
+except (BullterrierControlError, ValueError) as error:
+    print(type(error).__name__, error)
+"""
+
+
+@pytest.mark.parametrize(
+    ("read", "said"),
+    [
+        pytest.param("table.parse({'rate': cyclic})", "ParameterError X: rate: nested too deeply", id="table, a cycle"),
+        pytest.param("table.parse({'rate': deep})", "ParameterError X: rate: nested too deeply", id="table, 1M deep"),
+        pytest.param("_core.parse_parameters('lfo', {'rate': cyclic})", "ParameterError lfo: rate: nested too deeply",
+                     id="a built-in, a cycle"),
+        pytest.param("_core.parse_parameters('lfo', {'rate': deep})", "ParameterError lfo: rate: nested too deeply",
+                     id="a built-in, 1M deep"),
+        pytest.param("_core.ParamTable([{'name': 'rate', 'kind': 'text', 'default': cyclic, 'doc': 'd'}], name='X')",
+                     "ParameterError X: rate: the default is not valid: nested too deeply", id="a default, a cycle"),
+        pytest.param("_core.render('slew', __import__('numpy').zeros(3), {'rise': deep})", "ValueError",
+                     id="render, 1M deep"),
+        pytest.param("Series.parse({'rate': 1.0, 'unit': 'ratio', 'values': cyclic})", "FormatError Series: values[0]",
+                     id="a format, a cycle"),
+        pytest.param("Series.parse({'rate': 1.0, 'unit': 'ratio', 'values': deep})", "FormatError Series: values[0]",
+                     id="a format, 1M deep"),
+    ],
+)  # fmt: skip
+def test_a_cyclic_or_a_million_deep_value_is_refused_without_crashing(read, said):
+    code = NESTING.replace("READ", read)
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", check=False)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.startswith(said), done.stdout
+    if "render" in read:
+        assert "nested too deeply" in done.stdout, done.stdout

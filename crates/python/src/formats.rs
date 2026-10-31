@@ -229,7 +229,7 @@ pub(crate) struct PyEvent(pub(crate) Event);
 impl PyEvent {
     fn read(data: Bound<'_, PyAny>) -> PyResult<Self> {
         let py = data.py();
-        Event::from_deserializer(Data(data))
+        Event::from_deserializer(Data::new(data))
             .map(Self)
             .map_err(|error| format_error(py, "Event", &error))
     }
@@ -373,7 +373,7 @@ impl PySeries {
 
     fn read(data: Bound<'_, PyAny>) -> PyResult<Self> {
         let py = data.py();
-        let inner = Series::from_deserializer(Data(data)).map_err(|error| format_error(py, "Series", &error))?;
+        let inner = Series::from_deserializer(Data::new(data)).map_err(|error| format_error(py, "Series", &error))?;
         Self::wrap(py, inner)
     }
 }
@@ -494,7 +494,7 @@ pub(crate) struct PyGrid(pub(crate) Grid);
 impl PyGrid {
     fn read(data: Bound<'_, PyAny>) -> PyResult<Self> {
         let py = data.py();
-        Grid::from_deserializer(Data(data))
+        Grid::from_deserializer(Data::new(data))
             .map(Self)
             .map_err(|error| format_error(py, "Grid", &error))
     }
@@ -675,7 +675,7 @@ impl PyBundle {
 
     fn read(data: Bound<'_, PyAny>) -> PyResult<Self> {
         let py = data.py();
-        let inner = Bundle::from_deserializer(Data(data)).map_err(|error| format_error(py, "Bundle", &error))?;
+        let inner = Bundle::from_deserializer(Data::new(data)).map_err(|error| format_error(py, "Bundle", &error))?;
         Self::wrap(py, inner)
     }
 }
@@ -758,7 +758,7 @@ impl PyBundle {
             ("source", source),
             ("duration", duration),
         ];
-        let (source, duration) = match Bundle::from_deserializer(Data(fields(py, &head)?.into_any())) {
+        let (source, duration) = match Bundle::from_deserializer(Data::new(fields(py, &head)?.into_any())) {
             Ok(read) => (read.source().map(str::to_owned), read.duration()),
             Err(error) => {
                 problems.absorb(&error);

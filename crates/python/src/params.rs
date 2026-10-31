@@ -94,7 +94,7 @@ impl<'de> Visitor<'de> for JsonVisitor {
 /// `value` as JSON, or the rule it breaks: a NaN or an infinity, an integer beyond 64 bits (signed), a `str` with a
 /// lone surrogate, or a type with no JSON form (a `set`).
 pub(crate) fn json(value: &Bound<'_, PyAny>) -> Result<Value, String> {
-    Json::deserialize(Data(value.clone()))
+    Json::deserialize(Data::new(value.clone()))
         .map(|Json(read)| read)
         .map_err(|refusal| refusal.to_string())
 }
