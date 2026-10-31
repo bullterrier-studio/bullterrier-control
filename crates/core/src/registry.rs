@@ -400,7 +400,7 @@ impl Registry {
     /// use bullterrier_control::Registry;
     ///
     /// let names: Vec<&str> = Registry::builtin().things().map(|thing| thing.name()).collect();
-    /// assert_eq!(names, ["constant", "follow", "slew"]);
+    /// assert_eq!(names, ["constant", "follow", "select", "slew"]);
     /// let mine = Registry::builtin().clone(); // to register more in
     /// assert!(mine.get("slew").is_ok());
     /// ```

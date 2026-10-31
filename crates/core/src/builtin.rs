@@ -101,6 +101,7 @@ mod tests {
             [
                 ("constant", Kind::Source),
                 ("follow", Kind::Shaper),
+                ("select", Kind::Operation),
                 ("slew", Kind::Shaper)
             ]
         );
