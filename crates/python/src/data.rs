@@ -27,6 +27,11 @@ pub(crate) const NOT_UTF8: &str = "text must be writable as UTF-8";
 /// wanted, and [`numbers`] refuses a larger Python one, so two integers never read as one value.
 const LARGEST_EXACT: u64 = 1 << 53;
 
+/// The rule an integer breaks that no 64-bit field can hold.
+pub(crate) fn beyond_64_bits(whole: &impl fmt::Display) -> String {
+    format!("integer {whole} is beyond 64 bits, which no field holds")
+}
+
 /// Why a Python value could not be read; the core names the field it was read for.
 #[derive(Debug)]
 pub(crate) struct Refusal(String);
@@ -71,9 +76,7 @@ impl<'de> Deserializer<'de> for Data<'_> {
             } else if let Ok(number) = whole.extract::<u64>() {
                 visitor.visit_u64(number)
             } else {
-                Err(Refusal(format!(
-                    "integer {whole} is beyond 64 bits, which no field holds"
-                )))
+                Err(Refusal(beyond_64_bits(&whole)))
             }
         } else if let Ok(real) = value.cast::<PyFloat>() {
             visitor.visit_f64(real.value())
@@ -303,7 +306,7 @@ fn number(item: &Bound<'_, PyAny>) -> Result<f64, String> {
 }
 
 /// `value` as Python shows it (`repr`), cut to a length a message can carry.
-fn shown(value: &Bound<'_, PyAny>) -> String {
+pub(crate) fn shown(value: &Bound<'_, PyAny>) -> String {
     const SHOWN: usize = 60;
     let text = value.repr().map_or_else(|_| "?".to_owned(), |shown| shown.to_string());
     if text.chars().count() > SHOWN {

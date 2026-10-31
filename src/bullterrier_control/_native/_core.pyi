@@ -12,17 +12,30 @@ __all__ = [
     "Bundle",
     "Event",
     "Grid",
+    "ParamTable",
     "Series",
     "Unit",
+    "builtins",
     "bundle_schema",
     "dumps",
     "is_bundle_name",
+    "parameters",
+    "parse_parameters",
     "render",
     "shapers",
 ]
 
 def render(name: str, inputs: NDArray[np.float64], params: Mapping[str, object]) -> NDArray[np.float64]: ...
 def shapers() -> list[str]: ...
+def builtins() -> list[str]: ...
+def parameters(name: str) -> dict[str, dict[str, Any]]: ...
+def parse_parameters(name: str, values: Mapping[str, object]) -> dict[str, Any]: ...
+
+@final
+class ParamTable:
+    def __new__(cls, spec: Sequence[Mapping[str, object]], *, name: str) -> Self: ...
+    def parse(self, values: Mapping[str, object]) -> dict[str, Any]: ...
+    def describe(self) -> dict[str, dict[str, Any]]: ...
 
 @final
 class Unit:

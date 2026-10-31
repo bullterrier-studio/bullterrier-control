@@ -681,7 +681,7 @@ impl PyBundle {
 }
 
 /// `value`'s type, as a message names it: `dict`.
-fn type_name(value: &Bound<'_, PyAny>) -> String {
+pub(crate) fn type_name(value: &Bound<'_, PyAny>) -> String {
     value
         .get_type()
         .name()

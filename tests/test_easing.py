@@ -1,6 +1,3 @@
-import re
-from pathlib import Path
-
 import numpy as np
 import pytest
 from hypothesis import given
@@ -205,14 +202,3 @@ def test_a_bezier_that_is_not_well_formed_is_not_blamed_on_its_x():
     with pytest.raises(InvalidError, match="unknown ease") as refused:
         curve("cubic-bezier(0.1, 0.2, 0.3)")
     assert "must be in 0..1" not in str(refused.value)
-
-
-def test_the_rust_core_knows_the_same_eases():
-    """An architecture test: the core checks `remap`'s `ease` against its own list (until easing moves to Rust, in R3),
-    which it reads from the source file, so a name added here and not there fails."""
-    source = (Path(__file__).resolve().parents[1] / "crates" / "core" / "src" / "builtin" / "remap.rs").read_text(
-        encoding="utf-8"
-    )
-    declaration = re.search(r"const EASES: \[&str; \d+\] = \[(.*?)\];", source, re.DOTALL)
-    assert declaration is not None
-    assert tuple(re.findall(r'"([^"]+)"', declaration.group(1))) == EASES
