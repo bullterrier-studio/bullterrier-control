@@ -7,7 +7,8 @@ of the core. The Python blocks run as tests (`tests/test_api_doc.py`); a `# arra
 to. Implemented: the formats (`Event::new`, `Series::new`, `Grid::new`, `Bundle::from_json`), the parameters
 (`#[derive(Params)]` structs, `ParamTable`, `ParamUnit`, `parameters(name)`, `builtins()`) and the signal graph (R3):
 `Signal` (`constant`, `from_series`, `from_values`, `sample`, `sample_into`, `at`, `+ - *` and negation, `maximum`,
-`minimum`, `from_fn`, `rendered`), the inputs (R4a: `InputKind::check`, `Input::from_*`, `Keyframe`, `matching`), the `slew` and `follow` shapers and the primitives (`Ease`, `hashing::uniform`,
+`minimum`, `from_fn`, `rendered`), the inputs (R4a: `InputKind::check`, `Input::from_*`, `Keyframe`, `matching`), the registry and its traits (R4b:
+`Registry`, `Thing`, `Source`, `Shaper`, `Operation`, `Signal::pipe`, `Signal::recipe`), the `slew` and `follow` shapers and the primitives (`Ease`, `hashing::uniform`,
 `scaling::between`, `rounding`, `cadence::positions`). Their rustdoc examples (`crates/core/src/`) run with
 `cargo test --doc -p bullterrier-control`.
 
@@ -51,7 +52,8 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
 7. **Combining** (implemented): `+`, `-`, `*` and negation work on `Signal` and `&Signal` with `f64`. `maximum` and `minimum` are
    infallible.
 8. **Entry points:** sources are free functions under `lib::`; shapers are methods, and `pipe` takes any shaper. Plugins
-   implement the public `Source` and `Shaper` traits (R4); until then `Signal::from_fn` and `Signal::rendered` are how
+   implement the public `Source`, `Shaper` and `Operation` traits (implemented), each with its one `NAME`; every way
+   of making a signal from one checks, names and records it alike. `Signal::from_fn` and `Signal::rendered` are how
    code outside the crate adds a node.
 9. **The core crate** forbids `unsafe`, does no I/O, builds for wasm32, gives the same result on every target (no
    platform math in easing or hashing; `follow` still calls std `exp`, which `libm` replaces before 1.0), documents
@@ -329,8 +331,8 @@ folded.sample([0.05, 0.1, 0.2, 0.3])  # 0.25 and 0.5 are below the fold; 0.57 fo
 ```
 
 ```rust
-// the parameters are implemented; the node is `Signal::from_fn`; the shaper trait (R4) is target
-use bullterrier_control::{Error, Params, Signal};
+// implemented (the doctest of `Shaper`): the trait; `pipe` takes it the same way as a built-in
+use bullterrier_control::{Error, Params, Shaper, Signal};
 
 /// Where the signal folds back.
 #[derive(Clone, Debug, PartialEq, Params)]
@@ -340,19 +342,25 @@ pub struct Fold {
     pub depth: f64,
 }
 
-let params = Fold { depth: 0.5 }; // `params.check()` is the table's refusal of a depth outside 0 to 1, naming the field
-let line = 1.0 - params.depth;
-let source = glow.clone();
-let folded = Signal::from_fn(move |times, out| {
-    source.read_into(times, out)?;
-    for value in out.iter_mut() {
-        if *value > line {
-            *value = 2.0 * line - *value;
-        }
+impl Shaper for Fold {
+    const NAME: &'static str = "fold"; // its one name: in the registry, in its errors and in its recipe
+
+    fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+        let (line, input) = (1.0 - self.depth, input.clone());
+        Ok(Signal::from_fn(move |times, out| {
+            input.read_into(times, out)?;
+            for value in out.iter_mut() {
+                if *value > line {
+                    *value = 2.0 * line - *value;
+                }
+            }
+            Ok::<(), Error>(())
+        }))
     }
-    Ok::<(), Error>(())
-});
-// with the shaper trait (R4), `glow.pipe(Fold { depth: 0.5 })?` takes it the same way as a built-in
+}
+
+// checked by the table first (a depth outside 0 to 1 is refused, naming "fold" and the field)
+let folded = glow.pipe(Fold { depth: 0.5 })?;
 ```
 
 A signal that needs history is `Signal::rendered(&input, Rendering { rate, ..Default::default() }, run)`: `run` is a

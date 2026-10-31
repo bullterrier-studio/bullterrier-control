@@ -65,8 +65,8 @@ pub fn shape(name: &str, input: &Signal, params: &serde_json::Value) -> Result<S
 }
 
 /// The sources the core runs, as functions of their typed parameters (`lib::constant(constant::Params { .. })`), each
-/// checked first; a shaper is a method of [`Signal`] ([`Signal::pipe`]), and every thing the core runs is in
-/// [`Registry::builtin`] by name.
+/// made through the [`registry`]'s one door (checked, named and recorded as a call by name is); a shaper is a
+/// method of [`Signal`] ([`Signal::pipe`]), and every thing the core runs is in [`Registry::builtin`] by name.
 pub mod lib {
     include!(concat!(env!("OUT_DIR"), "/lib.rs"));
 }
