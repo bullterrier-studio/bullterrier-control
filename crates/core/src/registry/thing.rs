@@ -18,6 +18,17 @@ type Run = dyn Fn(&Call, &Values) -> Result<Output, Error> + Send + Sync;
 
 /// A registered source, shaper or operation: what it is, takes and gives, what it says about itself, and its call.
 /// Cheap to clone (it is shared), `Send` and `Sync`.
+///
+/// ```
+/// use bullterrier_control::registry::{Kind, Registry, Returns};
+///
+/// let slew = Registry::builtin().get("slew")?;
+/// assert_eq!((slew.name(), slew.kind(), slew.returns()), ("slew", Kind::Shaper, Returns::Signal));
+/// assert!(slew.inputs().is_empty());
+/// let names: Vec<&str> = slew.table().params().iter().map(|param| param.name.as_str()).collect();
+/// assert_eq!(names, ["rise", "fall", "rate"]);
+/// # Ok::<(), bullterrier_control::Error>(())
+/// ```
 #[derive(Clone)]
 pub struct Thing(Arc<Inner>);
 
@@ -268,6 +279,14 @@ impl Thing {
     /// `properties` as [`ParamTable::describe`] gives them, `description` (its parameters' doc, if there is one),
     /// `title` and `type` `object`. Its objects' keys are sorted; [`ParamTable::listed`] gives the parameters in the
     /// order a reader is shown them.
+    ///
+    /// ```
+    /// let slew = bullterrier_control::Registry::builtin().get("slew")?.description();
+    /// assert_eq!((slew["kind"].as_str(), slew["returns"].as_str()), (Some("shaper"), Some("signal")));
+    /// assert_eq!(slew["parameters"]["title"], "SlewParams");
+    /// assert_eq!(slew["parameters"]["properties"]["rise"]["unit"], "seconds");
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
     #[must_use]
     pub fn description(&self) -> Value {
         let Inner {
@@ -312,6 +331,13 @@ impl Thing {
     /// number's unit and range (`rise (seconds, 0 to 3600)`), its default as Python writes it (`0.1`, `'linear'`,
     /// `True`), whether it is advanced or cyclic, and its description. The words and layout are the Python
     /// package's; trailing blank lines are dropped.
+    ///
+    /// ```
+    /// let help = bullterrier_control::Registry::builtin().get("slew")?.help();
+    /// assert!(help.starts_with("shaper slew(signal, **values) -> signal\n\nA signal that follows its input"));
+    /// assert!(help.contains("\n  rate (hertz, 10 to 48000), default 1000.0, advanced\n"));
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
     #[must_use]
     pub fn help(&self) -> String {
         let Inner {
@@ -389,6 +415,19 @@ impl Thing {
     /// 'grid'`; `... needs the input 'events'`; `... the input 'events' holds values`; `... gave events, not the
     /// series it returns`); [`Error::Params`] under its name listing every rule the values break; and whatever error
     /// its body gives, unchanged.
+    ///
+    /// ```
+    /// use bullterrier_control::registry::{Call, Registry};
+    /// use bullterrier_control::Signal;
+    /// use serde_json::json;
+    ///
+    /// let slew = Registry::builtin().get("slew")?;
+    /// let refused = slew.call(&Call::default()).map(|_| ()).map_err(|error| error.to_string());
+    /// assert_eq!(refused, Err("shaper 'slew' takes 1 signal(s), not 0".to_owned()));
+    /// let call = Call { signals: vec![Signal::constant(1.0)?], values: json!({"rise": -1}), ..Default::default() };
+    /// assert!(slew.call(&call).is_err_and(|error| error.to_string().contains("rise: must be >= 0")));
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
     pub fn call(&self, call: &Call) -> Result<Output, Error> {
         let Inner {
             kind,

@@ -80,6 +80,10 @@ pub const NAME_PATTERN: &str = "[a-z][a-z0-9_]*";
 
 /// The keys of a patch node besides its inputs' and its parameters' names: no parameter may be named like one, or the
 /// node `{use = "x", signal = "y", ...}` would be ambiguous.
+///
+/// ```
+/// assert_eq!(bullterrier_control::registry::NODE_KEYS, ["use", "signal"]);
+/// ```
 pub const NODE_KEYS: [&str; 2] = ["use", "signal"];
 
 /// Whether `name` matches [`NAME_PATTERN`] in full.
@@ -210,6 +214,21 @@ impl Output {
 
 /// A call of a thing: its input signals (a shaper takes one), its inputs by name, its parameter values by name.
 /// `Call::default()` is a call with nothing: no signal, no input and every parameter left at its default.
+///
+/// ```
+/// use bullterrier_control::inputs::Input;
+/// use bullterrier_control::registry::Call;
+/// use serde_json::json;
+///
+/// let call = Call {
+///     inputs: [("values".to_owned(), Input::from_values(vec![0.5, 1.0])?)].into(),
+///     values: json!({"rate": 2.0}),
+///     ..Default::default()
+/// };
+/// assert!(call.signals.is_empty());
+/// assert_eq!(Call::default().values, json!({}));
+/// # Ok::<(), bullterrier_control::Error>(())
+/// ```
 #[derive(Clone, Debug)]
 pub struct Call {
     /// The signals it shapes: one for a shaper, none for a source or an operation.
@@ -232,7 +251,7 @@ impl Default for Call {
 
 /// How a signal was made through the registry ([`Thing::call`]): the thing, its parameter values as its table read
 /// them (every field), its inputs in the order it declares them, and the signal it shaped (a shaper's). What saving a
-/// graph as a patch writes; [`Signal::recipe`] gives it.
+/// graph as a patch writes; [`Signal::recipe`] gives it (an example is there).
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct Recipe {
@@ -247,6 +266,15 @@ pub struct Recipe {
 }
 
 /// What a thing is called and says about itself; each field but the name may be empty.
+///
+/// ```
+/// use bullterrier_control::registry::{About, Thing};
+/// use bullterrier_control::builtin::slew;
+///
+/// let about = About { name: "smooth".into(), doc: "Smooths it.\n\nAt its own pace.".into(), ..Default::default() };
+/// assert_eq!(Thing::shaper::<slew::Params>(about)?.summary(), "Smooths it.");
+/// # Ok::<(), bullterrier_control::Error>(())
+/// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct About {
     /// The name it is registered and called under (see [`NAME_PATTERN`]).
@@ -260,6 +288,18 @@ pub struct About {
 }
 
 /// What a thing whose body is a callback ([`Thing::custom`]) declares; a Rust type says the same by its traits.
+///
+/// ```
+/// use bullterrier_control::inputs::InputKind;
+/// use bullterrier_control::params::ParamTable;
+/// use bullterrier_control::registry::{About, Declared, Kind, Output, Returns, Thing};
+///
+/// let declared = Declared { kind: Kind::Operation, identity: "mine.pick".into(), table: ParamTable::new(vec![])?,
+///     inputs: vec![(InputKind::Events, true)], returns: Returns::Events };
+/// let pick = Thing::custom(About { name: "pick".into(), ..Default::default() }, declared, |_call| Ok(Output::Events(vec![])))?;
+/// assert!(pick.help().starts_with("operation pick(*, events, **values) -> events"));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Clone, Debug)]
 pub struct Declared {
     /// Its kind.
