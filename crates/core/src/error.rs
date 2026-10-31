@@ -15,6 +15,11 @@ pub enum Error {
         /// The name asked for.
         name: String,
     },
+    /// A text names no easing curve; the message lists the valid forms.
+    Ease {
+        /// What is wrong with the text and what would be right.
+        message: String,
+    },
     /// The parameters are not the built-in's: one is unknown, of the wrong type or out of its range.
     Params {
         /// The built-in whose parameters these were meant to be.
@@ -42,6 +47,7 @@ impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownShaper { name } => write!(formatter, "the Rust core has no shaper called {name:?}"),
+            Self::Ease { message } => formatter.write_str(message),
             Self::Params {
                 shaper,
                 problems,

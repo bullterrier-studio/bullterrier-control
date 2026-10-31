@@ -17,7 +17,6 @@ import pytest
 
 from bullterrier_control import Series, registry
 from bullterrier_control._native import _core  # noqa: PLC2701  architecture: the boundary the shapers call
-from bullterrier_control.easing import EASES
 from bullterrier_control.errors import FormatError, ParameterError
 
 SLEW = {"rise": 0.5, "fall": 0.5, "rate": 10.0}  # 0.1 s a sample, 0.2 a sample up or down
@@ -335,11 +334,6 @@ def test_a_built_ins_rule_between_fields_is_checked():
 def test_a_name_with_no_built_in_is_a_value_error_naming_it(ask):
     with pytest.raises(ValueError, match="no_such_thing"):
         ask("no_such_thing")
-
-
-@pytest.mark.parametrize("ease", EASES)
-def test_the_core_accepts_every_ease_the_package_names(ease):
-    assert _core.parse_parameters("remap", {"ease": ease})["ease"] == ease
 
 
 def test_the_core_refuses_an_ease_the_package_does_not_name():

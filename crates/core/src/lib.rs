@@ -13,6 +13,7 @@
 extern crate self as bullterrier_control;
 
 pub mod builtin;
+pub mod easing;
 mod error;
 pub mod formats;
 pub mod params;
