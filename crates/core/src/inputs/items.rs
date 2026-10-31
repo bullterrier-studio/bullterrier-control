@@ -27,14 +27,14 @@ pub(super) fn items<'de, T: Deserialize<'de>, D: Deserializer<'de>>(
         .map_err(|error| FormatError::from_serde(&error))
 }
 
-/// Record the problems of `error`, kept or counted, each with its path (`t`, `beats[1]`, empty for the whole) under
-/// `prefix` (`events[2]`, `grid`).
+/// Record the problems of `error`, kept or counted, each with its path (a field's, `t` or `beats[1]`, or empty for
+/// the whole) under `prefix` (`events[2]`, `grid`).
 pub(super) fn absorb_under(problems: &mut Problems, prefix: &str, mut error: FormatError) {
     for problem in &mut error.problems {
-        problem.path = match problem.path.as_str() {
-            "" => prefix.to_owned(),
-            path if path.starts_with('[') => format!("{prefix}{path}"),
-            path => format!("{prefix}.{path}"),
+        problem.path = if problem.path.is_empty() {
+            prefix.to_owned()
+        } else {
+            format!("{prefix}.{}", problem.path)
         };
     }
     problems.absorb(&error);
