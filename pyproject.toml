@@ -150,8 +150,7 @@ rust-deny = { cmd = "cargo deny --offline --locked check bans licenses sources",
 rust-wasm = { cmd = "cargo check -p bullterrier-control --target wasm32-unknown-unknown --locked --quiet", help = "Check that the core builds for the browser (wasm32-unknown-unknown)" }
 stubtest = { cmd = "uv run python -m mypy.stubtest --mypy-config-file pyproject.toml bullterrier_control._native._core", help = "Check the stub _core.pyi against the built extension" }
 rust-test = { cmd = "cargo test --workspace --locked --quiet", help = "Run the Rust tests" }
-# vulture over src, plus a whitelist of the parameter fields only the Rust core reads (tools/vulture_whitelist.py)
-dead-code = { sequence = ["uv run python tools/vulture_whitelist.py dist/vulture/whitelist.py", "vulture src dist/vulture/whitelist.py"], default_item_type = "cmd", help = "Find dead code in src (vulture), the fields the Rust core reads excepted" }
+dead-code = { cmd = "vulture src", help = "Find dead code in src (vulture)" }
 check = { sequence = ["ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, { ref = "lint-workflows" }, { ref = "dead-code" }, { ref = "rust-doc" }, "deptry .", { ref = "rust-tools" }, { ref = "rust-shear" }, { ref = "rust-deny" }, { ref = "rust-wasm" }, { ref = "build-check" }, "mypy", { ref = "stubtest" }, { ref = "rust-test" }, { ref = "test" }], default_item_type = "cmd", help = "The full gate, Python and Rust (format, lint, workflows, dead code, docs, dependencies, distributions, types, tests); stops at the first failure" }
 # Redraw the gallery (docs/gallery/ and docs/gallery.md) from the patches in examples/gallery/; needs matplotlib (uv sync)
 gallery = { cmd = "uv run python tools/gallery.py", help = "Redraw docs/gallery/ and docs/gallery.md from examples/gallery/" }
@@ -289,7 +288,7 @@ disallow_incomplete_defs = false
 # Dead code fails the gate (`uv run poe dead-code`, in `poe check` and the pre-push hook). Only src is scanned: code
 # that only tests use is dead, unless a public `__all__` lists it. 60 % is vulture's lowest level: it reports unused
 # functions, classes and attributes, not just unreachable lines. Each exemption below is a name or decorator that a
-# framework calls; the fields of a shaper the Rust core implements are whitelisted by `poe dead-code` as it runs.
+# framework calls.
 [tool.vulture]
 paths = ["src"]
 min_confidence = 60

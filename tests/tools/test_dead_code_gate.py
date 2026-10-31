@@ -1,6 +1,5 @@
 """The dead-code gate can fail: `poe dead-code` (vulture, with the project's configuration) rejects an unused function
-and an unused class, passes the package as it is, and does not report the fields of a parameter model that only the
-Rust core reads (by name, from `model_dump()`): it is given a whitelist of exactly those, written when it runs.
+and an unused class, and passes the package as it is.
 
 An architecture test of the tooling: its subject is the `dead-code` task and `[tool.vulture]` in pyproject.toml, so it
 runs that task, the way `uv run poe check` does, in a copy of the project into which the dead code is written.

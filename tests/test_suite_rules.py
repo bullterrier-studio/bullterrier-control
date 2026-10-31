@@ -23,9 +23,6 @@ ALLOWED: dict[tuple[str, str], str] = {
         "the boundary between the package and the Rust core: what `render` reads and refuses, and that every shaper "
         "the core implements is a registered shaper (only the core can say which it implements)"
     ),
-    ("tools/test_vulture_whitelist.py", "bullterrier_control._native"): (
-        "the whitelist names the fields of exactly the shapers the Rust core implements; only the core can say which"
-    ),
 }
 
 _PATCHERS = ("monkeypatch.setattr", "monkeypatch.delattr", "monkeypatch.setitem", "monkeypatch.delitem")
