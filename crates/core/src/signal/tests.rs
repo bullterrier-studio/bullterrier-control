@@ -142,6 +142,29 @@ fn sample_into_fills_a_buffer_as_long_as_the_times_and_refuses_another_length() 
 }
 
 #[test]
+fn read_into_passes_a_value_that_is_not_finite_and_refuses_what_sample_into_refuses_of_the_times() -> Result<(), Error>
+{
+    let mut values = [9.0; 3];
+    (broken(f64::NAN) + echo()).read_into(&[0.0, -2.0, 1.0], &mut values)?;
+    assert!(values.iter().all(|value| value.is_nan()), "{values:?}");
+    (broken(f64::INFINITY) * -1.0).read_into(&[0.5, 1.0, 2.0], &mut values)?;
+    assert_eq!(values, [f64::NEG_INFINITY; 3]);
+    // a time before 0 reads as 0, as for sample_into
+    echo().read_into(&[0.25, -1.0, 4.0], &mut values)?;
+    assert_eq!(values, [0.25, 0.0, 4.0]);
+    for (times, room, named) in [
+        (vec![0.0, f64::NAN], 2, "NaN"),
+        (vec![f64::NEG_INFINITY], 1, "inf"),
+        (vec![0.0, 1.0], 3, "2 times"),
+    ] {
+        let mut values = vec![0.0; room];
+        let message = signal_error(&echo().read_into(&times, &mut values));
+        assert!(message.contains(named), "{message}");
+    }
+    Ok(())
+}
+
+#[test]
 fn a_constant_is_its_value_at_every_time_and_must_be_finite() {
     // (value, what reading it at 0, 3.5 and 1e9 gives)
     for (value, expected) in [

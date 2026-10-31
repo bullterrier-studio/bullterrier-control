@@ -296,6 +296,34 @@ impl Signal {
     /// finite (naming the first time that gave one); whatever error a node of the graph gives (an [`Error::Node`] from
     /// a callback).
     pub fn sample_into(&self, times: &[f64], values: &mut [f64]) -> Result<(), Error> {
+        self.read_into(times, values)?;
+        match values.iter().zip(times).find(|(value, _)| !value.is_finite()) {
+            Some((_, time)) => Err(Error::Signal {
+                message: format!("the signal is not finite at time {time:?} (an overflow?)"),
+            }),
+            None => Ok(()),
+        }
+    }
+
+    /// The values at `times` into `values` as [`Signal::sample_into`] reads them, but a value that is not finite is
+    /// given, not refused: for a callback combining signals (a [`Signal::from_fn`] reading its input), whose own
+    /// result the read that called it checks.
+    ///
+    /// ```
+    /// use bullterrier_control::Signal;
+    ///
+    /// let huge = Signal::constant(f64::MAX)? * 2.0;
+    /// let mut values = [0.0];
+    /// huge.read_into(&[1.0], &mut values)?;
+    /// assert_eq!(values, [f64::INFINITY]);
+    /// assert!(huge.sample_into(&[1.0], &mut values).is_err());
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    /// [`Error::Signal`] if `values` is not as long as `times` or a time is not finite (naming it); whatever error a
+    /// node of the graph gives (an [`Error::Node`] from a callback).
+    pub fn read_into(&self, times: &[f64], values: &mut [f64]) -> Result<(), Error> {
         if times.len() != values.len() {
             return Err(Error::Signal {
                 message: format!(
@@ -316,13 +344,7 @@ impl Signal {
         } else {
             Cow::Borrowed(times)
         };
-        self.0.read(&from_zero, values).map_err(|error| *error)?;
-        match values.iter().zip(times).find(|(value, _)| !value.is_finite()) {
-            Some((_, time)) => Err(Error::Signal {
-                message: format!("the signal is not finite at time {time:?} (an overflow?)"),
-            }),
-            None => Ok(()),
-        }
+        self.0.read(&from_zero, values).map_err(|error| *error)
     }
 
     /// The value at `time` (seconds).
