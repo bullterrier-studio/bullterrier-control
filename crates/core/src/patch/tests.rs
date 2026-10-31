@@ -1054,6 +1054,42 @@ fn a_toml_text_is_read_in_file_order_and_builds_against_a_bundle() -> Outcome {
 }
 
 #[test]
+fn a_node_is_where_the_text_first_names_it_even_in_a_table_header_below_it() -> Outcome {
+    // `[pulse.grid]` names `pulse` before `slow`; its own `[pulse]` header comes later (as Python's tomllib orders it)
+    let text = r#"format = "bullterrier-control/patch"
+version = 1
+
+[pulse.grid]
+beats = [0.0, 0.5, 1.1, 1.8]
+meter = 4
+first_downbeat = 0
+
+[slow]
+use = "slew"
+signal = "pulse"
+rise = 1
+
+[pulse]
+use = "beat"
+per = "beat"
+"#;
+    let patch = from_toml(text)?;
+    assert_eq!(
+        patch.nodes().map(|(name, _)| name).collect::<Vec<_>>(),
+        ["pulse", "slow"]
+    );
+    // beats at 0, 0.5, 1.1, 1.8 s: 0.25 s is half the first beat, 0.8 s half the second (the grid was read)
+    let values = signal(&patch.build(None)?, "pulse")?.sample(&[0.25, 0.8])?;
+    assert!(close(&values, &[0.5, 1.5]), "{values:?}");
+    // a header two tables below (`[slow.x.y]`) names `slow` first, before `[slow.x]` and `[slow]` do
+    let deeper = "format = 'bullterrier-control/patch'\nversion = 1\n[slow.x.y]\n[level]\nuse = 'level'\n\
+                  [slow.x]\n[slow]\nuse = 'slew'\nsignal = 'level'\n";
+    let paths: Vec<String> = problems(&from_toml(deeper)).into_iter().map(|(path, _)| path).collect();
+    assert_eq!(paths, ["slow.signal", "slow.x"]);
+    Ok(())
+}
+
+#[test]
 fn a_toml_text_and_the_same_table_as_data_are_one_patch() -> Outcome {
     let entries = patch_of(&[
         (

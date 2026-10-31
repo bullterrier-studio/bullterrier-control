@@ -32,8 +32,10 @@ pub(super) fn decode(text: &str) -> Result<Decoded, PatchError> {
         PatchError::Toml { detail }
     })?;
     let mut keys: Vec<_> = table.get_ref().iter().collect();
-    // the table is sorted by key; the file's order is the order of the keys' places in it
-    keys.sort_by_key(|(key, _)| key.span().start);
+    // the table is sorted by key; the file's order is where each key is first named. A table's key holds the place of
+    // its own `[name]` header, which can come after a header below it (`[name.grid]`) has named it: the earliest key
+    // within it is that place.
+    keys.sort_by_cached_key(|(key, value)| key.span().start.min(first_named(value.get_ref())));
     let mut spoiled = Vec::new();
     let entries = keys
         .into_iter()
@@ -44,6 +46,19 @@ pub(super) fn decode(text: &str) -> Result<Decoded, PatchError> {
         })
         .collect();
     Ok(Decoded { entries, spoiled })
+}
+
+/// The earliest place (a byte offset) of a key within `value`, a table at any depth (`[a.b.c]` names `a` and `b`
+/// before `[a.b]` and `[a]` do), or `usize::MAX` if it holds none. An array's key is named before its items.
+fn first_named(value: &DeValue<'_>) -> usize {
+    match value {
+        DeValue::Table(table) => table
+            .iter()
+            .map(|(key, value)| key.span().start.min(first_named(value.get_ref())))
+            .min()
+            .unwrap_or(usize::MAX),
+        _ => usize::MAX,
+    }
 }
 
 /// The line and column (each from 1, the column in characters) of the byte `offset` of `text`.
