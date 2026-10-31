@@ -51,7 +51,7 @@ mod unit;
 use std::fmt;
 
 pub use bullterrier_control_macros::{Choice, Params};
-pub use table::{Kind, Param, ParamTable, Values};
+pub use table::{Kind, Param, ParamTable, Rule, Values};
 pub use unit::ParamUnit;
 
 use crate::formats::{Problem, Problems, write_problems};
@@ -106,7 +106,8 @@ impl std::error::Error for ParamError {}
 /// A struct of parameters with its table: what `#[derive(Params)]` writes (with `Default`, from each field's
 /// `default`). Each field is `#[param(default = .., unit = .., min = .., max = .., advanced, cyclic)]` (a number needs
 /// `unit`, `min` and `max`; a unit is a [`ParamUnit`] variant) and its doc comment is the field's description; its
-/// type is a [`ParamType`].
+/// type is a [`ParamType`]. A rule between fields is `#[param(rule = path)]` on the struct: `path` is a
+/// `fn(&Self) -> Vec<Problem>` that [`ParamTable::parse`] runs once every field is valid (see [`ParamTable::with_rule`]).
 pub trait Params: Default + Clone + fmt::Debug + PartialEq {
     /// The table of the struct's fields, built on the first call and shared after.
     ///

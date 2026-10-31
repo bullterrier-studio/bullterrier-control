@@ -97,10 +97,23 @@ fn general(value: f64) -> String {
 }
 
 /// The parameters of one source, shaper or operation, every declaration checked. Built by [`ParamTable::new`] only.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ParamTable {
     params: Vec<Param>,
+    rule: Option<Rule>,
 }
+
+/// Two tables are equal when their declarations are and both have a rule between fields or neither does (function
+/// pointers have no meaningful equality).
+impl PartialEq for ParamTable {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params && self.rule.is_some() == other.rule.is_some()
+    }
+}
+
+/// A rule between fields, which a table runs on values that passed every field's own rules: the problems it finds, each
+/// under the field it is about.
+pub type Rule = fn(&Values) -> Vec<Problem>;
 
 /// Values a [`ParamTable`] accepted: one per field, each a valid value of its kind (a default where none was given, a
 /// cyclic number wrapped, a decimal held as a JSON decimal).
@@ -152,8 +165,17 @@ impl ParamTable {
         check::declarations(&mut params, &mut problems);
         match ParamError::from_problems(problems) {
             Some(error) => Err(error),
-            None => Ok(Self { params }),
+            None => Ok(Self { params, rule: None }),
         }
+    }
+
+    /// The table with `rule` added: a rule between fields (`high` is not below `low`), which [`parse`](Self::parse) runs
+    /// once every field has passed its own rules, so it only ever sees valid values. A table has no rule unless one
+    /// is added; `#[derive(Params)]` adds the one named by `#[param(rule = path)]` on the struct.
+    #[must_use]
+    pub fn with_rule(mut self, rule: Rule) -> Self {
+        self.rule = Some(rule);
+        self
     }
 
     /// The values `given` sets, every field included: `given` is a JSON object of values by name, and a field it
@@ -182,7 +204,8 @@ impl ParamTable {
     ///
     /// # Errors
     /// A [`ParamError`] listing every rule broken: each field's in table order, then each unknown field; a `given`
-    /// that is not an object is one problem at the empty path.
+    /// that is not an object is one problem at the empty path. The rule between fields ([`with_rule`](Self::with_rule))
+    /// is checked only when no other rule is broken.
     pub fn parse(&self, given: &Value) -> Result<Values, ParamError> {
         let Value::Object(given) = given else {
             return Err(ParamError::at(
@@ -215,9 +238,15 @@ impl ParamTable {
                 });
             }
         }
+        let values = Values(values);
+        if let (true, Some(rule)) = (problems.is_empty(), self.rule) {
+            for problem in rule(&values) {
+                problems.push(problem);
+            }
+        }
         match ParamError::from_problems(problems) {
             Some(error) => Err(error),
-            None => Ok(Values(values)),
+            None => Ok(values),
         }
     }
 
@@ -314,7 +343,7 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{Kind, Param, ParamTable, Values};
-    use crate::formats::check_problems;
+    use crate::formats::{Problem, check_problems};
     use crate::params::{ParamError, ParamUnit};
 
     /// The problems wanted: each a path and a short part of its rule.
@@ -694,6 +723,45 @@ mod tests {
                     "title": "On", "unit": null, "advanced": false, "cyclic": false},
             })
         );
+        Ok(())
+    }
+
+    #[test]
+    fn a_rule_between_fields_runs_after_the_field_rules_and_its_problems_are_capped() -> Result<(), ParamError> {
+        // refuses a value of 1.5 or more, once for each of 150 imaginary findings
+        fn rule(values: &Values) -> Vec<Problem> {
+            let amount = values.get("amount").and_then(Value::as_f64).unwrap_or(0.0);
+            if amount < 1.5 {
+                return Vec::new();
+            }
+            (0..150)
+                .map(|index| Problem {
+                    path: "amount".to_owned(),
+                    rule: format!("finding {index}"),
+                })
+                .collect()
+        }
+        let plain = ParamTable::new(vec![amount()])?;
+        let ruled = plain.clone().with_rule(rule);
+        assert_ne!(plain, ruled);
+        assert_eq!(
+            plain.parse(&json!({"amount": 1.75}))?.into_json(),
+            json!({"amount": 1.75})
+        );
+        assert_eq!(
+            ruled.parse(&json!({"amount": 1.25}))?.into_json(),
+            json!({"amount": 1.25})
+        );
+        let Err(refused) = ruled.parse(&json!({"amount": 1.75})) else {
+            return Err(ParamError::at("amount", "the rule was not run".to_owned()));
+        };
+        assert_eq!((refused.problems.len(), refused.omitted()), (100, 50));
+        assert_eq!(refused.problems[0].rule, "finding 0");
+        // a field that breaks its own rule (past 2.0) is reported alone: the rule never sees the invalid value
+        let Err(broken) = ruled.parse(&json!({"amount": 2.5})) else {
+            return Err(ParamError::at("amount", "accepted".to_owned()));
+        };
+        check_problems("broken field", &broken.problems, &[("amount", "<= 2.0")]);
         Ok(())
     }
 

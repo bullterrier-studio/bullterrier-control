@@ -10,7 +10,7 @@ use syn::{Data, DeriveInput, Expr, Fields, Ident, Lit, Type, UnOp, parse_macro_i
 
 /// `#[derive(Params)]` on a struct with named fields, each `#[param(default = .., unit = .., min = .., max = ..,
 /// advanced, cyclic)]` and a doc comment: writes `Default` (from each `default`) and `Params` (the table, built once,
-/// and `from_values`).
+/// and `from_values`). `#[param(rule = path)]` on the struct adds a rule between fields to the table.
 #[proc_macro_derive(Params, attributes(param))]
 pub fn derive_params(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -60,6 +60,7 @@ fn params(input: &DeriveInput) -> syn::Result<Tokens> {
             return Err(syn::Error::new_spanned(&input.ident, "Params is derived for a struct"));
         }
     };
+    let rule = struct_rule(&input.attrs)?;
     let name = &input.ident;
     let krate = quote!(::bullterrier_control::params);
     let idents: Vec<&Ident> = fields.iter().map(|field| &field.ident).collect();
@@ -103,6 +104,11 @@ fn params(input: &DeriveInput) -> syn::Result<Tokens> {
     // a struct with no field has no defaults to read
     let read_defaults =
         (!fields.is_empty()).then(|| quote!(let defaults = <Self as ::core::default::Default>::default();));
+    let with_rule = rule.map(|path| {
+        quote! {
+            .map(|table| table.with_rule(|values| #path(&<Self as #krate::Params>::from_values(values))))
+        }
+    });
     Ok(quote! {
         impl ::core::default::Default for #name {
             fn default() -> Self {
@@ -117,7 +123,7 @@ fn params(input: &DeriveInput) -> syn::Result<Tokens> {
                 TABLE
                     .get_or_init(|| {
                         #read_defaults
-                        #krate::ParamTable::new(::std::vec![#(#declared),*])
+                        #krate::ParamTable::new(::std::vec![#(#declared),*]) #with_rule
                     })
                     .as_ref()
                     .map_err(::core::clone::Clone::clone)
@@ -134,6 +140,21 @@ fn params(input: &DeriveInput) -> syn::Result<Tokens> {
             }
         }
     })
+}
+
+/// The path of the rule between fields, `#[param(rule = path)]` on the struct, if there is one.
+fn struct_rule(attributes: &[syn::Attribute]) -> syn::Result<Option<syn::Path>> {
+    let mut rule = None;
+    for attribute in attributes.iter().filter(|attribute| attribute.path().is_ident("param")) {
+        attribute.parse_nested_meta(|meta| {
+            if meta.path.is_ident("rule") {
+                once(&meta, &mut rule, meta.value()?.parse::<syn::Path>()?)
+            } else {
+                Err(meta.error("unknown key: a Params struct takes rule"))
+            }
+        })?;
+    }
+    Ok(rule)
 }
 
 /// A bound as the code of an `Option<f64>`.

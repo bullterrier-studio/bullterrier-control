@@ -3,7 +3,8 @@
 //! A built-in file declares `Params`, its parameters: a struct with `#[derive(Params)]`, `pub` fields, each with a doc
 //! comment (its description) and `#[param(..)]` (its default, unit and range), and a `#[derive(Choice)]` enum for each
 //! field that picks among names. That declaration is the only one: the table, the defaults, the description and the
-//! checks all come from it. A file that also defines `pub(crate) fn run(inputs: &[f64], params: &Params) -> Vec<f64>`,
+//! checks all come from it. A rule between fields (`high` is not below `low`) is a `fn rule(&Params) -> Vec<Problem>`
+//! named by `#[param(rule = rule)]` on the struct; the table runs it once every field is valid. A file that also defines `pub(crate) fn run(inputs: &[f64], params: &Params) -> Vec<f64>`,
 //! the causal recurrence over the input sampled at the shaper's rate, is a shaper the core runs; one without it only
 //! declares (its source or operation still runs in Python). Built-ins never refer to one another: what two of them
 //! share goes in a module of the crate named for its concept.
@@ -26,6 +27,7 @@ mod tests {
 
     use super::{PARAMS, SHAPERS, lfo};
     use crate::Params as _;
+    use crate::params::{Kind, ParamUnit};
 
     /// The names the Python package registers, sorted: sources, shapers and operations.
     const NAMES: [&str; 21] = [
@@ -178,6 +180,197 @@ mod tests {
             (json!(0.5), json!(0.4))
         );
         assert_eq!(gate["rate"]["unit"], json!("hertz"));
+        Ok(())
+    }
+
+    /// (built-in, field, kind, default, unit, min, max, flags, choices): every field of every built-in, written out from
+    /// the Python models these tables were ported from (`advanced` and `cyclic` as flags).
+    #[expect(clippy::too_many_lines, reason = "one row per field of the 21 built-ins")]
+    fn declared_fields() -> Vec<Row> {
+        const RATIO: (Option<&str>, f64, f64) = (Some("ratio"), -1e6, 1e6);
+        let seconds = |max: f64| (Some("seconds"), 0.0, max);
+        let fraction = (Some("fraction"), 0.0, 1.0);
+        let hertz = (Some("hertz"), 10.0, 48000.0);
+        let count = |min: f64, max: f64| (Some("count"), min, max);
+        let number = |built_in,
+                      field,
+                      kind,
+                      default: serde_json::Value,
+                      (unit, min, max): (Option<&'static str>, f64, f64),
+                      flags| {
+            Row {
+                built_in,
+                field,
+                kind,
+                default,
+                unit,
+                range: Some((min, max)),
+                flags,
+                choices: &[],
+            }
+        };
+        let other = |built_in, field, kind, default: serde_json::Value, choices| Row {
+            built_in,
+            field,
+            kind,
+            default,
+            unit: None,
+            range: None,
+            flags: "",
+            choices,
+        };
+        vec![
+            number("beats", "division", "whole", json!(1), count(1.0, 64.0), ""),
+            number("clip", "low", "float", json!(0.0), RATIO, ""),
+            number("clip", "high", "float", json!(1.0), RATIO, ""),
+            number("constant", "value", "float", json!(0.0), RATIO, ""),
+            number("delay", "lag", "float", json!(0.1), seconds(3600.0), ""),
+            other("envelope", "label", "text", json!(""), &[]),
+            number("envelope", "attack", "float", json!(0.0), seconds(60.0), ""),
+            number("envelope", "decay", "float", json!(0.25), seconds(3600.0), ""),
+            number("envelope", "sustain", "float", json!(0.0), fraction, ""),
+            number("envelope", "release", "float", json!(0.0), seconds(3600.0), ""),
+            other(
+                "envelope",
+                "curve",
+                "choice",
+                json!("exponential"),
+                &["exponential", "linear"],
+            ),
+            other("envelope", "mix", "choice", json!("max"), &["max", "sum"]),
+            number("every", "n", "whole", json!(2), count(1.0, 1000.0), ""),
+            number("every", "offset", "whole", json!(0), count(0.0, 999.0), ""),
+            number("follow", "attack", "float", json!(0.01), seconds(3600.0), ""),
+            number("follow", "release", "float", json!(0.25), seconds(3600.0), ""),
+            number("follow", "rate", "float", json!(1000.0), hertz, "advanced"),
+            number("gate", "open", "float", json!(0.5), RATIO, ""),
+            number("gate", "close", "float", json!(0.4), RATIO, ""),
+            number("gate", "rate", "float", json!(1000.0), hertz, "advanced"),
+            other("latch", "label", "text", json!(""), &[]),
+            number("latch", "before", "float", json!(0.0), fraction, ""),
+            number("latch", "after", "float", json!(1.0), fraction, ""),
+            other(
+                "lfo",
+                "shape",
+                "choice",
+                json!("sine"),
+                &["sine", "triangle", "square", "saw", "saw-down"],
+            ),
+            number("lfo", "rate", "float", json!(1.0), (Some("cycles"), 0.0, 1000.0), ""),
+            other("lfo", "per", "choice", json!("second"), &["second", "beat"]),
+            number(
+                "lfo",
+                "phase",
+                "float",
+                json!(0.0),
+                (Some("cycles"), 0.0, 1.0),
+                "cyclic",
+            ),
+            number("lfo", "low", "float", json!(0.0), RATIO, ""),
+            number("lfo", "high", "float", json!(1.0), RATIO, ""),
+            number("lfo", "duty", "float", json!(0.5), fraction, ""),
+            other(
+                "noise",
+                "shape",
+                "choice",
+                json!("smooth"),
+                &["hold", "linear", "smooth"],
+            ),
+            number("noise", "rate", "float", json!(4.0), (Some("hertz"), 0.001, 1000.0), ""),
+            number("noise", "seed", "whole", json!(0), count(0.0, 4_294_967_295.0), ""),
+            number("noise", "low", "float", json!(0.0), RATIO, ""),
+            number("noise", "high", "float", json!(1.0), RATIO, ""),
+            number(
+                "normalise",
+                "lower",
+                "float",
+                json!(0.05),
+                (Some("fraction"), 0.0, 0.99),
+                "",
+            ),
+            number(
+                "normalise",
+                "upper",
+                "float",
+                json!(0.98),
+                (Some("fraction"), 0.01, 1.0),
+                "",
+            ),
+            number("quantize", "division", "whole", json!(1), count(1.0, 64.0), ""),
+            number("remap", "low", "float", json!(0.0), RATIO, ""),
+            number("remap", "high", "float", json!(1.0), RATIO, ""),
+            other("remap", "ease", "text", json!("linear"), &[]),
+            other("select", "label", "text", json!(""), &[]),
+            number("select", "threshold", "float", json!(0.0), fraction, ""),
+            number(
+                "shift",
+                "offset",
+                "float",
+                json!(0.0),
+                (Some("seconds"), -3600.0, 3600.0),
+                "",
+            ),
+            number("slew", "rise", "float", json!(0.1), seconds(3600.0), ""),
+            number("slew", "fall", "float", json!(0.1), seconds(3600.0), ""),
+            number("slew", "rate", "float", json!(1000.0), hertz, "advanced"),
+            number("steps", "rate", "float", json!(4.0), (Some("count"), 0.001, 1000.0), ""),
+            other("steps", "per", "choice", json!("second"), &["second", "beat"]),
+            number("thin", "gap", "float", json!(0.1), seconds(3600.0), ""),
+        ]
+    }
+
+    /// One field's declaration, flattened for comparison.
+    #[derive(Debug, PartialEq)]
+    struct Row {
+        built_in: &'static str,
+        field: &'static str,
+        kind: &'static str,
+        default: serde_json::Value,
+        unit: Option<&'static str>,
+        range: Option<(f64, f64)>,
+        flags: &'static str,
+        choices: &'static [&'static str],
+    }
+
+    #[test]
+    fn every_field_of_every_built_in_is_declared_as_the_python_models_did() -> Result<(), String> {
+        let mut declared = Vec::new();
+        for (name, table) in PARAMS {
+            for param in table().map_err(|error| error.to_string())?.params() {
+                let (kind, choices) = match &param.kind {
+                    Kind::Float => ("float", Vec::new()),
+                    Kind::Whole => ("whole", Vec::new()),
+                    Kind::Switch => ("switch", Vec::new()),
+                    Kind::Text => ("text", Vec::new()),
+                    Kind::Choice(names) => ("choice", names.iter().map(String::as_str).collect()),
+                };
+                let flags = match (param.advanced, param.cyclic) {
+                    (false, false) => "",
+                    (true, false) => "advanced",
+                    (false, true) => "cyclic",
+                    (true, true) => "advanced cyclic",
+                };
+                declared.push((
+                    (*name, param.name.as_str(), kind, param.default.clone()),
+                    (
+                        param.unit.map(ParamUnit::as_str),
+                        param.min.zip(param.max),
+                        flags,
+                        choices,
+                    ),
+                ));
+            }
+        }
+        let expected: Vec<_> = declared_fields()
+            .into_iter()
+            .map(|row| {
+                (
+                    (row.built_in, row.field, row.kind, row.default),
+                    (row.unit, row.range, row.flags, row.choices.to_vec()),
+                )
+            })
+            .collect();
+        assert_eq!(declared, expected);
         Ok(())
     }
 }
