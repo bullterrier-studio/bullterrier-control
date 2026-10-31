@@ -295,6 +295,9 @@ pub struct Fold {
 let folded = glow.pipe(Fold { depth: 0.5, ..Default::default() })?;
 ```
 
+The derive names the crate `bullterrier_control` in the code it writes, so a dependency renamed in `Cargo.toml` breaks it.
+Rename the path in the source instead (`use bullterrier_control as btc;`), which works.
+
 ## 10. The same look as a file (the extra)
 
 A patch names sources, shapers and operations and their values, one table per node (`docs/formats.md`, "Patch"). It

@@ -106,7 +106,7 @@ re-exports them; they only write code) and `crates/python` (PyO3 bindings buildi
 `bullterrier_control._native._core`; generic, names no shaper). The formats are `crates/core/src/formats/` (rules, JSON
 reading and writing, schema); the bindings are `crates/python/src/{formats,params,data,error}.rs`. They read a Python object with
 their own deserializer over Python objects (`data.rs`), so a NaN reaches the core and is listed with every other problem,
-and `FormatError.problems` lists every broken rule, the first 100 (a value of the wrong JSON type, an unknown field and the like stop
+and `FormatError.problems` lists the broken rules, the first 100 (`FormatError::omitted()` counts the others; a value of the wrong JSON type, an unknown field and the like stop
 the reading at that value). A ported shaper keeps its Python docstring and
 `@shaper`; its params class is `class SlewParams(Params, builtin="slew")` (a docstring only; the fields are the core's) and its body is a
 `Rendered` whose `run` is `partial(_core.render, "<name>", params=params.to_dict())`
