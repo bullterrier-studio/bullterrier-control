@@ -1,7 +1,8 @@
-//! `$name`: <what it does to a signal, in a few words>. Its parameters are declared here, once; what it does is
-//! documented once, on the Python shaper.
+//! A signal that <what it does to its input, in one sentence: its summary>.
+//!
+//! <What it promises in more words: what `help()` shows after the summary.>
 
-use crate::{Error, Params as _, Signal};
+use crate::{Error, Params as _, Shaper, Signal};
 
 /// <What the parameters of $name set.>
 #[derive(Clone, Copy, Debug, PartialEq, crate::Params)]
@@ -12,7 +13,7 @@ pub struct Params {
 }
 
 impl Signal {
-    /// This signal shaped by `params` ([`$name`](super)); what it does is documented on the Python shaper `$name`.
+    /// This signal shaped by `params`: the shaper [`$name`](super).
     ///
     /// ```
     /// use bullterrier_control::builtin::$name;
@@ -29,20 +30,16 @@ impl Signal {
     /// [`Error::Params`] listing every rule `params` breaks (a field out of its range or not finite).
     pub fn $name(&self, params: Params) -> Result<Signal, Error> {
         let params = params.check().map_err(|error| Error::params("$name", error))?;
-        shape(self, &params)
+        params.shape(self)
     }
 }
 
-/// The shaper as the core runs it: `input` with `params` applied. Replace the body; a shaper that needs history
-/// is a `Signal::rendered` over a causal recurrence instead (`slew.rs` is the model).
-// delete this attribute once the body needs the reference or can fail (clippy then says it is unfulfilled)
-#[expect(
-    clippy::unnecessary_wraps,
-    clippy::trivially_copy_pass_by_ref,
-    reason = "the signature every shaper has, whatever its body needs"
-)]
-pub(crate) fn shape(input: &Signal, params: &Params) -> Result<Signal, Error> {
-    Ok(input * params.depth)
+impl Shaper for Params {
+    /// `input` with these parameters applied. Replace the body; a shaper that needs history is a `Signal::rendered`
+    /// over a causal recurrence instead (`slew.rs` is the model).
+    fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+        Ok(input * self.depth)
+    }
 }
 
 #[cfg(test)]
@@ -62,7 +59,7 @@ mod tests {
     fn it_scales_its_input_by_depth() -> Result<(), Error> {
         // Replace with what $name promises, each expected number worked out by hand.
         // 0.25 of a signal that reads its time, at 0, 2 and 4 seconds
-        let out = shape(&ramp(), &Params { depth: 0.25 })?.sample(&[0.0, 2.0, 4.0])?;
+        let out = Params { depth: 0.25 }.shape(&ramp())?.sample(&[0.0, 2.0, 4.0])?;
         assert_eq!(out, [0.0, 0.5, 1.0]);
         Ok(())
     }

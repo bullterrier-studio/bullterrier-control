@@ -176,11 +176,12 @@ rustdoc and `help()`) and `#[param(default = .., unit = .., min = .., max = .., 
 (`#[choice(name = "saw-down")]` renames a variant). A rule between fields is a function `fn(&Params) -> Vec<Problem>` named by
 `#[param(rule = path)]` on the struct; it runs only once every field is valid. The table checks the declaration
 (`ParamTable::new`) and reads the values (`parse`, strict, listing every broken rule), so the kernel gets typed values already
-valid. A shaper that runs in Rust also has `pub(crate) fn shape(input: &Signal, params: &Params) -> Result<Signal, Error>`; a
-stateful one builds it with `Signal::rendered` over a private causal `run(inputs: &[f64], params: &Params) -> Vec<f64>`
-(output *i* depends on inputs 0 to *i*), and a stateless one combines signals (`input * params.depth`). Its behaviour is
-documented once, on the Python shaper. A typed `Signal::<name>(&self, Params)` method may call `Params::check` and `shape`.
-`build.rs` lists every file in `PARAMS` and those with a `shape` in `SHAPERS`. A signal is `Arc<dyn Node>` with `Node`
+valid. A thing that runs in Rust also implements `Source`, `Shaper` or `Operation` for its `Params` (`impl Shaper for Params
+{ fn shape(&self, input: &Signal) -> Result<Signal, Error> }`); a stateful shaper builds its signal with `Signal::rendered`
+over a private causal `run(inputs: &[f64], params: &Params) -> Vec<f64>` (output *i* depends on inputs 0 to *i*), and a
+stateless one combines signals (`input * self.depth`). The file's leading `//!` lines are its doc (`help()` in Rust). A typed
+`Signal::<name>(&self, Params)` method may call `Params::check` and `shape`. `build.rs` lists every file in `PARAMS` and
+registers those with such an `impl` in `Registry::builtin()` (a source is also a `lib::` function). A signal is `Arc<dyn Node>` with `Node`
 sealed; code outside the crate adds nodes with `Signal::from_fn` and `Signal::rendered`; no Rust lock is held while a
 callback into Python runs. No hidden tunables (rule 5): a number is a `Params`
 field, trivial, or a cited constant. No `unwrap`, `expect`, `panic!`, `todo!` or printing (clippy fails them): return an

@@ -6,22 +6,20 @@
 //! checks all come from it. A rule between fields (`high` is not below `low`) is a `fn rule(&Params) -> Vec<Problem>`
 //! named by `#[param(rule = rule)]` on the struct; the table runs it once every field is valid.
 //!
-//! A file that also defines `pub(crate) fn shape(input: &Signal, params: &Params) -> Result<Signal, Error>` is a
-//! shaper the core runs ([`shape`](crate::shape) by name), and gives it as a method of [`Signal`] taking its typed
-//! `Params` (checked by [`Params::check`](crate::Params::check)); one without it only declares (its source,
-//! shaper or operation still runs in Python). A shaper that needs history defines `shape` as a
-//! [`Signal::rendered`] over its private causal recurrence `run` (`slew` is the model). Built-ins never refer to one
-//! another: what two of them share goes in a module of the crate named for its concept.
+//! A file that also implements one of [`Source`](crate::Source), [`Shaper`](crate::Shaper) and
+//! [`Operation`](crate::Operation) for its `Params` (`impl Shaper for Params`) is a thing the core runs: it is in
+//! [`Registry::builtin`](crate::Registry::builtin) under the file's name, with the file's leading `//!` lines as its
+//! doc (what `help()` shows) and the doc of `Params` as its parameters'; a source is also a function of
+//! [`lib`](crate::lib). A file without one only declares (its source, shaper or operation still runs in Python). A
+//! shaper may also be a method of [`Signal`](crate::Signal) taking its typed `Params` (checked by
+//! [`Params::check`](crate::Params::check)). A shaper that needs history builds its signal as a
+//! [`Signal::rendered`](crate::Signal::rendered) over its private causal recurrence `run` (`slew` is the model).
+//! Built-ins never refer to one another: what two of them share goes in a module of the crate named for its concept.
 
-use crate::Params as _;
 use crate::params::{ParamError, ParamTable};
-use crate::{Error, Signal};
 
 /// The function that gives one built-in's parameter table.
 pub(crate) type Table = fn() -> Result<&'static ParamTable, ParamError>;
-
-/// The function that shapes a signal with one shaper: reads its parameters, then shapes the input with them.
-pub(crate) type Shape = fn(&Signal, &serde_json::Value) -> Result<Signal, Error>;
 
 include!(concat!(env!("OUT_DIR"), "/builtin.rs"));
 
@@ -29,9 +27,10 @@ include!(concat!(env!("OUT_DIR"), "/builtin.rs"));
 mod tests {
     use serde_json::json;
 
-    use super::{PARAMS, SHAPERS, lfo};
+    use super::{PARAMS, lfo};
     use crate::Params as _;
-    use crate::params::{Kind, ParamUnit};
+    use crate::params::{Kind as ParamKind, ParamUnit};
+    use crate::registry::Kind;
 
     /// The names the Python package registers, sorted: sources, shapers and operations.
     const NAMES: [&str; 21] = [
@@ -76,9 +75,12 @@ mod tests {
     }
 
     #[test]
-    fn only_the_built_ins_with_a_shape_function_are_shapers() {
-        let shapers: Vec<&str> = SHAPERS.iter().map(|(name, _)| *name).collect();
-        assert_eq!(shapers, ["follow", "slew"]);
+    fn only_the_built_ins_the_core_runs_are_registered() -> Result<(), crate::Error> {
+        let mut registry = crate::Registry::new();
+        super::register(&mut registry)?;
+        let things: Vec<(&str, Kind)> = registry.things().map(|thing| (thing.name(), thing.kind())).collect();
+        assert_eq!(things, [("follow", Kind::Shaper), ("slew", Kind::Shaper)]);
+        Ok(())
     }
 
     #[test]
@@ -342,11 +344,11 @@ mod tests {
         for (name, table) in PARAMS {
             for param in table().map_err(|error| error.to_string())?.params() {
                 let (kind, choices) = match &param.kind {
-                    Kind::Float => ("float", Vec::new()),
-                    Kind::Whole => ("whole", Vec::new()),
-                    Kind::Switch => ("switch", Vec::new()),
-                    Kind::Text => ("text", Vec::new()),
-                    Kind::Choice(names) => ("choice", names.iter().map(String::as_str).collect()),
+                    ParamKind::Float => ("float", Vec::new()),
+                    ParamKind::Whole => ("whole", Vec::new()),
+                    ParamKind::Switch => ("switch", Vec::new()),
+                    ParamKind::Text => ("text", Vec::new()),
+                    ParamKind::Choice(names) => ("choice", names.iter().map(String::as_str).collect()),
                 };
                 let flags = match (param.advanced, param.cyclic) {
                     (false, false) => "",

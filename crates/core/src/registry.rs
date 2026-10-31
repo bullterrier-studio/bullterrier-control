@@ -2,6 +2,20 @@
 //! says about itself, and the one door through which any of them is called ([`Thing::call`]).
 //!
 //! ```
+//! use bullterrier_control::registry::{Call, Kind, Output, Registry};
+//! use bullterrier_control::{FromValues, Interpolation, Signal};
+//! use serde_json::json;
+//!
+//! let slew = Registry::builtin().get("slew")?;
+//! assert_eq!((slew.kind(), slew.summary()), (Kind::Shaper, "A signal that follows its input but climbs and falls no faster than `rise` and `fall` allow."));
+//! let step = Signal::from_values(&[0.0, 1.0], 10.0, FromValues::default(), Interpolation::Hold)?;
+//! let call = Call { signals: vec![step], values: json!({"rise": 0.5, "rate": 10.0}), ..Default::default() };
+//! let Output::Signal(ramp) = slew.call(&call)? else { panic!("a shaper gives a signal") };
+//! assert_eq!(ramp.sample(&[0.0, 0.1, 0.2])?, [0.0, 0.2, 0.4]);
+//! # Ok::<(), bullterrier_control::Error>(())
+//! ```
+//!
+//! ```
 //! use bullterrier_control::params::ParamTable;
 //! use bullterrier_control::registry::{About, Call, Declared, Kind, Output, Registry, Returns, Thing};
 //! use bullterrier_control::Signal;
@@ -24,10 +38,12 @@
 //! ```
 //!
 //! Promises:
-//! - A registry is a value, not a global: [`Registry::new`] (or a clone of another) is one to register in. Nothing in
+//! - A registry is a value, not a global: [`Registry::builtin`] holds what the core runs, and [`Registry::new`] (or a
+//!   clone of another) is one to register in. Things written in Rust implement [`Source`], [`Shaper`] or
+//!   [`Operation`] and are made by [`Thing::source`], [`Thing::shaper`] or [`Thing::operation`]. Nothing in
 //!   it is shared or locked, so it is `Send` and `Sync`, and a call runs no code of the registry's while a thing's
 //!   callback runs: a callback may call any thing again.
-//! - Getting in, checked once, when a [`Thing`] is made ([`Thing::custom`]) and when it is registered
+//! - Getting in, checked once, when a [`Thing`] is made ([`Thing::custom`], ...) and when it is registered
 //!   ([`Registry::register`]); each refusal is an [`Error::Registration`] naming the thing's kind and name:
 //!   - a name is lower case letters, digits and `_`, starting with a letter ([`NAME_PATTERN`], [`is_name`]);
 //!   - no parameter is named like an input ([`InputKind::NAMES`]) or a key of a patch node ([`NODE_KEYS`]);
@@ -42,9 +58,11 @@ mod repr;
 #[cfg(test)]
 mod tests;
 mod thing;
+mod traits;
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::OnceLock;
 
 use crate::Error;
 use crate::Signal;
@@ -54,6 +72,7 @@ use crate::params::ParamTable;
 
 pub(crate) use repr::quoted;
 pub use thing::Thing;
+pub use traits::{Inputs, Operation, Shaper, Source};
 
 /// The pattern a thing's name matches in full (and, in a patch, a node's): lower case letters, digits and `_`,
 /// starting with a letter. Without anchors, to be used inside another pattern.
@@ -276,6 +295,27 @@ impl Registry {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The things the core runs (the built-ins with a Rust body), each under its name: the registry a patch read in
+    /// Rust alone uses. To add to it, register in a clone.
+    ///
+    /// ```
+    /// use bullterrier_control::Registry;
+    ///
+    /// let names: Vec<&str> = Registry::builtin().things().map(|thing| thing.name()).collect();
+    /// assert_eq!(names, ["follow", "slew"]);
+    /// let mine = Registry::builtin().clone(); // to register more in
+    /// assert!(mine.get("slew").is_ok());
+    /// ```
+    #[must_use]
+    pub fn builtin() -> &'static Self {
+        static BUILTIN: OnceLock<Registry> = OnceLock::new();
+        BUILTIN.get_or_init(|| {
+            let mut registry = Self::new();
+            // a built-in that breaks a rule is a bug of the core, which its tests catch (this would be empty then)
+            crate::builtin::register(&mut registry).map_or_else(|_| Self::new(), |()| registry)
+        })
     }
 
     /// Registers `thing` under its name.

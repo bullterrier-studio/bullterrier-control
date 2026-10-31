@@ -1,9 +1,15 @@
-//! `follow`: smooths its input with separate attack and release times. Its parameters are declared here, once; what it
-//! does is documented once, on the Python shaper.
+//! A signal that chases its input like a capacitor: it closes a share of the gap to it with every step, at its
+//! own speed up (`attack`) and down (`release`).
+//!
+//! It starts at the input's value at time 0. The gap shrinks by e^(-1 / (rate * time)) per internal sample, `time`
+//! being `attack` while the input is above the output and `release` while it is below, so a jump is followed by a
+//! curve that is steep at first and flattens out, and never quite arrives. The same value for both is plain smoothing.
+//! `slew` differs: it moves at a fixed speed, however far the input is, and arrives. The output stays between the
+//! lowest and highest value the input has had, to within float rounding.
 
 use std::convert::Infallible;
 
-use crate::{Error, Params as _, Rendering, Signal};
+use crate::{Error, Params as _, Rendering, Shaper, Signal};
 
 /// How quickly the output chases its input upward and downward.
 #[derive(Clone, Copy, Debug, PartialEq, crate::Params)]
@@ -28,8 +34,7 @@ fn left(step: f64, time: f64) -> f64 {
 }
 
 impl Signal {
-    /// This signal smoothed with the attack and release times of `params` ([`follow`](super)); what it does is
-    /// documented on the Python shaper `follow`.
+    /// This signal smoothed with the attack and release times of `params`: the shaper [`follow`](super).
     ///
     /// ```
     /// use bullterrier_control::builtin::follow;
@@ -47,18 +52,20 @@ impl Signal {
     /// [`Error::Params`] listing every rule `params` breaks (a field out of its range or not finite).
     pub fn follow(&self, params: Params) -> Result<Signal, Error> {
         let params = params.check().map_err(|error| Error::params("follow", error))?;
-        shape(self, &params)
+        params.shape(self)
     }
 }
 
-/// The shaper as the core runs it: [`run`] over `input` sampled at `params.rate`, rendered as far as the reads need.
-pub(crate) fn shape(input: &Signal, params: &Params) -> Result<Signal, Error> {
-    let rendering = Rendering {
-        rate: params.rate,
-        ..Rendering::default()
-    };
-    let params = *params;
-    Signal::rendered(input, rendering, move |inputs| Ok::<_, Infallible>(run(inputs, &params)))
+impl Shaper for Params {
+    /// Its causal recurrence over `input` sampled at `rate`, rendered as far as the reads need.
+    fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+        let rendering = Rendering {
+            rate: self.rate,
+            ..Rendering::default()
+        };
+        let params = *self;
+        Signal::rendered(input, rendering, move |inputs| Ok::<_, Infallible>(run(inputs, &params)))
+    }
 }
 
 /// The followed series: it starts at the first input and, with every next one, keeps a share of its level and takes the
@@ -95,7 +102,7 @@ mod tests {
     fn shaped(inputs: &[f64], params: &Params) -> Result<Vec<f64>, Error> {
         let input = Signal::from_values(inputs, params.rate, FromValues::default(), Interpolation::Hold)?;
         let times: Vec<f64> = (0..inputs.len()).map(|index| f64::from(u32::try_from(index).unwrap_or(0)) / params.rate).collect();
-        shape(&input, params)?.sample(&times)
+        params.shape(&input)?.sample(&times)
     }
 
     fn params(attack: f64, release: f64, rate: f64) -> Params {

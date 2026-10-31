@@ -1,6 +1,6 @@
-//! Writes the table of built-ins the core compiles in: one module per file in `src/builtin/`, every built-in by name with
-//! its parameters, and every shaper by name with the function that shapes a signal with it. Adding a built-in adds its file and edits
-//! nothing else.
+//! Writes the table of built-ins the core compiles in (see `src/builtin_table.rs`): one module per file in
+//! `src/builtin/`, every built-in by name with its parameters, the registration of every thing the core runs, and a
+//! `lib` function for each source. Adding a built-in adds its file and edits nothing else.
 
 #[path = "src/builtin_table.rs"]
 mod table;
@@ -22,7 +22,9 @@ fn main() -> io::Result<()> {
         .map(|(name, path, source)| File { name, path, source })
         .collect();
     let code = table::table(&files).map_err(io::Error::other)?;
-    fs::write(PathBuf::from(out).join("builtin.rs"), code)
+    let out = PathBuf::from(out);
+    fs::write(out.join("builtin.rs"), code.builtin)?;
+    fs::write(out.join("lib.rs"), code.lib)
 }
 
 /// The built-in files in `folder` (each `<name>.rs`) as (name, path, source), sorted by name; none if the folder does

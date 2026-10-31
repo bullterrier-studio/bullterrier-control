@@ -1,9 +1,11 @@
-//! `slew`: follows its input but climbs and falls no faster than `rise` and `fall` allow. Its parameters are declared here, once; what it
-//! does is documented once, on the Python shaper.
+//! A signal that follows its input but climbs and falls no faster than `rise` and `fall` allow.
+//!
+//! It starts at the input's value at time 0. A limit is a time per unit of change: rise = 2 means at most 0.5 per
+//! second.
 
 use std::convert::Infallible;
 
-use crate::{Error, Params as _, Rendering, Signal};
+use crate::{Error, Params as _, Rendering, Shaper, Signal};
 
 /// How fast the output may climb and fall.
 #[derive(Clone, Copy, Debug, PartialEq, crate::Params)]
@@ -20,8 +22,7 @@ pub struct Params {
 }
 
 impl Signal {
-    /// This signal, climbing and falling no faster than `params` allow ([`slew`](super)); what it does is documented
-    /// on the Python shaper `slew`.
+    /// This signal, climbing and falling no faster than `params` allow: the shaper [`slew`](super).
     ///
     /// ```
     /// use bullterrier_control::builtin::slew;
@@ -39,18 +40,20 @@ impl Signal {
     /// [`Error::Params`] listing every rule `params` breaks (a field out of its range or not finite).
     pub fn slew(&self, params: Params) -> Result<Signal, Error> {
         let params = params.check().map_err(|error| Error::params("slew", error))?;
-        shape(self, &params)
+        params.shape(self)
     }
 }
 
-/// The shaper as the core runs it: [`run`] over `input` sampled at `params.rate`, rendered as far as the reads need.
-pub(crate) fn shape(input: &Signal, params: &Params) -> Result<Signal, Error> {
-    let rendering = Rendering {
-        rate: params.rate,
-        ..Rendering::default()
-    };
-    let params = *params;
-    Signal::rendered(input, rendering, move |inputs| Ok::<_, Infallible>(run(inputs, &params)))
+impl Shaper for Params {
+    /// Its causal recurrence over `input` sampled at `rate`, rendered as far as the reads need.
+    fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+        let rendering = Rendering {
+            rate: self.rate,
+            ..Rendering::default()
+        };
+        let params = *self;
+        Signal::rendered(input, rendering, move |inputs| Ok::<_, Infallible>(run(inputs, &params)))
+    }
 }
 
 /// The slew-limited series: it starts at the first input and moves toward each next one by at most a sample's limit
@@ -90,7 +93,7 @@ mod tests {
     fn shaped(inputs: &[f64], params: &Params) -> Result<Vec<f64>, Error> {
         let input = Signal::from_values(inputs, params.rate, FromValues::default(), Interpolation::Hold)?;
         let times: Vec<f64> = (0..inputs.len()).map(|index| f64::from(u32::try_from(index).unwrap_or(0)) / params.rate).collect();
-        shape(&input, params)?.sample(&times)
+        params.shape(&input)?.sample(&times)
     }
 
     fn params(rise: f64, fall: f64, rate: f64) -> Params {
@@ -136,7 +139,7 @@ mod tests {
             }
             Ok::<(), std::fmt::Error>(())
         });
-        let slewed = shape(&broken, &params(0.5, 0.5, 10.0))?;
+        let slewed = params(0.5, 0.5, 10.0).shape(&broken)?;
         assert_eq!(slewed.sample(&[0.0, 0.05])?, [1.0, 1.0]);
         let refused = slewed.at(0.1);
         assert!(

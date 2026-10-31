@@ -6,10 +6,10 @@ use std::sync::Arc;
 use serde_json::{Map, Value, json};
 
 use super::repr::{python, quoted};
-use super::{About, Call, Declared, Kind, NODE_KEYS, Output, Returns, is_name};
-use crate::Error;
+use super::{About, Call, Declared, Inputs as _, Kind, NODE_KEYS, Operation, Output, Returns, Shaper, Source, is_name};
 use crate::inputs::InputKind;
 use crate::params::{ParamTable, Values};
+use crate::{Error, Params};
 
 /// The body of a thing: called with a checked call and its parameters as the table read them.
 type Run = dyn Fn(&Call, &Values) -> Result<Output, Error> + Send + Sync;
@@ -41,6 +41,91 @@ impl fmt::Debug for Thing {
 }
 
 impl Thing {
+    /// The source `T` under the name and doc `about` gives: its parameters are `T`'s table, its identity is `T`'s type,
+    /// and a call gives the signal [`Source::source`] makes of the values read into a `T`.
+    ///
+    /// ```
+    /// use bullterrier_control::registry::{About, Call, Output, Thing};
+    /// use bullterrier_control::{Error, Params, Signal, Source};
+    /// use serde_json::json;
+    ///
+    /// /// A level that holds.
+    /// #[derive(Clone, Debug, PartialEq, Params)]
+    /// struct Level {
+    ///     /// The value it holds.
+    ///     #[param(default = 0.5, unit = Ratio, min = -1, max = 1)]
+    ///     value: f64,
+    /// }
+    ///
+    /// impl Source for Level {
+    ///     fn source(&self) -> Result<Signal, Error> {
+    ///         Signal::constant(self.value)
+    ///     }
+    /// }
+    ///
+    /// let level = Thing::source::<Level>(About { name: "level".into(), ..Default::default() })?;
+    /// let call = Call { values: json!({"value": -0.25}), ..Default::default() };
+    /// let Output::Signal(signal) = level.call(&call)? else { panic!("a source gives a signal") };
+    /// assert_eq!(signal.at(1.0)?, -0.25);
+    /// # Ok::<(), Error>(())
+    /// ```
+    ///
+    /// # Errors
+    /// [`Error::Registration`] if the thing breaks a rule of the [registry](super), [`Error::Params`] if `T`'s
+    /// declaration breaks a rule of its table.
+    pub fn source<T: Source>(about: About) -> Result<Self, Error> {
+        let declared = Self::declared::<T>(&about, Kind::Source, Vec::new(), Returns::Signal)?;
+        Self::checked(
+            about,
+            declared,
+            Box::new(|_, values| Ok(Output::Signal(T::from_values(values).source()?))),
+        )
+    }
+
+    /// The shaper `T` under the name and doc `about` gives: its parameters are `T`'s table, its identity is `T`'s type,
+    /// and a call gives the signal [`Shaper::shape`] makes of its signal with the values read into a `T`.
+    ///
+    /// ```
+    /// use bullterrier_control::builtin::slew;
+    /// use bullterrier_control::registry::{About, Kind, Thing};
+    ///
+    /// let mine = Thing::shaper::<slew::Params>(About { name: "my_slew".into(), ..Default::default() })?;
+    /// assert_eq!((mine.name(), mine.kind()), ("my_slew", Kind::Shaper));
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    /// As [`Thing::source`].
+    pub fn shaper<T: Shaper>(about: About) -> Result<Self, Error> {
+        let declared = Self::declared::<T>(&about, Kind::Shaper, Vec::new(), Returns::Signal)?;
+        Self::checked(
+            about,
+            declared,
+            Box::new(|call, values| match call.signals.as_slice() {
+                [input] => Ok(Output::Signal(T::from_values(values).shape(input)?)),
+                // `call` checked the count already
+                _ => Err(Error::Call {
+                    message: "a shaper takes 1 signal".to_owned(),
+                }),
+            }),
+        )
+    }
+
+    /// The operation `T` under the name and doc `about` gives: its parameters are `T`'s table, its inputs
+    /// [`Operation::Inputs`]'s, what it gives [`Operation::RETURNS`], its identity `T`'s type; a call gives what
+    /// [`Operation::run`] makes of its inputs with the values read into a `T`.
+    ///
+    /// # Errors
+    /// As [`Thing::source`].
+    pub fn operation<T: Operation>(about: About) -> Result<Self, Error> {
+        let declared = Self::declared::<T>(&about, Kind::Operation, T::Inputs::DECLARED.to_vec(), T::RETURNS)?;
+        Self::checked(
+            about,
+            declared,
+            Box::new(|call, values| T::from_values(values).run(T::Inputs::from_inputs(&call.inputs)?)),
+        )
+    }
+
     /// The thing `about` says, declaring `declared`, whose body is `run`: how the Python package registers a thing
     /// whose body is Python. `run` is called with the call as [`Thing::call`] checked it.
     ///
@@ -52,6 +137,28 @@ impl Thing {
         declared: Declared,
         run: impl Fn(&Call) -> Result<Output, Error> + Send + Sync + 'static,
     ) -> Result<Self, Error> {
+        Self::checked(about, declared, Box::new(move |call, _| run(call)))
+    }
+
+    /// What the Rust type `T` declares as a thing of `kind`.
+    fn declared<T: Params>(
+        about: &About,
+        kind: Kind,
+        inputs: Vec<(InputKind, bool)>,
+        returns: Returns,
+    ) -> Result<Declared, Error> {
+        Ok(Declared {
+            kind,
+            identity: std::any::type_name::<T>().to_owned(),
+            table: T::table().map_err(|error| Error::params(&about.name, error))?.clone(),
+            inputs,
+            returns,
+        })
+    }
+
+    /// The thing of these parts, if it keeps every rule of the [registry](super) but the taken name (which is the
+    /// registry's to check): the one place those rules are checked.
+    fn checked(about: About, declared: Declared, run: Box<Run>) -> Result<Self, Error> {
         let Declared {
             kind,
             identity,
@@ -59,28 +166,6 @@ impl Thing {
             inputs,
             returns,
         } = declared;
-        Self::checked(
-            about,
-            kind,
-            identity,
-            table,
-            inputs,
-            returns,
-            Box::new(move |call, _| run(call)),
-        )
-    }
-
-    /// The thing of these parts, if it keeps every rule of the [registry](super) but the taken name (which is the
-    /// registry's to check): the one place those rules are checked.
-    fn checked(
-        about: About,
-        kind: Kind,
-        identity: String,
-        table: ParamTable,
-        inputs: Vec<(InputKind, bool)>,
-        returns: Returns,
-        run: Box<Run>,
-    ) -> Result<Self, Error> {
         let label = format!("{kind} {}", quoted(&about.name));
         let refused = |rule: String| Error::Registration {
             message: format!("{label}: {rule}"),

@@ -8,7 +8,9 @@
 //! and operation declares its parameters in Rust ([`builtin`]); [`parameters`] gives a built-in's table, and [`shape`]
 //! shapes a signal with a shaper the core implements and values it reads through that table, so a value is checked the
 //! same way wherever it comes from. A shaper is also a method of [`Signal`] taking its typed parameters
-//! ([`Signal::slew`]).
+//! ([`Signal::slew`]), and any [`Shaper`] goes into a chain by [`Signal::pipe`]. The [`registry`] holds every source,
+//! shaper and operation by name ([`Registry::builtin`]: those the core runs), with the rules for getting in and the
+//! one checked door through which each is called.
 
 #![forbid(unsafe_code)]
 
@@ -30,10 +32,11 @@ mod signal;
 
 pub use error::Error;
 pub use params::{Choice, Params};
+pub use registry::{Operation, Registry, Shaper, Source};
 pub use signal::{FromValues, Interpolation, MAX_DEPTH, Rendering, Signal, maximum, minimum};
 
-/// The signal the shaper called `name` makes of `input` with `params` (an object of the shaper's parameters by name;
-/// one left out takes its default).
+/// The signal the shaper called `name` of [`Registry::builtin`] makes of `input` with `params` (an object of the
+/// shaper's parameters by name; one left out takes its default): its [`Thing::call`](registry::Thing::call).
 ///
 /// ```
 /// use bullterrier_control::{FromValues, Interpolation, Signal, shape};
@@ -49,15 +52,33 @@ pub use signal::{FromValues, Interpolation, MAX_DEPTH, Rendering, Signal, maximu
 /// ```
 ///
 /// # Errors
-/// [`Error::UnknownShaper`] if the core implements no shaper of that name, [`Error::Params`] listing every rule
-/// `params` breaks (a field of another type, out of its range, or one the shaper does not have), and [`Error::Depth`]
-/// if the graph would be deeper than [`MAX_DEPTH`].
+/// [`Error::UnknownShaper`] if the core runs no shaper of that name, [`Error::Params`] listing every rule `params`
+/// breaks (a field of another type, out of its range, or one the shaper does not have), and [`Error::Depth`] if the
+/// graph would be deeper than [`MAX_DEPTH`].
 pub fn shape(name: &str, input: &Signal, params: &serde_json::Value) -> Result<Signal, Error> {
-    let (_, shape) = builtin::SHAPERS
-        .iter()
-        .find(|(shaper, _)| *shaper == name)
-        .ok_or_else(|| Error::UnknownShaper { name: name.to_owned() })?;
-    shape(input, params)
+    let unknown = || Error::UnknownShaper { name: name.to_owned() };
+    let shaper = Registry::builtin()
+        .get(name)
+        .ok()
+        .filter(|thing| thing.kind() == registry::Kind::Shaper)
+        .ok_or_else(unknown)?;
+    let call = registry::Call {
+        signals: vec![input.clone()],
+        values: params.clone(),
+        ..registry::Call::default()
+    };
+    match shaper.call(&call)? {
+        registry::Output::Signal(signal) => Ok(signal),
+        // a shaper gives a signal: its call checks it
+        _ => Err(unknown()),
+    }
+}
+
+/// The sources the core runs, as functions of their typed parameters (`lib::constant(constant::Params { .. })`), each
+/// checked first; a shaper is a method of [`Signal`] ([`Signal::pipe`]), and every thing the core runs is in
+/// [`Registry::builtin`] by name.
+pub mod lib {
+    include!(concat!(env!("OUT_DIR"), "/lib.rs"));
 }
 
 /// The parameter table of the built-in called `name`: a source, shaper or operation, whether or not the core runs it.

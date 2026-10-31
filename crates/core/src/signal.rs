@@ -30,8 +30,8 @@ use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::Error;
 use crate::formats::{Series, SeriesOptions, Unit};
+use crate::{Error, Shaper};
 use combine::Operation;
 use node::{Constant, FromFn, Node};
 use rendered::Rendered;
@@ -257,6 +257,34 @@ impl Signal {
         let series =
             Series::new(rate, values.to_vec(), Unit::Ratio, options).map_err(|source| Error::Format { source })?;
         Ok(Self::from_series(&series, interpolation))
+    }
+
+    /// This signal through `shaper`, its parameters checked first ([`Params::check`](crate::Params::check)): any [`Shaper`], built-in or a
+    /// plugin's, goes into a chain the same way.
+    ///
+    /// ```
+    /// use bullterrier_control::builtin::slew;
+    /// use bullterrier_control::{FromValues, Interpolation, Signal};
+    ///
+    /// let step = Signal::from_values(&[0.0, 1.0], 10.0, FromValues::default(), Interpolation::Hold)?;
+    /// let ramp = step.pipe(slew::Params { rise: 0.5, fall: 0.5, rate: 10.0 })?;
+    /// assert_eq!(ramp.sample(&[0.0, 0.1, 0.2])?, [0.0, 0.2, 0.4]);
+    /// assert!(step.pipe(slew::Params { rise: -1.0, ..Default::default() }).is_err());
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    /// [`Error::Params`] listing every rule the parameters break, under the name of their type; whatever error the
+    /// shaper gives.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "a shaper is given as a literal, as the chain reads: `glow.pipe(Fold { depth: 0.5 })`"
+    )]
+    pub fn pipe<T: Shaper>(&self, shaper: T) -> Result<Signal, Error> {
+        let shaper = shaper
+            .check()
+            .map_err(|error| Error::params(std::any::type_name::<T>(), error))?;
+        shaper.shape(self)
     }
 
     /// The values at `times` (seconds, in any order), one for each.

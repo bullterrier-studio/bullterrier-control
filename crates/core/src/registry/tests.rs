@@ -118,6 +118,7 @@ type CallRow<'a> = (
 const NAME_RULE: &str = "a name is lower case letters, digits and underscores, starting with a letter";
 
 #[test]
+#[expect(clippy::too_many_lines, reason = "one row per rule, good and bad")]
 fn a_thing_gets_in_only_if_it_keeps_every_rule() {
     let events = (InputKind::Events, true);
     let rows: Vec<RuleRow<'_>> = vec![
@@ -383,6 +384,7 @@ fn events(times: &[f64]) -> Result<Vec<Event>, Error> {
 }
 
 #[test]
+#[expect(clippy::too_many_lines, reason = "one row per check of a call, good and bad")]
 fn a_call_is_checked_before_the_thing_runs() -> Result<(), Error> {
     let pick = thing(
         ("pick", "tests.pick"),
@@ -950,5 +952,224 @@ fn calls_from_many_threads_run_their_callbacks_at_the_same_time() -> Result<(), 
         })?;
         result?;
     }
+    Ok(())
+}
+
+#[test]
+fn the_built_in_slew_says_what_the_python_package_says_of_it() -> Result<(), Error> {
+    let slew = Registry::builtin().get("slew")?;
+    assert_eq!(
+        slew.help(),
+        "shaper slew(signal, **values) -> signal
+
+A signal that follows its input but climbs and falls no faster than `rise` and `fall` allow.
+
+It starts at the input's value at time 0. A limit is a time per unit of change: rise = 2 means at most 0.5 per
+second.
+
+Parameters:
+  rise (seconds, 0 to 3600), default 0.1
+      Seconds the output takes to climb by 1; larger is slower. 0 follows a rise at once.
+  fall (seconds, 0 to 3600), default 0.1
+      Seconds the output takes to fall by 1; larger is slower. 0 follows a fall at once.
+  rate (hertz, 10 to 48000), default 1000.0, advanced
+      Internal samples per second; the output is exact to one sample. Raising it is more exact and slower."
+    );
+    assert_eq!(
+        slew.description(),
+        json!({
+            "kind": "shaper",
+            "summary": "A signal that follows its input but climbs and falls no faster than `rise` and `fall` allow.",
+            "returns": "signal",
+            "inputs": {},
+            "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                    "rise": {"advanced": false, "cyclic": false, "default": 0.1,
+                        "description": "Seconds the output takes to climb by 1; larger is slower. 0 follows a rise at once.",
+                        "maximum": 3600.0, "minimum": 0.0, "title": "Rise", "type": "number", "unit": "seconds"},
+                    "fall": {"advanced": false, "cyclic": false, "default": 0.1,
+                        "description": "Seconds the output takes to fall by 1; larger is slower. 0 follows a fall at once.",
+                        "maximum": 3600.0, "minimum": 0.0, "title": "Fall", "type": "number", "unit": "seconds"},
+                    "rate": {"advanced": true, "cyclic": false, "default": 1000.0,
+                        "description": "Internal samples per second; the output is exact to one sample. Raising it is more exact and slower.",
+                        "maximum": 48000.0, "minimum": 10.0, "title": "Rate", "type": "number", "unit": "hertz"},
+                },
+                "description": "How fast the output may climb and fall.",
+                "title": "SlewParams",
+                "type": "object",
+            },
+        })
+    );
+    let follow = Registry::builtin().get("follow")?;
+    assert_eq!(follow.description()["parameters"]["title"], "FollowParams");
+    assert!(
+        follow
+            .summary()
+            .starts_with("A signal that chases its input like a capacitor:"),
+        "{}",
+        follow.summary()
+    );
+    Ok(())
+}
+
+#[test]
+fn a_built_in_called_by_name_is_the_typed_shaper() -> Result<(), Error> {
+    use crate::builtin::slew;
+    use crate::{FromValues, Interpolation};
+
+    let step = Signal::from_values(&[0.0, 1.0, 0.0, 0.0], 10.0, FromValues::default(), Interpolation::Hold)?;
+    let call = Call {
+        signals: vec![step.clone()],
+        values: json!({"rise": 0.25, "fall": 0.5, "rate": 100.0}),
+        ..Call::default()
+    };
+    let Output::Signal(by_name) = Registry::builtin().get("slew")?.call(&call)? else {
+        return Err(Error::Signal {
+            message: "slew gave no signal".to_owned(),
+        });
+    };
+    let typed = step.slew(slew::Params {
+        rise: 0.25,
+        fall: 0.5,
+        rate: 100.0,
+    })?;
+    let times = [0.0, 0.1, 0.15, 0.2, 0.25, 0.4, 1.0];
+    assert_eq!(by_name.sample(&times)?, typed.sample(&times)?);
+    // 0.01 s a sample, a climb of 1 in 0.25 s: 0.04 a sample, from the sample at 0.1 s: 6 of them by 0.15 s
+    assert!((by_name.at(0.15)? - 0.24).abs() < 1e-9, "{}", by_name.at(0.15)?);
+    Ok(())
+}
+
+/// How many of the first events to keep (an operation of these tests).
+#[derive(Clone, Debug, PartialEq, crate::Params)]
+struct First {
+    /// How many of the first events are kept.
+    #[param(default = 1, unit = Count, min = 0, max = 100)]
+    n: i64,
+}
+
+impl crate::Operation for First {
+    type Inputs = Vec<Event>;
+    const RETURNS: Returns = Returns::Events;
+
+    fn run(&self, events: Vec<Event>) -> Result<Output, Error> {
+        Ok(Output::Events(
+            events.into_iter().take(usize::try_from(self.n).unwrap_or(0)).collect(),
+        ))
+    }
+}
+
+/// An event on each beat of the grid, none without one (an operation of these tests).
+#[derive(Clone, Debug, PartialEq, crate::Params)]
+struct Beats {}
+
+impl crate::Operation for Beats {
+    type Inputs = Option<Grid>;
+    const RETURNS: Returns = Returns::Events;
+
+    fn run(&self, grid: Option<Grid>) -> Result<Output, Error> {
+        let beats = grid.map(|grid| grid.beats().to_vec()).unwrap_or_default();
+        Ok(Output::Events(events(&beats)?))
+    }
+}
+
+/// The events of `output`'s times, or why there are none.
+fn times(output: Result<Output, Error>) -> Result<Vec<f64>, String> {
+    match output {
+        Ok(Output::Events(events)) => Ok(events.iter().map(Event::t).collect()),
+        Ok(other) => Err(format!("not events: {other:?}")),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[test]
+fn a_rust_operation_takes_its_inputs_by_their_kinds() -> Result<(), Error> {
+    let about = |name: &str| About {
+        name: name.to_owned(),
+        doc: "Keeps some.".to_owned(),
+        ..About::default()
+    };
+    let first = Thing::operation::<First>(about("first"))?;
+    assert_eq!(
+        (first.kind(), first.returns(), first.inputs()),
+        (Kind::Operation, Returns::Events, &[(InputKind::Events, true)][..])
+    );
+    assert!(
+        first
+            .help()
+            .starts_with("operation first(*, events, **values) -> events\n"),
+        "{}",
+        first.help()
+    );
+    let kicks = Input::from_events(events(&[1.0, 0.5, 2.0])?);
+    let given = |n: i64, inputs: &[(&str, &Input)]| Call {
+        inputs: inputs
+            .iter()
+            .map(|(name, input)| ((*name).to_owned(), (*input).clone()))
+            .collect(),
+        values: json!({ "n": n }),
+        ..Call::default()
+    };
+    // in time order, the first two
+    assert_eq!(times(first.call(&given(2, &[("events", &kicks)]))), Ok(vec![0.5, 1.0]));
+    assert_eq!(
+        times(first.call(&given(2, &[]))),
+        Err("operation 'first' needs the input 'events'".to_owned())
+    );
+
+    let beats = Thing::operation::<Beats>(about("beats"))?;
+    assert_eq!(beats.inputs(), [(InputKind::Grid, false)]);
+    assert!(
+        beats
+            .help()
+            .starts_with("operation beats(*, grid=None, **values) -> events\n"),
+        "{}",
+        beats.help()
+    );
+    let grid = Input::Grid(Grid::new(vec![0.0, 0.5, 1.0], 4, 0).map_err(|source| Error::Format { source })?);
+    let call = Call {
+        inputs: [("grid".to_owned(), grid)].into(),
+        ..Call::default()
+    };
+    assert_eq!(times(beats.call(&call)), Ok(vec![0.0, 0.5, 1.0]));
+    assert_eq!(times(beats.call(&Call::default())), Ok(vec![]));
+    Ok(())
+}
+
+#[test]
+fn a_rust_thing_is_identified_by_its_type() -> Result<(), Error> {
+    use crate::builtin::{follow, slew};
+
+    let about = About {
+        name: "slew".to_owned(),
+        ..About::default()
+    };
+    let mut registry = Registry::builtin().clone();
+    // slew's type again: a reload
+    registry.register(Thing::shaper::<slew::Params>(about.clone())?)?;
+    assert_eq!(
+        registration(registry.register(Thing::shaper::<follow::Params>(about)?)).as_deref(),
+        Some("shaper 'slew': the name is taken by the shaper defined as bullterrier_control::builtin::slew::Params")
+    );
+    Ok(())
+}
+
+#[test]
+fn a_shaper_piped_with_parameters_that_break_a_rule_is_refused_naming_their_type() -> Result<(), Error> {
+    use crate::builtin::slew;
+
+    let refused = Signal::constant(1.0)?.pipe(slew::Params {
+        rise: -1.0,
+        ..slew::Params::default()
+    });
+    let named = match &refused {
+        Err(Error::Params { shaper, problems, .. }) => (
+            shaper.as_str(),
+            problems.iter().map(|problem| problem.path.as_str()).collect(),
+        ),
+        _ => ("not a parameter error", vec![]),
+    };
+    assert_eq!(named, ("bullterrier_control::builtin::slew::Params", vec!["rise"]));
     Ok(())
 }
