@@ -66,13 +66,13 @@ impl Problems {
 
     /// How many problems were recorded, kept or not.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.stored.len() + self.omitted
     }
 
     /// Whether no problem was recorded.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
@@ -192,33 +192,28 @@ mod tests {
     }
 
     #[test]
-    fn up_to_the_cap_every_problem_is_kept_and_listed() {
+    fn up_to_the_cap_every_problem_is_kept_and_listed() -> Result<(), &'static str> {
         for count in [1, 3, 100] {
             assert_eq!(collected(count).len(), count);
-            let Some(error) = collected(count).into_error() else {
-                continue;
-            };
+            let error = collected(count).into_error().ok_or("no error for recorded problems")?;
             assert_eq!(error.problems.len(), count);
             assert_eq!(error.omitted(), 0, "{count}");
             assert!(!error.to_string().contains("more"), "{count}: {error}");
         }
-        let Some(error) = collected(3).into_error() else {
-            return;
-        };
+        let error = collected(3).into_error().ok_or("no error for recorded problems")?;
         assert_eq!(
             error.to_string(),
             "values[0]: is wrong; values[1]: is wrong; values[2]: is wrong"
         );
+        Ok(())
     }
 
     #[test]
-    fn past_the_cap_the_first_problems_are_kept_and_the_rest_counted() {
+    fn past_the_cap_the_first_problems_are_kept_and_the_rest_counted() -> Result<(), &'static str> {
         for (count, omitted) in [(101, 1), (150, 50), (1_000, 900)] {
             let problems = collected(count);
             assert_eq!(problems.len(), count);
-            let Some(error) = problems.into_error() else {
-                continue;
-            };
+            let error = problems.into_error().ok_or("no error for recorded problems")?;
             assert_eq!(error.problems, (0..100).map(problem).collect::<Vec<_>>());
             assert_eq!(error.omitted(), omitted);
             assert!(
@@ -226,6 +221,7 @@ mod tests {
                 "{error}"
             );
         }
+        Ok(())
     }
 
     #[test]
@@ -245,20 +241,17 @@ mod tests {
     }
 
     #[test]
-    fn an_error_absorbed_adds_what_it_kept_and_what_it_omitted() {
+    fn an_error_absorbed_adds_what_it_kept_and_what_it_omitted() -> Result<(), &'static str> {
         let mut inner = collected(250);
         inner.push(problem(250));
         assert_eq!(inner.len(), 251);
-        let Some(inner) = inner.into_error() else {
-            return;
-        };
+        let inner = inner.into_error().ok_or("no error for recorded problems")?;
         let mut problems = collected(10);
         problems.absorb(&inner);
         assert_eq!(problems.len(), 10 + 251);
-        let Some(error) = problems.into_error() else {
-            return;
-        };
+        let error = problems.into_error().ok_or("no error for recorded problems")?;
         assert_eq!(error.problems.len(), 100);
         assert_eq!(error.omitted(), 161);
+        Ok(())
     }
 }
