@@ -3,7 +3,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use crate::formats::{Problem, write_problems};
+use crate::formats::{FormatError, Problem, write_problems};
 use crate::params::ParamError;
 
 /// Why a signal could not be read, a shaper could not run, or a built-in's parameters could not be given. Each but
@@ -36,6 +36,12 @@ pub enum Error {
         problems: Vec<Problem>,
         /// How many more problems there were than `problems` holds.
         omitted: usize,
+    },
+    /// Data for a signal breaks the rules of its format (the values of `Signal::from_values` do not make a series):
+    /// the problems are the [`source`](std::error::Error::source)'s, and the message is its message.
+    Format {
+        /// The rules broken, each naming its field.
+        source: FormatError,
     },
     /// A callback of a signal (`Signal::from_fn`) failed: its error is the [`source`](std::error::Error::source), and
     /// the message is its message.
@@ -70,6 +76,7 @@ impl fmt::Display for Error {
                 write!(formatter, "the parameters of {shaper:?} do not fit: ")?;
                 write_problems(formatter, problems, *omitted)
             }
+            Self::Format { source } => write!(formatter, "{source}"),
             Self::Node { source } => write!(formatter, "{source}"),
         }
     }
@@ -78,6 +85,7 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Format { source } => Some(source),
             Self::Node { source } => Some(source.as_ref()),
             _ => None,
         }

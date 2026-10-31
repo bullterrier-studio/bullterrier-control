@@ -9,12 +9,14 @@
 //! ```
 //!
 //! Promises:
-//! - A signal has a value at every time. A time before 0 reads as time 0.
+//! - A signal has a value at every time. A time before 0 reads as time 0; a signal made from a series holds its first
+//!   and last value beyond its ends.
 //! - [`Signal::sample_into`] (and [`Signal::sample`] and [`Signal::at`], which call it) refuses a time that is not
 //!   finite and a value that is not finite (an overflow) with [`Error::Signal`] naming the time: a value is finite or
 //!   not given. The same times give the same values, whatever was read before and in whatever order or batches.
 
 mod node;
+mod series;
 #[cfg(test)]
 mod tests;
 
@@ -23,7 +25,34 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::Error;
+use crate::formats::{Series, SeriesOptions, Unit};
 use node::{Constant, FromFn, Node};
+use series::SeriesNode;
+
+/// How a signal made from a series reads a time between two samples.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Interpolation {
+    /// On the straight line between the samples either side.
+    Linear,
+    /// The earlier sample's value, until the next sample's time.
+    Hold,
+}
+
+/// The optional parts of [`Signal::from_values`]; end a literal with `..Default::default()`.
+///
+/// ```
+/// use bullterrier_control::{FromValues, Interpolation, Signal};
+///
+/// let late = Signal::from_values(&[0.4, 0.8], 10.0, FromValues { start: 1.0, ..Default::default() }, Interpolation::Hold)?;
+/// assert_eq!(late.sample(&[0.0, 1.05, 1.1])?, [0.4, 0.4, 0.8]);
+/// # Ok::<(), bullterrier_control::Error>(())
+/// ```
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FromValues {
+    /// When the first value is, in seconds, `>= 0`. Default 0.
+    pub start: f64,
+}
 
 /// A value that changes over time, readable at any moment in seconds: a graph of nodes behind an [`Arc`], so a clone
 /// is cheap and shares the graph, and one signal can feed several others. `Send` and `Sync`: any thread may read it.
@@ -91,6 +120,63 @@ impl Signal {
         E: std::error::Error + Send + Sync + 'static,
     {
         Self::of(FromFn::new(f))
+    }
+
+    /// The signal that reads `series`: sample *i* is at `start + i / rate` seconds, the first and last values hold
+    /// beyond the ends, and between samples the value follows `interpolation`. A time that is a sample's time to within
+    /// a billionth of a sample (`0.29` s at rate 100, which is 28.999999999999996 samples in floats) is that sample's.
+    ///
+    /// ```
+    /// use bullterrier_control::formats::{Series, SeriesOptions, Unit};
+    /// use bullterrier_control::{Interpolation, Signal};
+    ///
+    /// let series = Series::new(2.0, vec![0.0, 1.0, 0.0], Unit::Ratio, SeriesOptions { start: 1.0, ..Default::default() })?;
+    /// let ramp = Signal::from_series(&series, Interpolation::Linear);
+    /// assert_eq!(ramp.sample(&[0.0, 1.25, 1.5, 9.0])?, [0.0, 0.5, 1.0, 0.0]);
+    /// let steps = Signal::from_series(&series, Interpolation::Hold);
+    /// assert_eq!(steps.sample(&[1.25, 1.5, 1.9])?, [0.0, 1.0, 1.0]);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn from_series(series: &Series, interpolation: Interpolation) -> Self {
+        Self::of(SeriesNode {
+            start: series.start(),
+            rate: series.rate(),
+            values: series.values().to_vec(),
+            interpolation,
+        })
+    }
+
+    /// The signal that reads `values` as plain ratios, value *i* at `options.start + i / rate` seconds: the
+    /// [`Signal::from_series`] of a [`Series`] in [`Unit::Ratio`].
+    ///
+    /// ```
+    /// use bullterrier_control::{Error, FromValues, Interpolation, Signal};
+    ///
+    /// let energy = Signal::from_values(&[0.0, 1.0, 0.2, 0.0], 10.0, FromValues::default(), Interpolation::Linear)?;
+    /// assert_eq!(energy.sample(&[0.05, 0.1, 0.3, 1.0])?, [0.5, 1.0, 0.0, 0.0]);
+    ///
+    /// let refused = Signal::from_values(&[], 10.0, FromValues::default(), Interpolation::Linear);
+    /// assert!(matches!(refused, Err(Error::Format { source }) if source.problems[0].path == "values"));
+    /// # Ok::<(), Error>(())
+    /// ```
+    ///
+    /// # Errors
+    /// [`Error::Format`] listing every rule of a series broken (`values` empty or not finite, `rate` not above 0,
+    /// `start` below 0), each naming its field.
+    pub fn from_values(
+        values: &[f64],
+        rate: f64,
+        options: FromValues,
+        interpolation: Interpolation,
+    ) -> Result<Self, Error> {
+        let options = SeriesOptions {
+            start: options.start,
+            ..Default::default()
+        };
+        let series =
+            Series::new(rate, values.to_vec(), Unit::Ratio, options).map_err(|source| Error::Format { source })?;
+        Ok(Self::from_series(&series, interpolation))
     }
 
     /// The values at `times` (seconds, in any order), one for each.

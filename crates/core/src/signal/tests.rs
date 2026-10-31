@@ -6,7 +6,8 @@ use std::fmt;
 
 use proptest::prelude::*;
 
-use crate::{Error, Signal};
+use crate::formats::{Series, SeriesOptions, Unit};
+use crate::{Error, FromValues, Interpolation, Signal};
 
 /// A signal that is its own time, written as a plugin author would write one.
 fn echo() -> Signal {
@@ -218,5 +219,213 @@ proptest! {
         let together = together.map_err(|error| TestCaseError::fail(error.to_string()))?;
         prop_assert_eq!(&together, &alone.map_err(|error| TestCaseError::fail(error.to_string()))?);
         prop_assert_eq!(&together, &backwards);
+    }
+}
+
+/// Whether `got` is `expected` to within float rounding (a millionth of a millionth).
+fn close(got: &[f64], expected: &[f64]) -> bool {
+    got.len() == expected.len()
+        && got
+            .iter()
+            .zip(expected)
+            .all(|(got, expected)| (got - expected).abs() <= 1e-12)
+}
+
+/// A ratio series of `values` from `start` at `rate`.
+fn series(values: &[f64], start: f64, rate: f64) -> Result<Series, Error> {
+    let options = SeriesOptions {
+        start,
+        ..Default::default()
+    };
+    Series::new(rate, values.to_vec(), Unit::Ratio, options).map_err(|source| Error::Format { source })
+}
+
+#[test]
+fn a_series_signal_interpolates_or_holds_between_samples_and_holds_its_ends() -> Result<(), Error> {
+    // up from 1 s to 1.5 s, down by 2 s; (interpolation, times, values, rule)
+    let ramp = series(&[0.0, 1.0, 0.0], 1.0, 2.0)?;
+    // 0.0 at 0 s, 1.0 at 0.01 s ... 29.0 at 0.29 s
+    let counted: Vec<f64> = (0..30).map(f64::from).collect();
+    let hundred = series(&counted, 0.0, 100.0)?;
+    for (data, interpolation, times, expected, rule) in [
+        (
+            &ramp,
+            Interpolation::Linear,
+            vec![0.0, 0.5, -2.0],
+            vec![0.0, 0.0, 0.0],
+            "before the series",
+        ),
+        (
+            &ramp,
+            Interpolation::Linear,
+            vec![1.0, 1.5, 2.0],
+            vec![0.0, 1.0, 0.0],
+            "on the samples",
+        ),
+        (
+            &ramp,
+            Interpolation::Linear,
+            vec![1.25, 1.75, 1.125],
+            vec![0.5, 0.5, 0.25],
+            "between",
+        ),
+        (
+            &ramp,
+            Interpolation::Linear,
+            vec![2.5, 9.0, 1e300],
+            vec![0.0, 0.0, 0.0],
+            "after the series",
+        ),
+        (
+            &ramp,
+            Interpolation::Hold,
+            vec![0.0, 0.9],
+            vec![0.0, 0.0],
+            "held before the series",
+        ),
+        (
+            &ramp,
+            Interpolation::Hold,
+            vec![1.0, 1.5, 2.0],
+            vec![0.0, 1.0, 0.0],
+            "held on a sample",
+        ),
+        (
+            &ramp,
+            Interpolation::Hold,
+            vec![1.4, 1.9],
+            vec![0.0, 1.0],
+            "just before a sample the previous holds",
+        ),
+        (
+            &ramp,
+            Interpolation::Hold,
+            vec![2.4, 100.0],
+            vec![0.0, 0.0],
+            "held after the series",
+        ),
+        (
+            &hundred,
+            Interpolation::Hold,
+            vec![0.29, 0.07, 0.295],
+            vec![29.0, 7.0, 29.0],
+            "a decimal sample time",
+        ),
+        (
+            &hundred,
+            Interpolation::Linear,
+            vec![0.29, 0.005],
+            vec![29.0, 0.5],
+            "linear at a decimal time",
+        ),
+    ] {
+        let values = Signal::from_series(data, interpolation).sample(&times)?;
+        assert!(close(&values, &expected), "{rule}: {values:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn a_series_of_one_sample_is_that_value_at_every_time() -> Result<(), Error> {
+    let single = series(&[0.7], 3.0, 10.0)?;
+    for interpolation in [Interpolation::Linear, Interpolation::Hold] {
+        let values = Signal::from_series(&single, interpolation).sample(&[0.0, 3.0, 3.05, 1000.0])?;
+        assert_eq!(values, [0.7; 4], "{interpolation:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn a_series_read_at_the_edge_of_the_floats_holds_its_last_value_or_is_refused() -> Result<(), Error> {
+    let held = Signal::from_series(&series(&[1.0, 2.0, 3.0], 0.0, 1.0)?, Interpolation::Hold);
+    assert_eq!(held.sample(&[1e19, 1e300, f64::MAX])?, [3.0, 3.0, 3.0]);
+    // (time - start) * rate overflows to infinity: past the end
+    let fast = series(&[1.0, 2.0], 0.0, 1e300)?;
+    for interpolation in [Interpolation::Linear, Interpolation::Hold] {
+        assert_eq!(Signal::from_series(&fast, interpolation).sample(&[1.0])?, [2.0]);
+    }
+    // halfway between the two largest floats of opposite sign: the slope overflows
+    let huge = Signal::from_series(&series(&[-1.7e308, 1.7e308], 0.0, 1.0)?, Interpolation::Linear);
+    let message = signal_error(&huge.sample(&[0.0, 0.5]));
+    assert!(message.contains("not finite at time 0.5"), "{message}");
+    Ok(())
+}
+
+#[test]
+fn values_make_a_signal_in_one_call_or_are_refused_naming_the_field() {
+    // (values, rate, start, interpolation, times, the values or the field refused)
+    for (values, rate, start, interpolation, times, expected) in [
+        (
+            vec![0.0, 1.0, 0.2, 0.0],
+            10.0,
+            0.0,
+            Interpolation::Linear,
+            vec![0.0, 0.05, 0.1, 0.25, 0.3, 1.0],
+            Ok(vec![0.0, 0.5, 1.0, 0.1, 0.0, 0.0]),
+        ),
+        (
+            vec![0.0, 1.0, 0.2, 0.0],
+            10.0,
+            0.0,
+            Interpolation::Hold,
+            vec![0.05, 0.1, 0.15],
+            Ok(vec![0.0, 1.0, 1.0]),
+        ),
+        (
+            vec![0.4, 0.8],
+            10.0,
+            1.0,
+            Interpolation::Linear,
+            vec![0.0, 0.5, 1.0, 1.05, 1.1, 5.0],
+            Ok(vec![0.4, 0.4, 0.4, 0.6, 0.8, 0.8]),
+        ),
+        (vec![], 10.0, 0.0, Interpolation::Linear, vec![0.0], Err("values")),
+        (
+            vec![0.0, f64::NAN],
+            10.0,
+            0.0,
+            Interpolation::Linear,
+            vec![0.0],
+            Err("values[1]"),
+        ),
+        (vec![0.0, 1.0], 0.0, 0.0, Interpolation::Hold, vec![0.0], Err("rate")),
+        (
+            vec![0.0, 1.0],
+            10.0,
+            -1.0,
+            Interpolation::Linear,
+            vec![0.0],
+            Err("start"),
+        ),
+    ] {
+        let made = Signal::from_values(&values, rate, FromValues { start }, interpolation);
+        match (made.and_then(|signal| signal.sample(&times)), expected) {
+            (Ok(got), Ok(expected)) => assert!(close(&got, &expected), "{values:?} at {times:?}: {got:?}"),
+            (Err(Error::Format { source }), Err(field)) => {
+                let fields: Vec<&str> = source.problems.iter().map(|problem| problem.path.as_str()).collect();
+                assert_eq!(fields, [field], "{values:?}");
+            }
+            (got, expected) => assert_eq!(format!("{got:?}"), format!("{expected:?}"), "{values:?}"),
+        }
+    }
+}
+
+proptest! {
+    #[test]
+    fn a_series_signal_gives_back_each_sample_at_its_own_time(
+        start in 0.0..10.0_f64,
+        rate in 0.5..1000.0_f64,
+        values in prop::collection::vec(-1e3..1e3_f64, 1..40),
+    ) {
+        let data = series(&values, start, rate).map_err(|error| TestCaseError::fail(error.to_string()))?;
+        let times: Vec<f64> = (0_u32..).zip(&values).map(|(index, _)| start + f64::from(index) / rate).collect();
+        for interpolation in [Interpolation::Linear, Interpolation::Hold] {
+            let got = Signal::from_series(&data, interpolation)
+                .sample(&times)
+                .map_err(|error| TestCaseError::fail(error.to_string()))?;
+            for (got, expected) in got.iter().zip(&values) {
+                prop_assert!((got - expected).abs() <= 1e-6, "{:?}: {} for {}", interpolation, got, expected);
+            }
+        }
     }
 }

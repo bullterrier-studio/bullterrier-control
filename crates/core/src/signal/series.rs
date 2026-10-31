@@ -1,0 +1,86 @@
+//! The node reading a [`Series`](crate::formats::Series) at any time.
+
+use std::fmt;
+
+use super::Interpolation;
+use super::node::Node;
+use crate::Error;
+
+/// A share of a sample within which a position is the sample it rounds to: `(time - start) * rate` of a time that is
+/// a sample's time in decimals can land a float rounding below it (`0.29 * 100` is 28.999999999999996), and a held
+/// value is the sample's from its time on. A billionth of a sample is far above that rounding and far below a sample.
+pub(crate) const SAMPLE_ROUNDING: f64 = 1e-9;
+
+/// Sample *i* at `start + i / rate` seconds; the first and last values hold beyond the ends.
+pub(crate) struct SeriesNode {
+    pub(crate) start: f64,
+    pub(crate) rate: f64,
+    /// Never empty: a `Series` holds at least one value.
+    pub(crate) values: Vec<f64>,
+    pub(crate) interpolation: Interpolation,
+}
+
+impl fmt::Debug for SeriesNode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Series")
+            .field("start", &self.start)
+            .field("rate", &self.rate)
+            .field("samples", &self.values.len())
+            .field("interpolation", &self.interpolation)
+            .finish()
+    }
+}
+
+impl Node for SeriesNode {
+    fn read(&self, times: &[f64], out: &mut [f64]) -> Result<(), Error> {
+        for (value, time) in out.iter_mut().zip(times) {
+            // finite times and a finite start: never NaN, at most an infinity past either end
+            let position = (time - self.start) * self.rate;
+            *value = match self.interpolation {
+                Interpolation::Linear => self.linear(position),
+                Interpolation::Hold => self.held(position),
+            };
+        }
+        Ok(())
+    }
+}
+
+impl SeriesNode {
+    /// The value on the line between the samples either side of `position`, as numpy's `interp` gives it (the slope
+    /// times the way from the earlier sample, plus its value), so both packages give the same bits.
+    fn linear(&self, position: f64) -> f64 {
+        match self.values.as_slice() {
+            [first, ..] if position <= 0.0 => *first,
+            [.., last] if position >= self.last() => *last,
+            values => {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "0 < position < the last index: a whole index of the values"
+                )]
+                let before = position.floor() as usize;
+                let (from, to) = (values[before], values[before + 1]);
+                (to - from) * (position - position.floor()) + from
+            }
+        }
+    }
+
+    /// The value of the latest sample at or before `position`, to within [`SAMPLE_ROUNDING`].
+    fn held(&self, position: f64) -> f64 {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "clamped to 0..=the last index: a whole index of the values"
+        )]
+        let index = (position + SAMPLE_ROUNDING).floor().clamp(0.0, self.last()) as usize;
+        self.values[index]
+    }
+
+    /// The index of the last sample, as a position.
+    fn last(&self) -> f64 {
+        #[expect(clippy::cast_precision_loss, reason = "a count of values is far below 2^53: exact")]
+        let last = (self.values.len() - 1) as f64;
+        last
+    }
+}
