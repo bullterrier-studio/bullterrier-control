@@ -213,7 +213,7 @@ def test_a_recurrence_that_returns_the_wrong_shape_is_named_with_both_shapes():
 
 
 def test_rendering_a_graph_too_deep_is_a_signal_error_not_a_wrong_argument():
-    deep = Constant(1.0)
+    deep: Signal = Constant(1.0)
     for _ in range(999):
         deep = deep + 1.0
     with pytest.raises(SignalError, match="nodes deep"):
