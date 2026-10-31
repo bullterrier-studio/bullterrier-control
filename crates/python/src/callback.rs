@@ -18,8 +18,10 @@ use crate::data::float64s;
 use crate::error;
 
 /// How many calls into Python a read may nest on one thread. A level takes about 2.5 KB of stack in a release build
-/// (measured: a chain of 200 fits a 512 KiB thread, 250 does not), so 100 fit a 512 KiB thread with half of it to
-/// spare. Python's own recursion limit counts its frames, not the stack: it lets such a chain overflow that thread.
+/// (measured: a chain of 200 fits a 512 KiB thread, 250 does not), so 100 of them with little Rust between fit a
+/// 512 KiB thread with half of it to spare. The Rust graph between two levels (up to the core's `MAX_DEPTH`) takes
+/// stack too and is not counted here: 100 levels over deep Rust chains need a stack of several MiB. Python's own
+/// recursion limit counts its frames, not the stack: it lets such a chain overflow a small thread.
 const NESTED: usize = 100;
 
 thread_local! {
