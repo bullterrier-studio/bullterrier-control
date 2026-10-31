@@ -18,6 +18,7 @@ mod error;
 pub mod formats;
 pub mod hashing;
 pub mod params;
+pub mod rounding;
 pub mod scaling;
 
 pub use error::Error;
