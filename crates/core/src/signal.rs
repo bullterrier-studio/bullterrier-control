@@ -127,6 +127,8 @@ impl Signal {
     /// with 0.0. Its values are checked like any other's (a value that is not finite is an [`Error::Signal`]); an error
     /// it returns is the [`Error::Node`] of the read, with `f`'s error as its [`source`](std::error::Error::source).
     /// It must give the same values for the same times, whatever it was called with before: a signal's promise.
+    /// A node counts as depth 1 for [`MAX_DEPTH`] whatever `f` samples inside: a chain of closures that each sample
+    /// the previous one is not capped, so it must stay shallow.
     ///
     /// ```
     /// use std::error::Error as _;
