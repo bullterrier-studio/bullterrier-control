@@ -5,7 +5,8 @@
 
 Promises:
 - Times and durations are in seconds. A value within `TOLERANCE` (a nanosecond) of a bound counts as the bound; anything
-  farther is on its side of it. Both functions take a number or an array and give a bool or an array of bools.
+  farther is on its side of it. Both functions (the Rust core's `rounding`) take a number or an array and give a bool
+  or an array of bools.
 - A nanosecond is far above the error of adding and subtracting times under a day (the spacing of floats near 1e5 s is
   1.5e-11 s) and far below anything a person or a beat tracker means by a different time, so a bound a decimal lands on
   is held, and one a millionth of a second off is not.
@@ -14,20 +15,10 @@ Promises:
 - Not for positions in samples: `signal` and `rendered` have a tolerance in shares of a sample for those.
 """
 
-import numpy as np
-from numpy.typing import NDArray
+from ._native import _core
 
 __all__ = ["TOLERANCE", "at_least", "more_than"]
 
-# seconds; see the promises above
-TOLERANCE = 1e-9
-
-
-def at_least(value: float | NDArray[np.float64], bound: float) -> bool | NDArray[np.bool_]:
-    """Whether `value` reaches `bound`, or is short of it by no more than `TOLERANCE`."""
-    return value >= bound - TOLERANCE
-
-
-def more_than(value: float | NDArray[np.float64], bound: float) -> bool | NDArray[np.bool_]:
-    """Whether `value` is beyond `bound` by more than `TOLERANCE`."""
-    return value > bound + TOLERANCE
+TOLERANCE = _core.TOLERANCE  # seconds; see the promises above
+at_least = _core.at_least
+more_than = _core.more_than
