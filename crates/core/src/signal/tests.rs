@@ -7,7 +7,7 @@ use std::fmt;
 use proptest::prelude::*;
 
 use crate::formats::{Series, SeriesOptions, Unit};
-use crate::{Error, FromValues, Interpolation, Signal};
+use crate::{Error, FromValues, Interpolation, Signal, maximum, minimum};
 
 /// A signal that is its own time, written as a plugin author would write one.
 fn echo() -> Signal {
@@ -202,24 +202,6 @@ fn a_callback_sees_finite_times_from_zero_and_a_zeroed_buffer() -> Result<(), Er
     lazy.sample_into(&[2.0, -4.0, 0.5], &mut values)?;
     assert_eq!(values, [1.0, 0.0, 0.5]);
     Ok(())
-}
-
-proptest! {
-    #[test]
-    fn a_read_gives_the_value_at_each_time_whatever_the_batch_or_order(
-        times in prop::collection::vec(-10.0..1e3_f64, 0..40),
-    ) {
-        let signal = echo();
-        let together = signal.sample(&times);
-        let alone: Result<Vec<f64>, Error> = times.iter().map(|&time| signal.at(time)).collect();
-        let mut reversed = times.clone();
-        reversed.reverse();
-        let mut backwards = signal.sample(&reversed).map_err(|error| TestCaseError::fail(error.to_string()))?;
-        backwards.reverse();
-        let together = together.map_err(|error| TestCaseError::fail(error.to_string()))?;
-        prop_assert_eq!(&together, &alone.map_err(|error| TestCaseError::fail(error.to_string()))?);
-        prop_assert_eq!(&together, &backwards);
-    }
 }
 
 /// Whether `got` is `expected` to within float rounding (a millionth of a millionth).
@@ -427,5 +409,243 @@ proptest! {
                 prop_assert!((got - expected).abs() <= 1e-6, "{:?}: {} for {}", interpolation, got, expected);
             }
         }
+    }
+}
+
+/// Up from 1 s to 1.5 s, down by 2 s; at [`TIMES`]: 0, 0.5, 1, 0, 0.
+fn ramp() -> Result<Signal, Error> {
+    Ok(Signal::from_series(
+        &series(&[0.0, 1.0, 0.0], 1.0, 2.0)?,
+        Interpolation::Linear,
+    ))
+}
+
+/// The same samples held; at [`TIMES`]: 0, 0, 1, 0, 0.
+fn steps() -> Result<Signal, Error> {
+    Ok(Signal::from_series(
+        &series(&[0.0, 1.0, 0.0], 1.0, 2.0)?,
+        Interpolation::Hold,
+    ))
+}
+
+const TIMES: [f64; 5] = [0.0, 1.25, 1.5, 2.0, 9.0];
+
+#[test]
+fn signals_combine_with_arithmetic_point_by_point() -> Result<(), Error> {
+    let (ramp, steps) = (ramp()?, steps()?);
+    let (quarter, point_four) = (Signal::constant(0.25)?, Signal::constant(0.4)?);
+    for (combined, expected, rule) in [
+        (&ramp + 1.0, [1.0, 1.5, 2.0, 1.0, 1.0], "a signal plus a number"),
+        (1.0 + &ramp, [1.0, 1.5, 2.0, 1.0, 1.0], "a number plus a signal"),
+        (&ramp - 0.5, [-0.5, 0.0, 0.5, -0.5, -0.5], "a signal minus a number"),
+        (2.0 - &ramp, [2.0, 1.5, 1.0, 2.0, 2.0], "a number minus a signal"),
+        (&ramp * 3.0, [0.0, 1.5, 3.0, 0.0, 0.0], "a signal times a number"),
+        (3.0 * &ramp, [0.0, 1.5, 3.0, 0.0, 0.0], "a number times a signal"),
+        (-&ramp, [-0.0, -0.5, -1.0, -0.0, -0.0], "a negated signal"),
+        (&ramp + &ramp, [0.0, 1.0, 2.0, 0.0, 0.0], "two signals added"),
+        (&ramp * &ramp, [0.0, 0.25, 1.0, 0.0, 0.0], "two signals multiplied"),
+        (&ramp - &steps, [0.0, 0.5, 0.0, 0.0, 0.0], "two signals subtracted"),
+        (&steps - &ramp, [0.0, -0.5, 0.0, 0.0, 0.0], "subtracted the other way"),
+        (
+            minimum(&ramp, &point_four),
+            [0.0, 0.4, 0.4, 0.0, 0.0],
+            "the smaller of two",
+        ),
+        (
+            maximum(&point_four, &ramp),
+            [0.4, 0.5, 1.0, 0.4, 0.4],
+            "the larger of two",
+        ),
+        (
+            &ramp * (1.0 - &quarter) + &steps * &quarter,
+            [0.0, 0.375, 1.0, 0.0, 0.0],
+            "a crossfade built from arithmetic",
+        ),
+        (
+            (ramp.clone() + 1.0) * 2.0 - ramp.clone(),
+            [2.0, 2.5, 3.0, 2.0, 2.0],
+            "owned signals combine again",
+        ),
+    ] {
+        let values = combined.sample(&TIMES)?;
+        assert!(close(&values, &expected), "{rule}: {values:?}");
+    }
+    // negation keeps the sign of zero, as numpy's does
+    assert!((-&ramp).at(0.0)?.is_sign_negative());
+    Ok(())
+}
+
+#[test]
+fn a_combination_reads_times_before_zero_as_zero_like_its_parts() -> Result<(), Error> {
+    assert_eq!((&ramp()? + &echo()).sample(&[-3.0, 1.25])?, [0.0, 1.75]);
+    Ok(())
+}
+
+#[test]
+fn a_combination_that_is_not_finite_is_refused_naming_the_time() -> Result<(), Error> {
+    let ramp = ramp()?;
+    let zero = Signal::constant(0.0)?;
+    // (the combination, what its refusal says, rule)
+    for (combined, says, rule) in [
+        (Signal::constant(1e308)? * 10.0, "not finite at time 0.5", "an overflow"),
+        (&ramp + f64::NAN, "a constant must be finite (got NaN)", "a NaN number"),
+        (
+            f64::INFINITY * &ramp,
+            "a constant must be finite (got inf)",
+            "an infinite number",
+        ),
+        (
+            minimum(&(&ramp - f64::INFINITY), &zero),
+            "a constant must be finite (got inf)",
+            "not hidden by the smaller of two",
+        ),
+        (
+            maximum(&broken(f64::NAN), &zero),
+            "not finite at time 0.5",
+            "a NaN is the larger",
+        ),
+        (
+            minimum(&zero, &broken(f64::NAN)),
+            "not finite at time 0.5",
+            "a NaN is the smaller",
+        ),
+        (
+            &broken(f64::INFINITY) - &broken(f64::INFINITY),
+            "not finite at time 0.5",
+            "inf - inf",
+        ),
+    ] {
+        let message = signal_error(&combined.sample(&[0.5, 1.0]));
+        assert!(message.contains(says), "{rule}: {message}");
+    }
+    Ok(())
+}
+
+#[test]
+fn a_callbacks_error_comes_through_a_combination() {
+    let failing = Signal::from_fn(|_, _| Err(OutOfTune("E2")));
+    for combined in [
+        &failing + 1.0,
+        2.0 * &failing,
+        &echo() - &failing,
+        maximum(&failing, &echo()),
+    ] {
+        let refused = combined.sample(&[1.0]);
+        let source = refused
+            .as_ref()
+            .err()
+            .and_then(|error| error.source())
+            .map(ToString::to_string);
+        assert_eq!(source.as_deref(), Some("out of tune: E2"), "{refused:?}");
+    }
+}
+
+/// A signal graph as data, read by [`Expression::value`] with plain arithmetic: the oracle of the operators.
+#[derive(Clone, Debug)]
+enum Expression {
+    Number(f64),
+    /// The time, from 0 up.
+    Time,
+    Add(Box<Expression>, Box<Expression>),
+    Subtract(Box<Expression>, Box<Expression>),
+    Multiply(Box<Expression>, Box<Expression>),
+    Larger(Box<Expression>, Box<Expression>),
+    Smaller(Box<Expression>, Box<Expression>),
+    Negate(Box<Expression>),
+    PlusNumber(Box<Expression>, f64),
+    NumberMinus(f64, Box<Expression>),
+    TimesNumber(Box<Expression>, f64),
+}
+
+impl Expression {
+    fn signal(&self) -> Result<Signal, Error> {
+        Ok(match self {
+            Self::Number(number) => Signal::constant(*number)?,
+            Self::Time => echo(),
+            Self::Add(first, second) => first.signal()? + second.signal()?,
+            Self::Subtract(first, second) => &first.signal()? - &second.signal()?,
+            Self::Multiply(first, second) => first.signal()? * &second.signal()?,
+            Self::Larger(first, second) => maximum(&first.signal()?, &second.signal()?),
+            Self::Smaller(first, second) => minimum(&first.signal()?, &second.signal()?),
+            Self::Negate(inner) => -inner.signal()?,
+            Self::PlusNumber(inner, number) => inner.signal()? + *number,
+            Self::NumberMinus(number, inner) => *number - &inner.signal()?,
+            Self::TimesNumber(inner, number) => &inner.signal()? * *number,
+        })
+    }
+
+    fn value(&self, time: f64) -> f64 {
+        match self {
+            Self::Number(number) => *number,
+            Self::Time => time.max(0.0),
+            Self::Add(first, second) => first.value(time) + second.value(time),
+            Self::Subtract(first, second) => first.value(time) - second.value(time),
+            Self::Multiply(first, second) => first.value(time) * second.value(time),
+            Self::Larger(first, second) => first.value(time).max(second.value(time)),
+            Self::Smaller(first, second) => first.value(time).min(second.value(time)),
+            Self::Negate(inner) => -inner.value(time),
+            Self::PlusNumber(inner, number) => inner.value(time) + number,
+            Self::NumberMinus(number, inner) => number - inner.value(time),
+            Self::TimesNumber(inner, number) => inner.value(time) * number,
+        }
+    }
+}
+
+fn expressions() -> impl Strategy<Value = Expression> {
+    let leaf = prop_oneof![(-100.0..100.0_f64).prop_map(Expression::Number), Just(Expression::Time)];
+    leaf.prop_recursive(4, 32, 2, |inner| {
+        let number = -100.0..100.0_f64;
+        prop_oneof![
+            (inner.clone(), inner.clone()).prop_map(|(a, b)| Expression::Add(Box::new(a), Box::new(b))),
+            (inner.clone(), inner.clone()).prop_map(|(a, b)| Expression::Subtract(Box::new(a), Box::new(b))),
+            (inner.clone(), inner.clone()).prop_map(|(a, b)| Expression::Multiply(Box::new(a), Box::new(b))),
+            (inner.clone(), inner.clone()).prop_map(|(a, b)| Expression::Larger(Box::new(a), Box::new(b))),
+            (inner.clone(), inner.clone()).prop_map(|(a, b)| Expression::Smaller(Box::new(a), Box::new(b))),
+            inner.clone().prop_map(|a| Expression::Negate(Box::new(a))),
+            (inner.clone(), number.clone()).prop_map(|(a, n)| Expression::PlusNumber(Box::new(a), n)),
+            (number.clone(), inner.clone()).prop_map(|(n, a)| Expression::NumberMinus(n, Box::new(a))),
+            (inner, number).prop_map(|(a, n)| Expression::TimesNumber(Box::new(a), n)),
+        ]
+    })
+}
+
+/// The test case's failure for an error that should not have happened.
+fn failed(error: &Error) -> TestCaseError {
+    TestCaseError::fail(error.to_string())
+}
+
+proptest! {
+    #[test]
+    fn a_graph_of_operators_gives_what_arithmetic_on_its_values_gives(
+        expression in expressions(),
+        times in prop::collection::vec(-10.0..1e3_f64, 0..20),
+    ) {
+        let got = expression.signal().and_then(|signal| signal.sample(&times)).map_err(|error| failed(&error))?;
+        let expected: Vec<f64> = times.iter().map(|&time| expression.value(time)).collect();
+        prop_assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn a_graph_gives_each_time_its_value_whatever_the_batches_or_their_order(
+        expression in expressions(),
+        times in prop::collection::vec(-10.0..1e3_f64, 0..30),
+        cut in 0..30_usize,
+    ) {
+        // the graph over a series too, so every kind of node is read in pieces
+        let signal = expression.signal().map_err(|error| failed(&error))?
+            * steps().map_err(|error| failed(&error))?
+            + ramp().map_err(|error| failed(&error))?;
+        let together = signal.sample(&times).map_err(|error| failed(&error))?;
+        let alone: Vec<f64> = times.iter().map(|&time| signal.at(time)).collect::<Result<_, _>>().map_err(|error| failed(&error))?;
+        let (front, back) = times.split_at(cut.min(times.len()));
+        let mut halves = signal.sample(back).map_err(|error| failed(&error))?;
+        halves.splice(0..0, signal.sample(front).map_err(|error| failed(&error))?);
+        let mut reversed = times.clone();
+        reversed.reverse();
+        let mut backwards = signal.sample(&reversed).map_err(|error| failed(&error))?;
+        backwards.reverse();
+        prop_assert_eq!(&together, &alone);
+        prop_assert_eq!(&together, &halves);
+        prop_assert_eq!(&together, &backwards);
     }
 }

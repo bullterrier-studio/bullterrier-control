@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 4861674c30325659dd517dd378edc8a3813e66412ad9dd85f06d4faad1c48591 # shrinks to expression = Smaller(Number(68.8166160510158), Multiply(Multiply(Number(-36.70421954035177), Time), Time)), times = [927.5310836781981, 631.9688327074122, 674.4881322351591, 593.302847666456, 882.0396577284411, 883.4371854920498, 619.9587438176158, 10.880976410929032, 982.7368433820988, 176.88718334410308, 116.13577410168628, 564.1271663054988, 861.3683174799463, 258.914755807733]
+cc 9dcd8f4b6b3a661cdb4a855e1cf22a4bb4cfb319ca619eb79a14547fc857769e # shrinks to expression = Larger(Add(Number(0.0), Number(0.0)), Subtract(Number(0.0), Number(-9.787572384354958))), times = [0.0]
+cc fa8d8a42a4cceb2aabbe538d4200f02499297c2f4a6521725c5b2009c49e22f4 # shrinks to expression = Smaller(NumberMinus(0.0, Number(85.96697347430361)), Number(0.0)), times = [0.0]

@@ -25,7 +25,7 @@ mod signal;
 
 pub use error::Error;
 pub use params::{Choice, Params};
-pub use signal::{FromValues, Interpolation, Signal};
+pub use signal::{FromValues, Interpolation, Signal, maximum, minimum};
 
 /// Run the shaper called `name` over `inputs` (its input signal sampled at the shaper's rate from time 0) with `params`
 /// (an object of the shaper's parameters by name; one left out takes its default); a new series of the same length,

@@ -14,7 +14,12 @@
 //! - [`Signal::sample_into`] (and [`Signal::sample`] and [`Signal::at`], which call it) refuses a time that is not
 //!   finite and a value that is not finite (an overflow) with [`Error::Signal`] naming the time: a value is finite or
 //!   not given. The same times give the same values, whatever was read before and in whatever order or batches.
+//! - Signals combine with `+`, `-`, `*` and negation, a signal or a borrowed one with a signal or an `f64` on either
+//!   side, and with [`maximum`] and [`minimum`]; the result is a signal that combines again. A crossfade is
+//!   `a * (1.0 - m) + b * m`. A number that is not finite gives a signal whose every read is the [`Error::Signal`]
+//!   [`Signal::constant`] gives for it, since an operator cannot return an error.
 
+mod combine;
 mod node;
 mod series;
 #[cfg(test)]
@@ -26,6 +31,7 @@ use std::sync::Arc;
 
 use crate::Error;
 use crate::formats::{Series, SeriesOptions, Unit};
+use combine::Operation;
 use node::{Constant, FromFn, Node};
 use series::SeriesNode;
 
@@ -65,6 +71,11 @@ pub struct FromValues {
 ///     Ok::<(), std::fmt::Error>(())
 /// });
 /// assert_eq!(echo.sample(&[-1.0, 0.5])?, [0.0, 0.5]); // a time before 0 reads as 0
+///
+/// let fade = Signal::constant(0.25)?;
+/// let mix = &echo * (1.0 - &fade) + 2.0 * &fade; // signals and numbers combine on either side
+/// assert_eq!(mix.sample(&[0.0, 2.0])?, [0.5, 2.0]);
+/// assert!((echo + f64::NAN).at(0.0).is_err()); // a number that is not finite refuses every read
 /// # Ok::<(), bullterrier_control::Error>(())
 /// ```
 #[derive(Clone)]
@@ -269,6 +280,36 @@ impl Signal {
     fn of(node: impl Node + Send + Sync + 'static) -> Self {
         Self(Arc::new(node))
     }
+}
+
+/// The larger of `first` and `second` at every time.
+///
+/// ```
+/// use bullterrier_control::{FromValues, Interpolation, Signal, maximum};
+///
+/// let ramp = Signal::from_values(&[0.0, 1.0], 1.0, FromValues::default(), Interpolation::Linear)?;
+/// let floor = Signal::constant(0.25)?;
+/// assert_eq!(maximum(&ramp, &floor).sample(&[0.0, 0.5, 1.0])?, [0.25, 0.5, 1.0]);
+/// # Ok::<(), bullterrier_control::Error>(())
+/// ```
+#[must_use]
+pub fn maximum(first: &Signal, second: &Signal) -> Signal {
+    combine::signals(Operation::Maximum, first.clone(), second.clone())
+}
+
+/// The smaller of `first` and `second` at every time.
+///
+/// ```
+/// use bullterrier_control::{FromValues, Interpolation, Signal, minimum};
+///
+/// let ramp = Signal::from_values(&[0.0, 1.0], 1.0, FromValues::default(), Interpolation::Linear)?;
+/// let ceiling = Signal::constant(0.75)?;
+/// assert_eq!(minimum(&ramp, &ceiling).sample(&[0.0, 0.5, 1.0])?, [0.0, 0.5, 0.75]);
+/// # Ok::<(), bullterrier_control::Error>(())
+/// ```
+#[must_use]
+pub fn minimum(first: &Signal, second: &Signal) -> Signal {
+    combine::signals(Operation::Minimum, first.clone(), second.clone())
 }
 
 /// `value` if it is finite; the one refusal of a number that is to be a constant.

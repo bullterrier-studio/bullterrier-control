@@ -55,3 +55,13 @@ impl Node for FromFn {
         (self.0)(times, out)
     }
 }
+
+/// A signal that cannot be read: every read is its error. What an operator gives where it cannot return an error.
+#[derive(Debug)]
+pub(crate) struct Refused(pub(crate) Error);
+
+impl Node for Refused {
+    fn read(&self, _times: &[f64], _out: &mut [f64]) -> Result<(), Error> {
+        Err(self.0.clone())
+    }
+}
