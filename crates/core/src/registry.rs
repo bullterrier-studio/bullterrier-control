@@ -230,6 +230,22 @@ impl Default for Call {
     }
 }
 
+/// How a signal was made through the registry ([`Thing::call`]): the thing, its parameter values as its table read
+/// them (every field), its inputs in the order it declares them, and the signal it shaped (a shaper's). What saving a
+/// graph as a patch writes; [`Signal::recipe`] gives it.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct Recipe {
+    /// The name the thing was called by.
+    pub name: String,
+    /// Its parameter values: a JSON object of every field, by name.
+    pub values: serde_json::Value,
+    /// Its inputs, each under its kind's name, in the order it declares them.
+    pub inputs: Vec<(String, Input)>,
+    /// The signal it shaped: a shaper's input; `None` for a source.
+    pub signal: Option<Signal>,
+}
+
 /// What a thing is called and says about itself; each field but the name may be empty.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct About {

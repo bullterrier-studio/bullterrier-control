@@ -21,6 +21,7 @@
 
 mod combine;
 mod node;
+mod recorded;
 mod rendered;
 mod series;
 #[cfg(test)]
@@ -31,9 +32,11 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::formats::{Series, SeriesOptions, Unit};
+use crate::registry::Recipe;
 use crate::{Error, Shaper};
 use combine::Operation;
 use node::{Constant, FromFn, Node};
+use recorded::Recorded;
 use rendered::Rendered;
 pub use rendered::Rendering;
 use series::SeriesNode;
@@ -393,6 +396,32 @@ impl Signal {
         self.sample_into(&[time], &mut value)?;
         let [value] = value;
         Ok(value)
+    }
+
+    /// How the registry made this signal ([`Thing::call`](crate::registry::Thing::call)), if it did: a signal made
+    /// any other way (a typed shaper, an operator, [`Signal::from_fn`]) has none.
+    ///
+    /// ```
+    /// use bullterrier_control::registry::{Call, Output, Registry};
+    /// use bullterrier_control::Signal;
+    /// use serde_json::json;
+    ///
+    /// let level = Signal::constant(0.5)?;
+    /// assert!(level.recipe().is_none());
+    /// let call = Call { signals: vec![level], values: json!({"rise": 0.5}), ..Default::default() };
+    /// let Output::Signal(slewed) = Registry::builtin().get("slew")?.call(&call)? else { panic!("a signal") };
+    /// let recipe = slewed.recipe().map(|recipe| (recipe.name.as_str(), recipe.values["rise"].as_f64()));
+    /// assert_eq!(recipe, Some(("slew", Some(0.5))));
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
+    #[must_use]
+    pub fn recipe(&self) -> Option<&Recipe> {
+        self.0.recipe()
+    }
+
+    /// `signal` with the recipe the registry made it by.
+    pub(crate) fn recorded(recipe: Recipe, signal: Signal) -> Self {
+        Self::of(Recorded { recipe, inner: signal })
     }
 
     /// The signal holding `node`, which has no inputs.

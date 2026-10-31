@@ -6,10 +6,12 @@ use std::sync::Arc;
 use serde_json::{Map, Value, json};
 
 use super::repr::{python, quoted};
-use super::{About, Call, Declared, Inputs as _, Kind, NODE_KEYS, Operation, Output, Returns, Shaper, Source, is_name};
+use super::{
+    About, Call, Declared, Inputs as _, Kind, NODE_KEYS, Operation, Output, Recipe, Returns, Shaper, Source, is_name,
+};
 use crate::inputs::InputKind;
 use crate::params::{ParamTable, Values};
-use crate::{Error, Params};
+use crate::{Error, Params, Signal};
 
 /// The body of a thing: called with a checked call and its parameters as the table read them.
 type Run = dyn Fn(&Call, &Values) -> Result<Output, Error> + Send + Sync;
@@ -378,7 +380,9 @@ impl Thing {
     /// 4. the parameter values, read by its table: an object by name, a value left out taking its default.
     ///
     /// The thing's body then gets the call with the values as the table read them (every field, a cyclic one
-    /// wrapped); what it gives must be what it [`returns`](Self::returns).
+    /// wrapped); what it gives must be what it [`returns`](Self::returns). A signal it gives carries its
+    /// [`Recipe`] ([`Signal::recipe`]): this thing's name, the values as read, the inputs in its order and the signal
+    /// it shaped. It reads as the body's signal and is as deep.
     ///
     /// # Errors
     /// [`Error::Call`] naming the thing (`shaper 'slew' takes 1 signal(s), not 0`; `operation 'select' takes no input
@@ -439,7 +443,24 @@ impl Thing {
                 output.returns()
             )));
         }
-        Ok(output)
+        let Output::Signal(signal) = output else {
+            return Ok(output); // data: a later node uses it inline, so there is nothing to record
+        };
+        let Call {
+            signals,
+            inputs: mut given,
+            values,
+        } = checked;
+        let recipe = Recipe {
+            name: self.name().to_owned(),
+            values,
+            inputs: inputs
+                .iter()
+                .filter_map(|(input, _)| given.remove_entry(input.name()))
+                .collect(),
+            signal: signals.into_iter().next(),
+        };
+        Ok(Output::Signal(Signal::recorded(recipe, signal)))
     }
 
     /// Who defined it.

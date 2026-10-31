@@ -4,6 +4,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::Error;
+use crate::registry::Recipe;
 
 /// What a node's read gives: its error boxed, so a frame of a read (which recurses as deep as the graph) holds a
 /// pointer, not an [`Error`], for each `?`.
@@ -18,6 +19,11 @@ pub(crate) trait Node: fmt::Debug {
     /// How many nodes deep the graph is from this one, counting it: 1 for a node without inputs. A read and a drop
     /// recurse this deep, so `Signal` refuses to build a graph deeper than its `MAX_DEPTH`.
     fn depth(&self) -> usize;
+
+    /// How the registry made this node's signal, if it did: only a recorded node has a recipe.
+    fn recipe(&self) -> Option<&Recipe> {
+        None
+    }
 }
 
 /// The same value at every time.

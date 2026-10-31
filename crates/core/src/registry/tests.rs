@@ -1173,3 +1173,170 @@ fn a_shaper_piped_with_parameters_that_break_a_rule_is_refused_naming_their_type
     assert_eq!(named, ("bullterrier_control::builtin::slew::Params", vec!["rise"]));
     Ok(())
 }
+
+/// The signal `output` holds, or why there is none.
+fn signal(output: Result<Output, Error>) -> Result<Signal, Error> {
+    match output? {
+        Output::Signal(signal) => Ok(signal),
+        other => Err(Error::Signal {
+            message: format!("not a signal: {other:?}"),
+        }),
+    }
+}
+
+#[test]
+fn a_signal_made_through_the_registry_carries_its_recipe() -> Result<(), Error> {
+    use crate::{FromValues, Interpolation};
+
+    let step = Signal::from_values(&[0.0, 1.0], 10.0, FromValues::default(), Interpolation::Hold)?;
+    let slew = Registry::builtin().get("slew")?;
+    let slewed = signal(slew.call(&Call {
+        signals: vec![step.clone()],
+        values: json!({"rise": 0.5, "rate": 10.0}),
+        ..Call::default()
+    }))?;
+    let recipe = slewed.recipe();
+    // the values as the table read them: every field, `fall` at its default
+    assert_eq!(
+        recipe.map(|recipe| (recipe.name.as_str(), recipe.values.clone(), recipe.inputs.len())),
+        Some(("slew", json!({"rise": 0.5, "fall": 0.1, "rate": 10.0}), 0))
+    );
+    // the signal it shaped, which reads as the step
+    let shaped = recipe
+        .and_then(|recipe| recipe.signal.as_ref())
+        .map(|input| input.sample(&[0.0, 0.1]));
+    assert_eq!(shaped.transpose()?, Some(vec![0.0, 1.0]));
+    // it reads as the shaper's signal: 0.1 s a sample, 0.5 s to climb by 1, 0.2 a sample
+    assert_eq!(slewed.sample(&[0.0, 0.1, 0.2])?, [0.0, 0.2, 0.4]);
+
+    // a shaper of a recorded signal: each keeps its own, the upstream one through `signal`
+    let followed = signal(Registry::builtin().get("follow")?.call(&Call {
+        signals: vec![slewed],
+        ..Call::default()
+    }))?;
+    let names: Vec<&str> = std::iter::successors(followed.recipe(), |recipe| {
+        recipe.signal.as_ref().and_then(Signal::recipe)
+    })
+    .map(|recipe| recipe.name.as_str())
+    .collect();
+    assert_eq!(names, ["follow", "slew"]);
+    Ok(())
+}
+
+#[test]
+fn a_recipe_keeps_the_inputs_in_the_order_the_thing_declares_them() -> Result<(), Error> {
+    let about = About {
+        name: "track".to_owned(),
+        ..About::default()
+    };
+    let declared = Declared {
+        kind: Kind::Source,
+        identity: "tests.track".to_owned(),
+        table: ParamTable::new(vec![switch("on")]).map_err(|error| Error::params("track", error))?,
+        inputs: vec![
+            (InputKind::Values, true),
+            (InputKind::Events, false),
+            (InputKind::Grid, false),
+        ],
+        returns: Returns::Signal,
+    };
+    let track = Thing::custom(about, declared, |_call| Ok(Output::Signal(Signal::constant(0.5)?)))?;
+    let values = Input::from_values(vec![0.25, 0.75])?;
+    let kicks = Input::from_events(events(&[1.0])?);
+    let call = Call {
+        inputs: [
+            ("events".to_owned(), kicks.clone()),
+            ("values".to_owned(), values.clone()),
+        ]
+        .into(),
+        ..Call::default()
+    };
+    let tracked = signal(track.call(&call))?;
+    let recipe = tracked.recipe();
+    assert_eq!(
+        recipe.map(|recipe| (recipe.inputs.clone(), recipe.values.clone(), recipe.signal.is_none())),
+        Some((
+            vec![("values".to_owned(), values), ("events".to_owned(), kicks)],
+            json!({"on": true}),
+            true
+        ))
+    );
+    Ok(())
+}
+
+#[test]
+fn a_signal_made_any_other_way_has_no_recipe() -> Result<(), Error> {
+    use crate::builtin::slew;
+
+    let level = Signal::constant(0.5)?;
+    let echo = Signal::from_fn(|times, out| {
+        out.copy_from_slice(times);
+        Ok::<(), std::fmt::Error>(())
+    });
+    let made = [
+        level.clone(),
+        echo.clone(),
+        &level + &echo,
+        level.slew(slew::Params::default())?,
+        level.pipe(slew::Params::default())?,
+    ];
+    assert!(made.iter().all(|signal| signal.recipe().is_none()));
+    // nor does a signal combined with a recorded one: the recipe is the recorded signal's, not its users'
+    let recorded = signal(Registry::builtin().get("slew")?.call(&Call {
+        signals: vec![level],
+        ..Call::default()
+    }))?;
+    assert!(recorded.recipe().is_some());
+    assert!((&recorded * 2.0).recipe().is_none());
+    Ok(())
+}
+
+#[test]
+fn a_recipe_does_not_count_toward_the_depth_of_a_graph() -> Result<(), Error> {
+    let mut deep = Signal::constant(0.0)?; // 1 deep
+    for _ in 3..crate::MAX_DEPTH {
+        deep = deep + 1.0;
+    }
+    // 998 deep; the shaper makes it 999, recorded or not, and one more node makes it 1000, the most there may be
+    let slewed = signal(Registry::builtin().get("slew")?.call(&Call {
+        signals: vec![deep],
+        values: json!({"rise": 0}),
+        ..Call::default()
+    }))?;
+    assert!(slewed.recipe().is_some());
+    assert_eq!((&slewed + 1.0).at(0.5)?, 998.0);
+    let refused = (slewed + 1.0 + 1.0).at(0.0);
+    assert!(matches!(&refused, Err(Error::Depth { .. })), "{refused:?}");
+    Ok(())
+}
+
+#[test]
+fn a_chain_of_recorded_signals_as_deep_as_there_may_be_reads_on_a_test_thread() -> Result<(), Error> {
+    // each call adds one node and its recipe: a read goes through both, 2 frames a level
+    let about = About {
+        name: "lift".to_owned(),
+        ..About::default()
+    };
+    let declared = Declared {
+        kind: Kind::Shaper,
+        identity: "tests.lift".to_owned(),
+        table: ParamTable::new(vec![]).map_err(|error| Error::params("lift", error))?,
+        inputs: vec![],
+        returns: Returns::Signal,
+    };
+    let lift = Thing::custom(about, declared, |call| match call.signals.as_slice() {
+        [input] => Ok(Output::Signal(input + 1.0)),
+        _ => Err(Error::Signal {
+            message: "one signal".to_owned(),
+        }),
+    })?;
+    let mut lifted = Signal::constant(0.0)?;
+    for _ in 1..crate::MAX_DEPTH {
+        lifted = signal(lift.call(&Call {
+            signals: vec![lifted],
+            ..Call::default()
+        }))?;
+    }
+    assert_eq!(lifted.sample(&[0.0, 5.0])?, [999.0, 999.0]);
+    Ok(())
+}
