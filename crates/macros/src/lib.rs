@@ -5,6 +5,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Literal, TokenStream as Tokens};
 use quote::{format_ident, quote};
+use syn::ext::IdentExt;
 use syn::meta::ParseNestedMeta;
 use syn::{Data, DeriveInput, Expr, Fields, Ident, Lit, Type, UnOp, parse_macro_input};
 
@@ -64,7 +65,8 @@ fn params(input: &DeriveInput) -> syn::Result<Tokens> {
     let name = &input.ident;
     let krate = quote!(::bullterrier_control::params);
     let idents: Vec<&Ident> = fields.iter().map(|field| &field.ident).collect();
-    let names: Vec<String> = idents.iter().map(ToString::to_string).collect();
+    // a raw identifier (`r#type`) is declared as the name it spells (`type`)
+    let names: Vec<String> = idents.iter().map(|ident| ident.unraw().to_string()).collect();
     let types: Vec<&Type> = fields.iter().map(|field| &field.ty).collect();
     let defaults = fields.iter().map(|field| match &field.default {
         // a string literal is the default of a `String` field
@@ -80,7 +82,7 @@ fn params(input: &DeriveInput) -> syn::Result<Tokens> {
             cyclic,
             ..
         } = field;
-        let text = ident.to_string();
+        let text = ident.unraw().to_string();
         let unit = field.unit.as_ref().map_or_else(
             || quote!(::core::option::Option::None),
             |unit| quote!(::core::option::Option::Some(#krate::ParamUnit::#unit)),

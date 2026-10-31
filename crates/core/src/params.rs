@@ -271,6 +271,13 @@ mod tests {
     struct Nothing;
 
     #[derive(Clone, Debug, PartialEq, Params)]
+    struct Keyword {
+        /// The kind of wave.
+        #[param(default = "sine")]
+        r#type: String,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Params)]
     struct Broken {
         #[param(default = 2.0, unit = Ratio, min = 0, max = 1)]
         strength: f64,
@@ -342,6 +349,23 @@ mod tests {
         ];
         assert_eq!(Sample::table()?.params(), expected.as_slice());
         assert!(std::ptr::eq(Sample::table()?, Sample::table()?), "built once");
+        Ok(())
+    }
+
+    #[test]
+    fn a_raw_identifier_field_is_declared_without_its_prefix() -> Result<(), ParamError> {
+        let names: Vec<&str> = Keyword::table()?
+            .params()
+            .iter()
+            .map(|param| param.name.as_str())
+            .collect();
+        assert_eq!(names, ["type"]);
+        assert_eq!(
+            Keyword::parse(&json!({"type": "saw"}))?,
+            Keyword {
+                r#type: "saw".to_owned()
+            }
+        );
         Ok(())
     }
 
