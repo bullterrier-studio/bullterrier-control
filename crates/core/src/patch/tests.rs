@@ -1326,6 +1326,31 @@ fn a_toml_patch_of_the_built_ins_builds_and_samples_with_rust_alone() -> Outcome
     Ok(())
 }
 
+#[test]
+fn a_toml_patch_makes_a_constant_and_selects_bundle_events_with_rust_alone() -> Outcome {
+    let text = r#"
+        format = "bullterrier-control/patch"
+        version = 1
+
+        [level]
+        use = "constant"
+        value = -2.5
+
+        [strong]
+        use = "select"
+        events = "events.kick"
+        threshold = 0.7
+    "#;
+    let built = Patch::from_toml(text)?.build(&bundle()?)?;
+    assert_eq!(signal(&built, "level")?.sample(&[0.0, 7.0])?, [-2.5, -2.5]);
+    let Some(Output::Events(strong)) = built.get("strong") else {
+        return Err("select gave no events".into());
+    };
+    // the kicks at 0.5 s (1.0), 1.0 s (0.6) and 1.5 s (1.0): the weak one is dropped
+    assert_eq!(strong.iter().map(Event::t).collect::<Vec<_>>(), [0.5, 1.5]);
+    Ok(())
+}
+
 // ---------------------------------------------------------------- property: a patch builds what calls by hand build
 
 /// A node of a generated chain: a shaper and its values (some may be out of range).
