@@ -198,7 +198,7 @@ impl InputKind {
             Self::Values => {
                 let mut rules = Values::new(&problems);
                 items::<Number, _>(data, |value| {
-                    rules.give(value.map(|Number(value)| value), &mut problems)
+                    rules.give(value.map(|Number(value)| value), &mut problems);
                 })
                 .map(|()| rules.end(&mut problems).map(Input::Values))
             }
