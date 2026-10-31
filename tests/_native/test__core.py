@@ -1,11 +1,8 @@
-"""The Rust extension's boundary, `_native._core`: what the core implements, what `render` reads and what it refuses,
-and the parameter tables (`parameters`, `parse_parameters`, `ParamTable`) the package's parameters are read through.
+"""The Rust extension's boundary, `_native._core`: the parameter tables (`parameters`, `parse_parameters`,
+`ParamTable`) the package's parameters are read through.
 
-An architecture test: the extension is internal (the package reaches it through `Rendered` and its parameter classes,
-and only this test calls it directly), and only it can say which shapers the Rust core implements. A refusal by
-`render` is a `ValueError`, a programming error: `Rendered` hands each shaper a 1-D, C-contiguous float64 array, and a
-shaper's parameters are validated before they get here; its rows run against `slew`, the first shaper the core
-implements. A table refuses a declaration or values with a `ParameterError` listing every rule broken.
+An architecture test: the extension is internal (the package reaches it through its parameter classes, and only this
+test calls it directly). A table refuses a declaration or values with a `ParameterError` listing every rule broken.
 """
 
 import math
@@ -18,55 +15,6 @@ import pytest
 from bullterrier_control import Series, registry
 from bullterrier_control._native import _core  # noqa: PLC2701  architecture: the boundary the shapers call
 from bullterrier_control.errors import FormatError, ParameterError
-
-SLEW = {"rise": 0.5, "fall": 0.5, "rate": 10.0}  # 0.1 s a sample, 0.2 a sample up or down
-STEP = np.array([0.0, 1.0, 1.0])
-
-
-def test_every_shaper_of_the_rust_core_is_a_registered_shaper():
-    assert set(_core.shapers()) <= set(registry.shapers())
-
-
-def test_a_shaper_renders_into_a_new_float64_array_leaving_its_input_as_it_was():
-    inputs = STEP.copy()
-    out = _core.render("slew", inputs, SLEW)
-    assert out.dtype == np.float64
-    assert out.tolist() == pytest.approx([0.0, 0.2, 0.4], abs=1e-12)
-    assert inputs.tolist() == STEP.tolist()
-
-
-def test_a_parameter_left_out_takes_its_default():
-    assert _core.render("slew", STEP, {"rise": 0.5, "rate": 10.0}).tolist() == pytest.approx([0.0, 0.2, 0.4], abs=1e-12)
-
-
-def test_no_samples_render_to_an_empty_float64_array():
-    out = _core.render("slew", np.zeros(0), SLEW)
-    assert out.dtype == np.float64
-    assert out.shape == (0,)
-
-
-@pytest.mark.parametrize(
-    ("name", "inputs", "params", "named"),
-    [
-        pytest.param("no_such_shaper", STEP, SLEW, "no_such_shaper", id="an unknown shaper is refused by its name"),
-        pytest.param("slew", [0.0, 1.0], SLEW, "numpy array", id="a list is refused: a numpy array only"),
-        pytest.param("slew", STEP.astype(np.float32), SLEW, "float64", id="float32 is refused: float64 only"),
-        pytest.param("slew", np.zeros((2, 3)), SLEW, "1-D", id="a 2-D array is refused: 1-D only"),
-        pytest.param("slew", np.zeros(6)[::2], SLEW, "C-contiguous", id="a strided view is refused: contiguous only"),
-        pytest.param("slew", STEP, {**SLEW, "depth": 1.0}, "depth", id="an extra parameter is refused by its name"),
-        pytest.param("slew", STEP, {**SLEW, "rise": 4000.0}, "rise", id="a value out of range is refused by name"),
-        pytest.param("slew", STEP, {**SLEW, "rate": 2**70}, "64 bits", id="an integer beyond 64 bits is refused"),
-        pytest.param("slew", STEP, {**SLEW, "rate": None}, "rate", id="None is not a number"),
-        pytest.param("slew", STEP, {**SLEW, "rate": (10.0,)}, "rate", id="a tuple is not a number"),
-        pytest.param("slew", STEP, {**SLEW, "rate": {1, 2}}, "parameter value", id="a set has no JSON form"),
-        pytest.param("slew", STEP, {**SLEW, "rate": True}, "rate", id="a bool is a boolean, not the number 1"),
-        pytest.param("slew", STEP, {**SLEW, "rise": float("nan")}, "finite", id="NaN has no JSON form"),
-    ],
-)
-def test_what_the_core_cannot_read_is_a_value_error_naming_the_rule(name, inputs, params, named):
-    with pytest.raises(ValueError, match=named):
-        _core.render(name, inputs, params)
-
 
 # ---- parameter tables ----
 
@@ -383,12 +331,12 @@ def nested(depth):
             DEEPEST + 1, ParameterError, "the default is not valid: nested too deeply", id="a default past the limit",
         ),
         pytest.param(
-            lambda value: _core.render("slew", STEP, {**SLEW, "rise": value}),
-            DEEPEST - 1, ValueError, "must be a number", id="render: the mapping is one level, a value at the limit",
+            lambda value: _core.shape("slew", _core.Constant(0.0), {"rise": value}),
+            DEEPEST - 1, ValueError, "must be a number", id="shape: the mapping is one level, a value at the limit",
         ),
         pytest.param(
-            lambda value: _core.render("slew", STEP, {**SLEW, "rise": value}),
-            DEEPEST, ValueError, "nested too deeply", id="render: a value past the limit",
+            lambda value: _core.shape("slew", _core.Constant(0.0), {"rise": value}),
+            DEEPEST, ValueError, "nested too deeply", id="shape: a value past the limit",
         ),
         pytest.param(
             lambda value: Series.parse({"rate": 1.0, "unit": "ratio", "values": value}),
@@ -433,8 +381,8 @@ except (BullterrierControlError, ValueError) as error:
                      id="a built-in, 1M deep"),
         pytest.param("_core.ParamTable([{'name': 'rate', 'kind': 'text', 'default': cyclic, 'doc': 'd'}], name='X')",
                      "ParameterError X: rate: the default is not valid: nested too deeply", id="a default, a cycle"),
-        pytest.param("_core.render('slew', __import__('numpy').zeros(3), {'rise': deep})", "ValueError",
-                     id="render, 1M deep"),
+        pytest.param("_core.shape('slew', _core.Constant(0.0), {'rise': deep})", "ValueError",
+                     id="shape, 1M deep"),
         pytest.param("Series.parse({'rate': 1.0, 'unit': 'ratio', 'values': cyclic})", "FormatError Series: values[0]",
                      id="a format, a cycle"),
         pytest.param("Series.parse({'rate': 1.0, 'unit': 'ratio', 'values': deep})", "FormatError Series: values[0]",
@@ -446,5 +394,5 @@ def test_a_cyclic_or_a_million_deep_value_is_refused_without_crashing(read, said
     done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", check=False)
     assert done.returncode == 0, done.stderr
     assert done.stdout.startswith(said), done.stdout
-    if "render" in read:
+    if "shape" in read:
         assert "nested too deeply" in done.stdout, done.stdout

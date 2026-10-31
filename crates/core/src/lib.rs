@@ -84,18 +84,12 @@ pub fn builtins() -> Vec<&'static str> {
     builtin::PARAMS.iter().map(|(name, _)| *name).collect()
 }
 
-/// The names of the shapers the core implements, sorted.
-#[must_use]
-pub fn shapers() -> Vec<&'static str> {
-    builtin::SHAPERS.iter().map(|(name, _)| *name).collect()
-}
-
 #[cfg(test)]
 mod builtin_table;
 
 #[cfg(test)]
 mod tests {
-    use super::{Error, FromValues, Interpolation, Signal, shape, shapers};
+    use super::{Error, FromValues, Interpolation, Signal, shape};
     use serde_json::json;
 
     fn slew_params() -> serde_json::Value {
@@ -129,13 +123,6 @@ mod tests {
             [0.0, 1.0]
         );
         Ok(())
-    }
-
-    #[test]
-    fn the_shapers_are_named_sorted() {
-        let names = shapers();
-        assert!(names.contains(&"slew"), "{names:?}");
-        assert!(names.is_sorted(), "{names:?}");
     }
 
     #[test]

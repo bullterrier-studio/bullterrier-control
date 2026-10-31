@@ -513,6 +513,12 @@ def test_shape_shapes_a_signal_with_a_shaper_of_the_core():
         pytest.param("slew", {"rise": "slow"}, ParameterError, "rise", id="a parameter of the wrong type"),
         pytest.param("slew", {"depth": 1.0}, ParameterError, "depth", id="an unknown parameter"),
         pytest.param("slew", {"rise": float("nan")}, ValueError, "finite", id="NaN has no JSON form"),
+        pytest.param("slew", {"rise": 4000.0}, ParameterError, "rise", id="a value out of its range"),
+        pytest.param("slew", {"rate": 2**70}, ValueError, "64 bits", id="an integer beyond 64 bits"),
+        pytest.param("slew", {"rate": None}, ParameterError, "rate", id="None is not a number"),
+        pytest.param("slew", {"rate": (10.0,)}, ParameterError, "rate", id="a tuple is not a number"),
+        pytest.param("slew", {"rate": True}, ParameterError, "rate", id="a bool is not the number 1"),
+        pytest.param("slew", {"rate": {1, 2}}, ValueError, "parameter value", id="a set has no JSON form"),
         pytest.param("wobble", {}, ValueError, "wobble", id="an unknown shaper"),
     ],
 )

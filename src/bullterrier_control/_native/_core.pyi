@@ -1,5 +1,5 @@
 # The stub of the Rust extension `bullterrier_control._native._core` (crates/python). The documentation is the
-# extension's own (`help(_core.render)`, `help(Event)`). The formats' classes are the package's
+# extension's own (`help(_core.shape)`, `help(Event)`). The formats' classes are the package's
 # (`bullterrier_control.Event`, ...): their `__module__` is `bullterrier_control`.
 
 from collections.abc import Callable, Mapping, Sequence
@@ -39,14 +39,10 @@ __all__ = [
     "more_than",
     "parameters",
     "parse_parameters",
-    "render",
     "shape",
-    "shapers",
     "uniform",
 ]
 
-def render(name: str, inputs: NDArray[np.float64], params: Mapping[str, object]) -> NDArray[np.float64]: ...
-def shapers() -> list[str]: ...
 def builtins() -> list[str]: ...
 def parameters(name: str) -> dict[str, dict[str, Any]]: ...
 def parse_parameters(name: str, values: Mapping[str, object]) -> dict[str, Any]: ...

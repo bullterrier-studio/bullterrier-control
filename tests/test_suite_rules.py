@@ -20,8 +20,8 @@ TESTS = Path(__file__).parent
 # (file relative to tests/, the offending name) -> why it is allowed. Every entry needs a reason a reviewer accepts.
 ALLOWED: dict[tuple[str, str], str] = {
     ("_native/test__core.py", "bullterrier_control._native"): (
-        "the boundary between the package and the Rust core: what `render` reads and refuses, and that every shaper "
-        "the core implements is a registered shaper (only the core can say which it implements)"
+        "the boundary between the package and the Rust core's parameter tables, which only the extension can "
+        "show before the package wraps them"
     ),
     ("_native/test__core_signal.py", "bullterrier_control._native"): (
         "the boundary the package's Signal, Constant and Rendered are built on: the GIL, threads, callbacks into "
