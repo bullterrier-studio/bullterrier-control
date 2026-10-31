@@ -28,6 +28,10 @@ def test_a_shaper_renders_into_a_new_float64_array_leaving_its_input_as_it_was()
     assert inputs.tolist() == STEP.tolist()
 
 
+def test_a_parameter_left_out_takes_its_default():
+    assert _core.render("slew", STEP, {"rise": 0.5, "rate": 10.0}).tolist() == pytest.approx([0.0, 0.2, 0.4], abs=1e-12)
+
+
 def test_no_samples_render_to_an_empty_float64_array():
     out = _core.render("slew", np.zeros(0), SLEW)
     assert out.dtype == np.float64
@@ -43,11 +47,11 @@ def test_no_samples_render_to_an_empty_float64_array():
         pytest.param("slew", np.zeros((2, 3)), SLEW, "1-D", id="a 2-D array is refused: 1-D only"),
         pytest.param("slew", np.zeros(6)[::2], SLEW, "C-contiguous", id="a strided view is refused: contiguous only"),
         pytest.param("slew", STEP, {**SLEW, "depth": 1.0}, "depth", id="an extra parameter is refused by its name"),
-        pytest.param("slew", STEP, {"rise": 0.5, "rate": 10.0}, "fall", id="a missing parameter is refused by name"),
+        pytest.param("slew", STEP, {**SLEW, "rise": 4000.0}, "rise", id="a value out of range is refused by name"),
         pytest.param("slew", STEP, {**SLEW, "rate": 2**70}, "signed 64-bit", id="an integer beyond 64 bits is refused"),
         pytest.param("slew", STEP, {**SLEW, "rate": None}, "NoneType", id="None has no JSON form"),
         pytest.param("slew", STEP, {**SLEW, "rate": (10.0,)}, "tuple", id="a tuple has no JSON form"),
-        pytest.param("slew", STEP, {**SLEW, "rate": True}, "boolean", id="a bool is a boolean, not the number 1"),
+        pytest.param("slew", STEP, {**SLEW, "rate": True}, "rate", id="a bool is a boolean, not the number 1"),
         pytest.param("slew", STEP, {**SLEW, "rise": float("nan")}, "not finite", id="NaN has no JSON form"),
     ],
 )

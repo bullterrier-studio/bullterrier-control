@@ -1,15 +1,21 @@
-//! `follow`: smooths its input with separate attack and release times. What it does is documented once, on the Python
-//! shaper.
+//! `follow`: smooths its input with separate attack and release times. Its parameters are declared here, once; what it
+//! does is documented once, on the Python shaper.
 
-use serde::Deserialize;
 
-/// The parameters of `follow` (`FollowParams` in Python), validated there.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Params {
-    attack: f64,
-    release: f64,
-    rate: f64,
+/// How quickly the output chases its input upward and downward.
+#[derive(Clone, Debug, PartialEq, crate::Params)]
+pub struct Params {
+    /// Seconds the output takes to close about two thirds (1 - 1/e) of the gap to a higher input; larger is slower. 0
+    /// follows a rise at once.
+    #[param(default = 0.01, unit = Seconds, min = 0, max = 3600)]
+    pub attack: f64,
+    /// Seconds the output takes to close about two thirds (1 - 1/e) of the gap to a lower input; larger is slower. 0
+    /// follows a fall at once.
+    #[param(default = 0.25, unit = Seconds, min = 0, max = 3600)]
+    pub release: f64,
+    /// Internal samples per second; the output is exact to one sample. Raising it is more exact and slower.
+    #[param(default = 1000.0, unit = Hertz, min = 10, max = 48000, advanced)]
+    pub rate: f64,
 }
 
 /// The share of the gap an input leaves after one step: `e^(-step / time)`, and none for a time of 0 (so the output is

@@ -43,6 +43,59 @@ pub struct Param {
     pub cyclic: bool,
 }
 
+impl Param {
+    /// A number's range as help text shows it, `min to max` (`0.5 to 3600`); `None` for a field that is not a number.
+    /// A whole number's ends print in full (`0 to 4294967295`); a decimal's like C's `%g`, at most six significant
+    /// digits and an exponent only when it is below `1e-4` or from `1e6` (`-1e+06 to 1e+06`).
+    ///
+    /// ```
+    /// let table = bullterrier_control::parameters("noise")?;
+    /// let ranges: Vec<Option<String>> = table.params().iter().map(|param| param.range_text()).collect();
+    /// assert_eq!(ranges[0], None); // shape
+    /// assert_eq!(ranges[1].as_deref(), Some("0.001 to 1000")); // rate
+    /// assert_eq!(ranges[2].as_deref(), Some("0 to 4294967295")); // seed
+    /// assert_eq!(ranges[3].as_deref(), Some("-1e+06 to 1e+06")); // low
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
+    #[must_use]
+    pub fn range_text(&self) -> Option<String> {
+        let (min, max) = (self.min?, self.max?);
+        let end = |value: f64| match self.kind {
+            Kind::Float => general(value),
+            _ => check::bound_json(&self.kind, value).to_string(),
+        };
+        Some(format!("{} to {}", end(min), end(max)))
+    }
+}
+
+/// `value` as C's `%g` writes it (and Python's `format(value, "g")`): six significant digits, trailing zeros dropped,
+/// an exponent (`e+06`, at least two digits) when the decimal exponent is below -4 or at least 6.
+fn general(value: f64) -> String {
+    if value == 0.0 {
+        return "0".to_owned();
+    }
+    // the exponent after rounding to six digits: `{:.5e}` is `d.ddddde<exponent>`
+    let scientific = format!("{value:.5e}");
+    let Some((mantissa, exponent)) = scientific.split_once('e') else {
+        return scientific;
+    };
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    let trimmed = |text: &str| -> String {
+        if text.contains('.') {
+            text.trim_end_matches('0').trim_end_matches('.').to_owned()
+        } else {
+            text.to_owned()
+        }
+    };
+    if (-4..6).contains(&exponent) {
+        let places = usize::try_from(5 - exponent).unwrap_or(0);
+        trimmed(&format!("{value:.places$}"))
+    } else {
+        let sign = if exponent < 0 { '-' } else { '+' };
+        format!("{}e{sign}{:02}", trimmed(mantissa), exponent.abs())
+    }
+}
+
 /// The parameters of one source, shaper or operation, every declaration checked. Built by [`ParamTable::new`] only.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParamTable {
@@ -642,6 +695,42 @@ mod tests {
             })
         );
         Ok(())
+    }
+
+    #[test]
+    fn a_numbers_range_reads_as_help_prints_it() {
+        let number = |kind: Kind, min: f64, max: f64| Param {
+            kind,
+            min: Some(min),
+            max: Some(max),
+            unit: Some(ParamUnit::Ratio),
+            ..amount()
+        };
+        // expected: Python's `format(x, "g")` for decimals (computed there), whole numbers in full
+        for (kind, min, max, expected) in [
+            (Kind::Float, 0.0, 1.0, "0 to 1"),
+            (Kind::Float, 0.5, 3600.0, "0.5 to 3600"),
+            (Kind::Float, 0.001, 48000.0, "0.001 to 48000"),
+            (Kind::Float, -1e6, 1e6, "-1e+06 to 1e+06"),
+            (Kind::Float, 0.0, 123_456.0, "0 to 123456"),
+            (Kind::Float, 0.0, 1_234_567.0, "0 to 1.23457e+06"),
+            (Kind::Float, 0.0001, 12345.678, "0.0001 to 12345.7"),
+            (Kind::Float, 1e-5, 2.5e-7, "1e-05 to 2.5e-07"),
+            (Kind::Float, 0.01, 999_999.5, "0.01 to 1e+06"),
+            (Kind::Float, -0.25, 0.99, "-0.25 to 0.99"),
+            (Kind::Whole, 0.0, 4_294_967_295.0, "0 to 4294967295"),
+            (Kind::Whole, 1.0, 64.0, "1 to 64"),
+            (Kind::Whole, -1_000_000.0, 1_000_000.0, "-1000000 to 1000000"),
+        ] {
+            assert_eq!(
+                number(kind, min, max).range_text().as_deref(),
+                Some(expected),
+                "{min} {max}"
+            );
+        }
+        for kind in [Kind::Switch, Kind::Text, choices(&["a", "b"])] {
+            assert_eq!(plain("x", kind.clone(), json!(null)).range_text(), None, "{kind:?}");
+        }
     }
 
     /// A valid field `f<index>` of any kind, its default inside its range.

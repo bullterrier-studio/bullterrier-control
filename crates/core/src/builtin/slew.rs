@@ -1,15 +1,19 @@
-//! `slew`: follows its input but climbs and falls no faster than `rise` and `fall` allow. What it does is documented
-//! once, on the Python shaper.
+//! `slew`: follows its input but climbs and falls no faster than `rise` and `fall` allow. Its parameters are declared here, once; what it
+//! does is documented once, on the Python shaper.
 
-use serde::Deserialize;
 
-/// The parameters of `slew` (`SlewParams` in Python), validated there.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Params {
-    rise: f64,
-    fall: f64,
-    rate: f64,
+/// How fast the output may climb and fall.
+#[derive(Clone, Debug, PartialEq, crate::Params)]
+pub struct Params {
+    /// Seconds the output takes to climb by 1; larger is slower. 0 follows a rise at once.
+    #[param(default = 0.1, unit = Seconds, min = 0, max = 3600)]
+    pub rise: f64,
+    /// Seconds the output takes to fall by 1; larger is slower. 0 follows a fall at once.
+    #[param(default = 0.1, unit = Seconds, min = 0, max = 3600)]
+    pub fall: f64,
+    /// Internal samples per second; the output is exact to one sample. Raising it is more exact and slower.
+    #[param(default = 1000.0, unit = Hertz, min = 10, max = 48000, advanced)]
+    pub rate: f64,
 }
 
 /// The slew-limited series: it starts at the first input and moves toward each next one by at most a sample's limit
