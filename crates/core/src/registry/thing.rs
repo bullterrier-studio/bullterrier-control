@@ -1,5 +1,7 @@
 //! [`Thing`]: one source, shaper or operation, its rules checked, what it says about itself, and its call.
 
+use std::any::TypeId;
+use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
 
@@ -7,7 +9,7 @@ use serde_json::{Map, Value, json};
 
 use super::repr::{python, quoted};
 use super::{
-    About, Call, Declared, Inputs as _, Kind, NODE_KEYS, Operation, Output, Recipe, Returns, Shaper, Source, is_name,
+    About, Call, Declared, Inputs, Kind, NODE_KEYS, Operation, Output, Recipe, Returns, Shaper, Source, is_name,
 };
 use crate::inputs::InputKind;
 use crate::params::{ParamTable, Values};
@@ -33,29 +35,78 @@ type Run = dyn Fn(&Call, &Values) -> Result<Output, Error> + Send + Sync;
 pub struct Thing(Arc<Inner>);
 
 struct Inner {
+    name: Cow<'static, str>,
     about: About,
     summary: String,
     kind: Kind,
-    identity: String,
-    table: ParamTable,
+    identity: Identity,
+    table: Cow<'static, ParamTable>,
     inputs: Vec<(InputKind, bool)>,
     returns: Returns,
     run: Box<Run>,
+}
+
+/// Who defined a thing: a Rust type (by its [`TypeId`]; its path only for messages, as a path need not be unique) or
+/// a callback's own identity ([`Declared::identity`]). Two identities are the same only if both are a type and the
+/// same type, or both are a callback's and the same text: a callback never passes for a Rust type.
+#[derive(Clone, Debug)]
+pub(super) enum Identity {
+    /// A Rust type, and its path.
+    Type(TypeId, &'static str),
+    /// A callback's identity.
+    Defined(String),
+}
+
+impl Identity {
+    /// The identity of the Rust type `T`.
+    fn of<T: 'static>() -> Self {
+        Self::Type(TypeId::of::<T>(), std::any::type_name::<T>())
+    }
+}
+
+impl PartialEq for Identity {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Type(one, _), Self::Type(other, _)) => one == other,
+            (Self::Defined(one), Self::Defined(other)) => one == other,
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for Identity {
+    /// The type's path, or the callback's identity.
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Type(_, path) => formatter.write_str(path),
+            Self::Defined(identity) => formatter.write_str(identity),
+        }
+    }
+}
+
+/// What a thing is made of before its rules are checked ([`Thing::checked`]).
+struct Parts {
+    name: Cow<'static, str>,
+    kind: Kind,
+    identity: Identity,
+    table: Cow<'static, ParamTable>,
+    inputs: Vec<(InputKind, bool)>,
+    returns: Returns,
 }
 
 impl fmt::Debug for Thing {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("Thing")
-            .field("name", &self.0.about.name)
+            .field("name", &self.0.name)
             .field("kind", &self.0.kind)
             .finish_non_exhaustive()
     }
 }
 
 impl Thing {
-    /// The source `T` under the name and doc `about` gives: its parameters are `T`'s table, its identity is `T`'s type,
-    /// and a call gives the signal [`Source::source`] makes of the values read into a `T`.
+    /// The source `T`, under its [`NAME`](Source::NAME), with the doc `about` gives: its parameters are `T`'s table,
+    /// its identity is `T`'s type, and a call gives the signal [`Source::source`] makes of the values read into a `T`.
     ///
     /// ```
     /// use bullterrier_control::registry::{About, Call, Output, Thing};
@@ -71,15 +122,17 @@ impl Thing {
     /// }
     ///
     /// impl Source for Level {
+    ///     const NAME: &'static str = "level";
+    ///
     ///     fn source(&self) -> Result<Signal, Error> {
     ///         Signal::constant(self.value)
     ///     }
     /// }
     ///
-    /// let level = Thing::source::<Level>(About { name: "level".into(), ..Default::default() })?;
+    /// let level = Thing::source::<Level>(About { doc: "A level that holds.".into(), ..Default::default() })?;
     /// let call = Call { values: json!({"value": -0.25}), ..Default::default() };
     /// let Output::Signal(signal) = level.call(&call)? else { panic!("a source gives a signal") };
-    /// assert_eq!(signal.at(1.0)?, -0.25);
+    /// assert_eq!((level.name(), signal.at(1.0)?), ("level", -0.25));
     /// # Ok::<(), Error>(())
     /// ```
     ///
@@ -87,33 +140,34 @@ impl Thing {
     /// [`Error::Registration`] if the thing breaks a rule of the [registry](super), [`Error::Params`] if `T`'s
     /// declaration breaks a rule of its table.
     pub fn source<T: Source>(about: About) -> Result<Self, Error> {
-        let declared = Self::declared::<T>(&about, Kind::Source, Vec::new(), Returns::Signal)?;
+        let parts = Self::parts::<T>(T::NAME, Kind::Source, Vec::new(), Returns::Signal)?;
         Self::checked(
             about,
-            declared,
+            parts,
             Box::new(|_, values| Ok(Output::Signal(T::from_values(values).source()?))),
         )
     }
 
-    /// The shaper `T` under the name and doc `about` gives: its parameters are `T`'s table, its identity is `T`'s type,
-    /// and a call gives the signal [`Shaper::shape`] makes of its signal with the values read into a `T`.
+    /// The shaper `T`, under its [`NAME`](Shaper::NAME), with the doc `about` gives: its parameters are `T`'s table,
+    /// its identity is `T`'s type, and a call gives the signal [`Shaper::shape`] makes of its signal with the values
+    /// read into a `T`.
     ///
     /// ```
     /// use bullterrier_control::builtin::slew;
     /// use bullterrier_control::registry::{About, Kind, Thing};
     ///
-    /// let mine = Thing::shaper::<slew::Params>(About { name: "my_slew".into(), ..Default::default() })?;
-    /// assert_eq!((mine.name(), mine.kind()), ("my_slew", Kind::Shaper));
+    /// let mine = Thing::shaper::<slew::Params>(About { doc: "Smooths it.".into(), ..Default::default() })?;
+    /// assert_eq!((mine.name(), mine.kind(), mine.summary()), ("slew", Kind::Shaper, "Smooths it."));
     /// # Ok::<(), bullterrier_control::Error>(())
     /// ```
     ///
     /// # Errors
     /// As [`Thing::source`].
     pub fn shaper<T: Shaper>(about: About) -> Result<Self, Error> {
-        let declared = Self::declared::<T>(&about, Kind::Shaper, Vec::new(), Returns::Signal)?;
+        let parts = Self::parts::<T>(T::NAME, Kind::Shaper, Vec::new(), Returns::Signal)?;
         Self::checked(
             about,
-            declared,
+            parts,
             Box::new(|call, values| match call.signals.as_slice() {
                 [input] => Ok(Output::Signal(T::from_values(values).shape(input)?)),
                 // `call` checked the count already
@@ -124,23 +178,23 @@ impl Thing {
         )
     }
 
-    /// The operation `T` under the name and doc `about` gives: its parameters are `T`'s table, its inputs
-    /// [`Operation::Inputs`]'s, what it gives [`Operation::RETURNS`], its identity `T`'s type; a call gives what
-    /// [`Operation::run`] makes of its inputs with the values read into a `T`.
+    /// The operation `T`, under its [`NAME`](Operation::NAME), with the doc `about` gives: its parameters are `T`'s
+    /// table, its inputs [`Operation::Inputs`]'s, what it gives [`Operation::RETURNS`], its identity `T`'s type; a
+    /// call gives what [`Operation::run`] makes of its inputs with the values read into a `T`.
     ///
     /// # Errors
     /// As [`Thing::source`].
     pub fn operation<T: Operation>(about: About) -> Result<Self, Error> {
-        let declared = Self::declared::<T>(&about, Kind::Operation, T::Inputs::DECLARED.to_vec(), T::RETURNS)?;
+        let parts = Self::parts::<T>(T::NAME, Kind::Operation, T::Inputs::DECLARED.to_vec(), T::RETURNS)?;
         Self::checked(
             about,
-            declared,
+            parts,
             Box::new(|call, values| T::from_values(values).run(T::Inputs::from_inputs(&call.inputs)?)),
         )
     }
 
-    /// The thing `about` says, declaring `declared`, whose body is `run`: how the Python package registers a thing
-    /// whose body is Python. `run` is called with the call as [`Thing::call`] checked it.
+    /// The thing `declared` says, with the doc `about` gives, whose body is `run`: how the Python package registers a
+    /// thing whose body is Python. `run` is called with the call as [`Thing::call`] checked it.
     ///
     /// # Errors
     /// [`Error::Registration`] if the thing breaks a rule of the [registry](super) (its name, a parameter's name, an
@@ -150,20 +204,37 @@ impl Thing {
         declared: Declared,
         run: impl Fn(&Call) -> Result<Output, Error> + Send + Sync + 'static,
     ) -> Result<Self, Error> {
-        Self::checked(about, declared, Box::new(move |call, _| run(call)))
+        let Declared {
+            name,
+            kind,
+            identity,
+            table,
+            inputs,
+            returns,
+        } = declared;
+        let parts = Parts {
+            name: Cow::Owned(name),
+            kind,
+            identity: Identity::Defined(identity),
+            table: Cow::Owned(table),
+            inputs,
+            returns,
+        };
+        Self::checked(about, parts, Box::new(move |call, _| run(call)))
     }
 
-    /// What the Rust type `T` declares as a thing of `kind`.
-    fn declared<T: Params>(
-        about: &About,
+    /// What the Rust type `T` declares as a thing of `kind` called `name`.
+    fn parts<T: Params + 'static>(
+        name: &'static str,
         kind: Kind,
         inputs: Vec<(InputKind, bool)>,
         returns: Returns,
-    ) -> Result<Declared, Error> {
-        Ok(Declared {
+    ) -> Result<Parts, Error> {
+        Ok(Parts {
+            name: Cow::Borrowed(name),
             kind,
-            identity: std::any::type_name::<T>().to_owned(),
-            table: T::table().map_err(|error| Error::params(&about.name, error))?.clone(),
+            identity: Identity::of::<T>(),
+            table: Cow::Borrowed(T::table().map_err(|error| Error::params(name, error))?),
             inputs,
             returns,
         })
@@ -171,19 +242,20 @@ impl Thing {
 
     /// The thing of these parts, if it keeps every rule of the [registry](super) but the taken name (which is the
     /// registry's to check): the one place those rules are checked.
-    fn checked(about: About, declared: Declared, run: Box<Run>) -> Result<Self, Error> {
-        let Declared {
+    fn checked(about: About, parts: Parts, run: Box<Run>) -> Result<Self, Error> {
+        let Parts {
+            name,
             kind,
             identity,
             table,
             inputs,
             returns,
-        } = declared;
-        let label = format!("{kind} {}", quoted(&about.name));
+        } = parts;
+        let label = format!("{kind} {}", quoted(&name));
         let refused = |rule: String| Error::Registration {
             message: format!("{label}: {rule}"),
         };
-        if !is_name(&about.name) {
+        if !is_name(&name) {
             return Err(refused(
                 "a name is lower case letters, digits and underscores, starting with a letter".to_owned(),
             ));
@@ -226,6 +298,7 @@ impl Thing {
             .collect::<Vec<_>>()
             .join(" ");
         Ok(Self(Arc::new(Inner {
+            name,
             about,
             summary,
             kind,
@@ -240,7 +313,7 @@ impl Thing {
     /// Its name.
     #[must_use]
     pub fn name(&self) -> &str {
-        &self.0.about.name
+        &self.0.name
     }
 
     /// Its kind.
@@ -341,6 +414,7 @@ impl Thing {
     #[must_use]
     pub fn help(&self) -> String {
         let Inner {
+            name,
             about,
             kind,
             table,
@@ -364,7 +438,7 @@ impl Thing {
         }
         takes.push("**values".to_owned());
         let mut lines = vec![
-            format!("{kind} {}({}) -> {returns}", about.name, takes.join(", ")),
+            format!("{kind} {name}({}) -> {returns}", takes.join(", ")),
             String::new(),
             about.doc.clone(),
             String::new(),
@@ -432,8 +506,27 @@ impl Thing {
     /// # Ok::<(), bullterrier_control::Error>(())
     /// ```
     pub fn call(&self, call: &Call) -> Result<Output, Error> {
+        self.called(call.clone())
+    }
+
+    /// The signal of `call`, by [`call`](Self::call): what a door that makes a signal gives.
+    pub(crate) fn signal(&self, call: Call) -> Result<Signal, Error> {
+        match self.called(call)? {
+            Output::Signal(signal) => Ok(signal),
+            // a thing that gives data takes no signal: `called` refuses a call of it with one first
+            other => Err(Error::Call {
+                message: format!("{} gave {}, not a signal", self.label(), other.returns()),
+            }),
+        }
+    }
+
+    /// The one door: [`call`](Self::call) of `call`, which it takes over. Every way of making a signal from a thing
+    /// comes here ([`Thing::call`], [`shape`](crate::shape), the typed doors [`shaped`] and [`sourced`]), so each
+    /// checks, runs, names and records alike.
+    fn called(&self, call: Call) -> Result<Output, Error> {
         let Inner {
             kind,
+            identity,
             table,
             inputs,
             returns,
@@ -474,9 +567,8 @@ impl Thing {
             .parse(&call.values)
             .map_err(|error| Error::params(self.name(), error))?;
         let checked = Call {
-            signals: call.signals.clone(),
-            inputs: call.inputs.clone(),
             values: values.clone().into_json(),
+            ..call
         };
         let output = run(&checked, &values)?;
         if output.returns() != *returns {
@@ -501,22 +593,77 @@ impl Thing {
                 .filter_map(|(input, _)| given.remove_entry(input.name()))
                 .collect(),
             signal: signals.into_iter().next(),
+            made_by: (*kind, identity.clone()),
         };
         Ok(Output::Signal(Signal::recorded(recipe, signal)?))
     }
 
     /// Who defined it.
-    pub(super) fn identity(&self) -> &str {
+    pub(super) fn identity(&self) -> &Identity {
         &self.0.identity
     }
 
     /// Whether `other` is this thing registered again: the same kind and identity.
     pub(super) fn is_same(&self, other: &Self) -> bool {
-        (self.0.kind, &self.0.identity) == (other.0.kind, &other.0.identity)
+        self.is(other.0.kind, &other.0.identity)
+    }
+
+    /// Whether this thing is of `kind` and defined as `identity`.
+    pub(super) fn is(&self, kind: Kind, identity: &Identity) -> bool {
+        self.0.kind == kind && self.0.identity == *identity
     }
 
     /// The thing as an error names it: its kind and its name as Python writes it (`shaper 'slew'`).
     pub(super) fn label(&self) -> String {
         format!("{} {}", self.0.kind, quoted(self.name()))
     }
+}
+
+/// The signal the shaper `shaper` makes of `input`, through the one door of the thing `T` is
+/// ([`Thing::shaper`]): what [`Signal::pipe`] and a typed method ([`Signal::slew`]) give.
+///
+/// # Errors
+/// As [`Thing::call`], and [`Error::Registration`] if `T` breaks a rule of the [registry](super).
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "a door takes its thing as the caller writes it, a literal: `glow.pipe(Fold { depth: 0.5 })`"
+)]
+pub(crate) fn shaped<T: Shaper>(shaper: T, input: &Signal) -> Result<Signal, Error> {
+    typed(&Thing::shaper::<T>(About::default())?, vec![input.clone()], (), &shaper)
+}
+
+/// The signal the source `source` makes, through the one door of the thing `T` is ([`Thing::source`]): what a
+/// `lib` function gives.
+///
+/// # Errors
+/// As [`shaped`].
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "a door takes its thing as the caller writes it, a literal: `lib::constant(constant::Params { .. })`"
+)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the `lib` function of the first source the core runs calls it (R4b, `constant`)"
+    )
+)]
+pub(crate) fn sourced<T: Source>(source: T) -> Result<Signal, Error> {
+    typed(&Thing::source::<T>(About::default())?, Vec::new(), (), &source)
+}
+
+/// The signal `thing` makes of typed arguments: each lowered to what a call by name gives (`inputs` by
+/// [`Inputs::into_inputs`](super::Inputs::into_inputs), `params` by [`Params::to_value`]) and made through the one
+/// door, so the body is given back exactly what the recipe records.
+fn typed(thing: &Thing, signals: Vec<Signal>, inputs: impl Inputs, params: &impl Params) -> Result<Signal, Error> {
+    let inputs = inputs
+        .into_inputs()?
+        .into_iter()
+        .map(|input| (input.kind().name().to_owned(), input))
+        .collect();
+    thing.signal(Call {
+        signals,
+        inputs,
+        values: params.to_value(),
+    })
 }

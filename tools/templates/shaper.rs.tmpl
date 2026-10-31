@@ -2,7 +2,7 @@
 //!
 //! <What it promises in more words: what `help()` shows after the summary.>
 
-use crate::{Error, Params as _, Shaper, Signal};
+use crate::{Error, Shaper, Signal};
 
 /// <What the parameters of $name set.>
 #[derive(Clone, Copy, Debug, PartialEq, crate::Params)]
@@ -13,7 +13,8 @@ pub struct Params {
 }
 
 impl Signal {
-    /// This signal shaped by `params`: the shaper [`$name`](super).
+    /// This signal shaped by `params`: the shaper [`$name`](super), as [`pipe`](Signal::pipe) of `params` makes it
+    /// (checked, named and recorded alike).
     ///
     /// ```
     /// use bullterrier_control::builtin::$name;
@@ -27,14 +28,16 @@ impl Signal {
     /// ```
     ///
     /// # Errors
-    /// [`Error::Params`] listing every rule `params` breaks (a field out of its range or not finite).
+    /// As [`Signal::pipe`]: [`Error::Params`] under the name `$name` listing every rule `params` breaks (a field out
+    /// of its range or not finite).
     pub fn $name(&self, params: Params) -> Result<Signal, Error> {
-        let params = params.check().map_err(|error| Error::params("$name", error))?;
-        params.shape(self)
+        self.pipe(params)
     }
 }
 
 impl Shaper for Params {
+    const NAME: &'static str = "$name";
+
     /// `input` with these parameters applied. Replace the body; a shaper that needs history is a `Signal::rendered`
     /// over a causal recurrence instead (`slew.rs` is the model).
     fn shape(&self, input: &Signal) -> Result<Signal, Error> {

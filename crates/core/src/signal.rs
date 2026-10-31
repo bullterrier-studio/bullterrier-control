@@ -262,8 +262,10 @@ impl Signal {
         Ok(Self::from_series(&series, interpolation))
     }
 
-    /// This signal through `shaper`, its parameters checked first ([`Params::check`](crate::Params::check)): any [`Shaper`], built-in or a
-    /// plugin's, goes into a chain the same way.
+    /// This signal through `shaper`: any [`Shaper`], built-in or a plugin's, goes into a chain the same way, by the
+    /// one door of the [registry](crate::registry). The result is what [`Thing::call`](crate::registry::Thing::call)
+    /// of the thing `T` is gives with `shaper`'s values: checked by its table, refused under its `NAME`, and carrying
+    /// its [`recipe`](Self::recipe).
     ///
     /// ```
     /// use bullterrier_control::builtin::slew;
@@ -272,22 +274,18 @@ impl Signal {
     /// let step = Signal::from_values(&[0.0, 1.0], 10.0, FromValues::default(), Interpolation::Hold)?;
     /// let ramp = step.pipe(slew::Params { rise: 0.5, fall: 0.5, rate: 10.0 })?;
     /// assert_eq!(ramp.sample(&[0.0, 0.1, 0.2])?, [0.0, 0.2, 0.4]);
-    /// assert!(step.pipe(slew::Params { rise: -1.0, ..Default::default() }).is_err());
+    /// assert_eq!(ramp.recipe().map(|recipe| recipe.name.as_str()), Some("slew"));
+    /// let refused = step.pipe(slew::Params { rise: -1.0, ..Default::default() }).map_err(|error| error.to_string());
+    /// assert_eq!(refused.err().as_deref(), Some(r#"the parameters of "slew" do not fit: rise: must be >= 0.0 (got -1.0)"#));
     /// # Ok::<(), bullterrier_control::Error>(())
     /// ```
     ///
     /// # Errors
-    /// [`Error::Params`] listing every rule the parameters break, under the name of their type; whatever error the
-    /// shaper gives.
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "a shaper is given as a literal, as the chain reads: `glow.pipe(Fold { depth: 0.5 })`"
-    )]
+    /// As [`Thing::call`](crate::registry::Thing::call): [`Error::Params`] under `T`'s `NAME` listing every rule the
+    /// parameters break, [`Error::Depth`], whatever error the shaper gives; and [`Error::Registration`] if `T` breaks
+    /// a rule of the registry (its `NAME` is not a name, a parameter has an input's name).
     pub fn pipe<T: Shaper>(&self, shaper: T) -> Result<Signal, Error> {
-        let shaper = shaper
-            .check()
-            .map_err(|error| Error::params(std::any::type_name::<T>(), error))?;
-        shaper.shape(self)
+        crate::registry::shaped(shaper, self)
     }
 
     /// The values at `times` (seconds, in any order), one for each.
@@ -398,8 +396,10 @@ impl Signal {
         Ok(value)
     }
 
-    /// How the registry made this signal ([`Thing::call`](crate::registry::Thing::call)), if it did: a signal made
-    /// any other way (a typed shaper, an operator, [`Signal::from_fn`]) has none.
+    /// How this signal was made from a thing of the [registry](crate::registry), through any of its doors
+    /// ([`Thing::call`](crate::registry::Thing::call), [`pipe`](Self::pipe), a typed method such as
+    /// [`slew`](Self::slew), a [`lib`](crate::lib) function), if it was: a signal made any other way (an operator,
+    /// [`Signal::from_fn`], [`Signal::rendered`]) has none.
     ///
     /// ```
     /// use bullterrier_control::registry::{Call, Output, Registry};

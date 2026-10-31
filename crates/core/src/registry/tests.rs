@@ -69,12 +69,12 @@ fn thing(
     returns: Returns,
 ) -> Result<Thing, Error> {
     let about = About {
-        name: name.to_owned(),
         doc: format!("The thing {name}."),
         ..About::default()
     };
     let table = ParamTable::new(params).map_err(|error| Error::params(name, error))?;
     let declared = Declared {
+        name: name.to_owned(),
         kind,
         identity: identity.to_owned(),
         table,
@@ -313,11 +313,11 @@ fn a_thing_gets_in_only_if_it_keeps_every_rule() {
 fn a_name_is_taken_by_another_thing_but_not_by_the_same_one_registered_again() -> Result<(), Error> {
     let source = |identity: &str, doc: &str| -> Result<Thing, Error> {
         let about = About {
-            name: "level".to_owned(),
             doc: doc.to_owned(),
             ..About::default()
         };
         let declared = Declared {
+            name: "level".to_owned(),
             kind: Kind::Source,
             identity: identity.to_owned(),
             table: ParamTable::new(vec![]).map_err(|error| Error::params("level", error))?,
@@ -561,11 +561,9 @@ fn a_call_is_checked_before_the_thing_runs() -> Result<(), Error> {
 fn the_thing_gets_its_parameters_as_the_table_read_them_and_only_its_inputs() -> Result<(), Error> {
     let mut phase = number("phase", 0.25, ParamUnit::Cycles, (0.0, 1.0));
     phase.cyclic = true;
-    let about = About {
-        name: "phase".to_owned(),
-        ..About::default()
-    };
+    let about = About::default();
     let declared = Declared {
+        name: "phase".to_owned(),
         kind: Kind::Source,
         identity: "tests.phase".to_owned(),
         table: ParamTable::new(vec![phase, switch("on")]).map_err(|error| Error::params("phase", error))?,
@@ -611,11 +609,9 @@ impl std::error::Error for Broke {}
 
 #[test]
 fn an_error_of_the_body_reaches_the_caller_unchanged() -> Result<(), Error> {
-    let about = About {
-        name: "broken".to_owned(),
-        ..About::default()
-    };
+    let about = About::default();
     let declared = Declared {
+        name: "broken".to_owned(),
         kind: Kind::Source,
         identity: "tests.broken".to_owned(),
         table: ParamTable::new(vec![]).map_err(|error| Error::params("broken", error))?,
@@ -642,11 +638,9 @@ fn an_error_of_the_body_reaches_the_caller_unchanged() -> Result<(), Error> {
 
 #[test]
 fn a_thing_that_gives_another_kind_of_result_than_it_returns_is_refused() -> Result<(), Error> {
-    let about = About {
-        name: "liar".to_owned(),
-        ..About::default()
-    };
+    let about = About::default();
     let declared = Declared {
+        name: "liar".to_owned(),
         kind: Kind::Operation,
         identity: "tests.liar".to_owned(),
         table: ParamTable::new(vec![]).map_err(|error| Error::params("liar", error))?,
@@ -665,11 +659,11 @@ fn a_thing_that_gives_another_kind_of_result_than_it_returns_is_refused() -> Res
 #[test]
 fn a_thing_answers_what_it_is_takes_and_gives() -> Result<(), String> {
     let about = About {
-        name: "pick".to_owned(),
         doc: "The events\n  kept, in   order.\n\nEach one unchanged.".to_owned(),
         ..About::default()
     };
     let declared = Declared {
+        name: "pick".to_owned(),
         kind: Kind::Operation,
         identity: "tests.pick".to_owned(),
         table: table(vec![switch("on"), switch("loud")])?,
@@ -713,6 +707,7 @@ fn help_shows_the_call_the_doc_the_inputs_and_each_parameter_in_its_own_terms() 
         phase,
     ];
     let declared = Declared {
+        name: "pick".to_owned(),
         kind: Kind::Operation,
         identity: "tests.pick".to_owned(),
         table: table(params)?,
@@ -720,7 +715,6 @@ fn help_shows_the_call_the_doc_the_inputs_and_each_parameter_in_its_own_terms() 
         returns: Returns::Events,
     };
     let about = About {
-        name: "pick".to_owned(),
         doc: "The events kept.\n\nEach one unchanged.".to_owned(),
         ..About::default()
     };
@@ -758,11 +752,11 @@ Parameters:
 fn help_of_a_thing_without_inputs_parameters_or_a_doc_is_its_call() -> Result<(), String> {
     let help = |kind, doc: &str, params| -> Result<String, String> {
         let about = About {
-            name: "lift".to_owned(),
             doc: doc.to_owned(),
             ..About::default()
         };
         let declared = Declared {
+            name: "lift".to_owned(),
             kind,
             identity: "tests.lift".to_owned(),
             table: table(params)?,
@@ -825,16 +819,14 @@ fn help_writes_each_default_as_python_writes_the_value() -> Result<(), String> {
     ];
     for (param, written) in rows {
         let declared = Declared {
+            name: "level".to_owned(),
             kind: Kind::Source,
             identity: "tests.level".to_owned(),
             table: table(vec![param])?,
             inputs: vec![],
             returns: Returns::Signal,
         };
-        let about = About {
-            name: "level".to_owned(),
-            ..About::default()
-        };
+        let about = About::default();
         let help = Thing::custom(about, declared, echo)
             .map_err(|error| error.to_string())?
             .help();
@@ -853,12 +845,12 @@ fn a_description_is_what_the_python_package_lists() -> Result<(), String> {
     let mut rate = number("rate", 1000.0, ParamUnit::Hertz, (10.0, 48000.0));
     rate.advanced = true;
     let about = About {
-        name: "pick".to_owned(),
         doc: "The events kept.\n\nEach one unchanged.".to_owned(),
         params_title: "PickParams".to_owned(),
         params_doc: "Which events to keep.".to_owned(),
     };
     let declared = Declared {
+        name: "pick".to_owned(),
         kind: Kind::Operation,
         identity: "tests.pick".to_owned(),
         table: table(vec![rate])?,
@@ -911,11 +903,9 @@ fn calls_from_many_threads_run_their_callbacks_at_the_same_time() -> Result<(), 
     // the others need (a hard deadline turns a lock held across the callback into a failure, not a hang)
     let arrived = Arc::new((Mutex::new(0_usize), Condvar::new()));
     let gate = Arc::clone(&arrived);
-    let about = About {
-        name: "together".to_owned(),
-        ..About::default()
-    };
+    let about = About::default();
     let declared = Declared {
+        name: "together".to_owned(),
         kind: Kind::Source,
         identity: "tests.together".to_owned(),
         table: ParamTable::new(vec![]).map_err(|error| Error::params("together", error))?,
@@ -1050,6 +1040,7 @@ struct First {
 }
 
 impl crate::Operation for First {
+    const NAME: &'static str = "first";
     type Inputs = Vec<Event>;
     const RETURNS: Returns = Returns::Events;
 
@@ -1065,6 +1056,7 @@ impl crate::Operation for First {
 struct Beats {}
 
 impl crate::Operation for Beats {
+    const NAME: &'static str = "beats";
     type Inputs = Option<Grid>;
     const RETURNS: Returns = Returns::Events;
 
@@ -1085,12 +1077,11 @@ fn times(output: Result<Output, Error>) -> Result<Vec<f64>, String> {
 
 #[test]
 fn a_rust_operation_takes_its_inputs_by_their_kinds() -> Result<(), Error> {
-    let about = |name: &str| About {
-        name: name.to_owned(),
+    let about = || About {
         doc: "Keeps some.".to_owned(),
         ..About::default()
     };
-    let first = Thing::operation::<First>(about("first"))?;
+    let first = Thing::operation::<First>(about())?;
     assert_eq!(
         (first.kind(), first.returns(), first.inputs()),
         (Kind::Operation, Returns::Events, &[(InputKind::Events, true)][..])
@@ -1118,7 +1109,7 @@ fn a_rust_operation_takes_its_inputs_by_their_kinds() -> Result<(), Error> {
         Err("operation 'first' needs the input 'events'".to_owned())
     );
 
-    let beats = Thing::operation::<Beats>(about("beats"))?;
+    let beats = Thing::operation::<Beats>(about())?;
     assert_eq!(beats.inputs(), [(InputKind::Grid, false)]);
     assert!(
         beats
@@ -1134,43 +1125,6 @@ fn a_rust_operation_takes_its_inputs_by_their_kinds() -> Result<(), Error> {
     };
     assert_eq!(times(beats.call(&call)), Ok(vec![0.0, 0.5, 1.0]));
     assert_eq!(times(beats.call(&Call::default())), Ok(vec![]));
-    Ok(())
-}
-
-#[test]
-fn a_rust_thing_is_identified_by_its_type() -> Result<(), Error> {
-    use crate::builtin::{follow, slew};
-
-    let about = About {
-        name: "slew".to_owned(),
-        ..About::default()
-    };
-    let mut registry = Registry::builtin().clone();
-    // slew's type again: a reload
-    registry.register(Thing::shaper::<slew::Params>(about.clone())?)?;
-    assert_eq!(
-        registration(registry.register(Thing::shaper::<follow::Params>(about)?)).as_deref(),
-        Some("shaper 'slew': the name is taken by the shaper defined as bullterrier_control::builtin::slew::Params")
-    );
-    Ok(())
-}
-
-#[test]
-fn a_shaper_piped_with_parameters_that_break_a_rule_is_refused_naming_their_type() -> Result<(), Error> {
-    use crate::builtin::slew;
-
-    let refused = Signal::constant(1.0)?.pipe(slew::Params {
-        rise: -1.0,
-        ..slew::Params::default()
-    });
-    let named = match &refused {
-        Err(Error::Params { shaper, problems, .. }) => (
-            shaper.as_str(),
-            problems.iter().map(|problem| problem.path.as_str()).collect(),
-        ),
-        _ => ("not a parameter error", vec![]),
-    };
-    assert_eq!(named, ("bullterrier_control::builtin::slew::Params", vec!["rise"]));
     Ok(())
 }
 
@@ -1225,11 +1179,9 @@ fn a_signal_made_through_the_registry_carries_its_recipe() -> Result<(), Error> 
 
 #[test]
 fn a_recipe_keeps_the_inputs_in_the_order_the_thing_declares_them() -> Result<(), Error> {
-    let about = About {
-        name: "track".to_owned(),
-        ..About::default()
-    };
+    let about = About::default();
     let declared = Declared {
+        name: "track".to_owned(),
         kind: Kind::Source,
         identity: "tests.track".to_owned(),
         table: ParamTable::new(vec![switch("on")]).map_err(|error| Error::params("track", error))?,
@@ -1266,8 +1218,6 @@ fn a_recipe_keeps_the_inputs_in_the_order_the_thing_declares_them() -> Result<()
 
 #[test]
 fn a_signal_made_any_other_way_has_no_recipe() -> Result<(), Error> {
-    use crate::builtin::slew;
-
     let level = Signal::constant(0.5)?;
     let echo = Signal::from_fn(|times, out| {
         out.copy_from_slice(times);
@@ -1277,8 +1227,9 @@ fn a_signal_made_any_other_way_has_no_recipe() -> Result<(), Error> {
         level.clone(),
         echo.clone(),
         &level + &echo,
-        level.slew(slew::Params::default())?,
-        level.pipe(slew::Params::default())?,
+        Signal::rendered(&level, crate::Rendering::default(), |inputs| {
+            Ok::<_, std::fmt::Error>(inputs.to_vec())
+        })?,
     ];
     assert!(made.iter().all(|signal| signal.recipe().is_none()));
     // nor does a signal combined with a recorded one: the recipe is the recorded signal's, not its users'
@@ -1313,11 +1264,9 @@ fn a_recipe_does_not_count_toward_the_depth_of_a_graph() -> Result<(), Error> {
 #[test]
 fn a_chain_of_recorded_signals_as_deep_as_there_may_be_reads_on_a_test_thread() -> Result<(), Error> {
     // each call adds one node and its recipe: a read goes through both, 2 frames a level
-    let about = About {
-        name: "lift".to_owned(),
-        ..About::default()
-    };
+    let about = About::default();
     let declared = Declared {
+        name: "lift".to_owned(),
         kind: Kind::Shaper,
         identity: "tests.lift".to_owned(),
         table: ParamTable::new(vec![]).map_err(|error| Error::params("lift", error))?,
@@ -1347,11 +1296,9 @@ fn bare(
     kind: Kind,
     run: impl Fn(&Call) -> Result<Output, Error> + Send + Sync + 'static,
 ) -> Result<Thing, Error> {
-    let about = About {
-        name: name.to_owned(),
-        ..About::default()
-    };
+    let about = About::default();
     let declared = Declared {
+        name: name.to_owned(),
         kind,
         identity: format!("tests.{name}"),
         table: ParamTable::new(vec![]).map_err(|error| Error::params(name, error))?,
@@ -1448,4 +1395,390 @@ fn a_recorded_signal_formats_as_its_thing_not_the_graph_upstream() -> Result<(),
         text.len()
     );
     Ok(())
+}
+
+/// A plugin's shaper of these tests, registered by its trait under a name that is not its type's path: what lies
+/// above 1 - `depth` is mirrored below it.
+#[derive(Clone, Debug, PartialEq, crate::Params)]
+struct Fold {
+    /// How far down from 1 the fold is.
+    #[param(default = 0.5, unit = Fraction, min = 0, max = 1)]
+    depth: f64,
+}
+
+impl crate::Shaper for Fold {
+    const NAME: &'static str = "fold";
+
+    fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+        let (line, input) = (1.0 - self.depth, input.clone());
+        Ok(Signal::from_fn(move |times, out| {
+            input.read_into(times, out)?;
+            for value in out.iter_mut() {
+                if *value > line {
+                    *value = 2.0 * line - *value;
+                }
+            }
+            Ok::<(), Error>(())
+        }))
+    }
+}
+
+/// A plugin's source of these tests: a level that holds.
+#[derive(Clone, Debug, PartialEq, crate::Params)]
+struct Level {
+    /// The value it holds.
+    #[param(default = 0.5, unit = Ratio, min = -1, max = 1)]
+    value: f64,
+}
+
+impl crate::Source for Level {
+    const NAME: &'static str = "level";
+
+    fn source(&self) -> Result<Signal, Error> {
+        Signal::constant(self.value)
+    }
+}
+
+/// What a door made, as the doors are compared: the signal's values at [`READ_AT`], its recipe (name, values, inputs,
+/// the upstream signal's values at [`READ_AT`], whether the thing of that name in the registry made it), and how long
+/// its `{:?}` is at most; or the error's text.
+type Made = Result<
+    (
+        Vec<f64>,
+        String,
+        serde_json::Value,
+        Vec<(String, Input)>,
+        Option<Vec<f64>>,
+        bool,
+        bool,
+    ),
+    String,
+>;
+
+/// The times a door's signal and its upstream are read at.
+const READ_AT: [f64; 4] = [0.0, 0.1, 0.2, 1.0];
+
+/// What `made` is, as [`Made`] compares it, against `registry`.
+fn made(made: Result<Signal, Error>, registry: &Registry) -> Made {
+    let text = |error: Error| error.to_string();
+    let signal = made.map_err(text)?;
+    let recipe = signal.recipe().ok_or("no recipe")?;
+    let upstream = recipe
+        .signal
+        .as_ref()
+        .map(|input| input.sample(&READ_AT))
+        .transpose()
+        .map_err(text)?;
+    let thing = registry.get(&recipe.name).map_err(text)?;
+    let bounded = format!("{signal:?}").len() < 200 && format!("{recipe:?}").len() < 600;
+    Ok((
+        signal.sample(&READ_AT).map_err(text)?,
+        recipe.name.clone(),
+        recipe.values.clone(),
+        recipe.inputs.clone(),
+        upstream,
+        recipe.made_by(thing),
+        bounded,
+    ))
+}
+
+/// A row of [`every_door_records_the_same_recipe_and_names_the_thing_alike`]: (thing, door, what it made).
+type DoorRow = (&'static str, &'static str, Result<Signal, Error>);
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "a row per thing and door, good and bad, and the hand-worked result of each"
+)]
+fn every_door_records_the_same_recipe_and_names_the_thing_alike() -> Result<(), Error> {
+    use crate::builtin::{follow, slew};
+    use crate::{FromValues, Interpolation, shape};
+
+    let mut registry = Registry::builtin().clone();
+    registry.register(Thing::shaper::<Fold>(About::default())?)?;
+    registry.register(Thing::source::<Level>(About::default())?)?;
+    // a step from 0 to 1 at 0.1 s, at 10 samples a second
+    let step = Signal::from_values(&[0.0, 1.0], 10.0, FromValues::default(), Interpolation::Hold)?;
+    let by_name = |name: &str, values: serde_json::Value| -> Result<Signal, Error> {
+        let signals = if name == "level" { vec![] } else { vec![step.clone()] };
+        signal(registry.get(name)?.call(&Call {
+            signals,
+            values,
+            ..Call::default()
+        }))
+    };
+    let slew = slew::Params {
+        rise: 0.5,
+        rate: 10.0,
+        ..slew::Params::default()
+    };
+    let follow = follow::Params {
+        attack: 0.0,
+        rate: 10.0,
+        ..follow::Params::default()
+    };
+    let bad_slew = slew::Params { rise: -1.0, ..slew };
+    let bad_follow = follow::Params {
+        attack: 4000.0,
+        ..follow
+    };
+    let good: Vec<DoorRow> = vec![
+        (
+            "slew",
+            "Thing::call",
+            by_name("slew", json!({"rise": 0.5, "rate": 10.0})),
+        ),
+        (
+            "slew",
+            "shape",
+            shape("slew", &step, &json!({"rise": 0.5, "rate": 10.0})),
+        ),
+        ("slew", "pipe", step.pipe(slew)),
+        ("slew", "typed method", step.slew(slew)),
+        (
+            "follow",
+            "Thing::call",
+            by_name("follow", json!({"attack": 0.0, "rate": 10.0})),
+        ),
+        (
+            "follow",
+            "shape",
+            shape("follow", &step, &json!({"attack": 0.0, "rate": 10.0})),
+        ),
+        ("follow", "pipe", step.pipe(follow)),
+        ("follow", "typed method", step.follow(follow)),
+        ("fold", "Thing::call", by_name("fold", json!({"depth": 0.25}))),
+        ("fold", "pipe", step.pipe(Fold { depth: 0.25 })),
+        ("level", "Thing::call", by_name("level", json!({}))),
+        ("level", "lib", super::sourced(Level::default())),
+    ];
+    let bad: Vec<DoorRow> = vec![
+        (
+            "slew",
+            "Thing::call",
+            by_name("slew", json!({"rise": -1.0, "rate": 10.0})),
+        ),
+        (
+            "slew",
+            "shape",
+            shape("slew", &step, &json!({"rise": -1.0, "rate": 10.0})),
+        ),
+        ("slew", "pipe", step.pipe(bad_slew)),
+        ("slew", "typed method", step.slew(bad_slew)),
+        (
+            "follow",
+            "Thing::call",
+            by_name("follow", json!({"attack": 4000.0, "rate": 10.0})),
+        ),
+        (
+            "follow",
+            "shape",
+            shape("follow", &step, &json!({"attack": 4000.0, "rate": 10.0})),
+        ),
+        ("follow", "pipe", step.pipe(bad_follow)),
+        ("follow", "typed method", step.follow(bad_follow)),
+        ("fold", "Thing::call", by_name("fold", json!({"depth": 2.0}))),
+        ("fold", "pipe", step.pipe(Fold { depth: 2.0 })),
+        ("level", "Thing::call", by_name("level", json!({"value": 2.0}))),
+        ("level", "lib", super::sourced(Level { value: 2.0 })),
+    ];
+    // worked out by hand: each recipe holds every field, a default where none was given
+    let expected = |thing: &str| -> (Made, String) {
+        let refused = |field: &str, rule: &str| format!("the parameters of {thing:?} do not fit: {field}: {rule}");
+        match thing {
+            // 0.1 s a sample, 0.5 s to climb by 1: 0.2 a sample, from the sample at 0.1 s
+            "slew" => (
+                Ok((
+                    vec![0.0, 0.2, 0.4, 1.0],
+                    "slew".to_owned(),
+                    json!({"rise": 0.5, "fall": 0.1, "rate": 10.0}),
+                    vec![],
+                    Some(vec![0.0, 1.0, 1.0, 1.0]),
+                    true,
+                    true,
+                )),
+                refused("rise", "must be >= 0.0 (got -1.0)"),
+            ),
+            // an instant attack: the output is the input
+            "follow" => (
+                Ok((
+                    vec![0.0, 1.0, 1.0, 1.0],
+                    "follow".to_owned(),
+                    json!({"attack": 0.0, "release": 0.25, "rate": 10.0}),
+                    vec![],
+                    Some(vec![0.0, 1.0, 1.0, 1.0]),
+                    true,
+                    true,
+                )),
+                refused("attack", "must be <= 3600.0 (got 4000.0)"),
+            ),
+            // the fold at 1 - 0.25: 1 is mirrored to 2 * 0.75 - 1 = 0.5
+            "fold" => (
+                Ok((
+                    vec![0.0, 0.5, 0.5, 0.5],
+                    "fold".to_owned(),
+                    json!({"depth": 0.25}),
+                    vec![],
+                    Some(vec![0.0, 1.0, 1.0, 1.0]),
+                    true,
+                    true,
+                )),
+                refused("depth", "must be <= 1.0 (got 2.0)"),
+            ),
+            _ => (
+                Ok((
+                    vec![0.5; 4],
+                    "level".to_owned(),
+                    json!({"value": 0.5}),
+                    vec![],
+                    None,
+                    true,
+                    true,
+                )),
+                refused("value", "must be <= 1.0 (got 2.0)"),
+            ),
+        }
+    };
+    for (thing, door, result) in good {
+        assert_eq!(made(result, &registry), expected(thing).0, "{thing} through {door}");
+    }
+    for (thing, door, result) in bad {
+        let text = result.map(|_| ()).map_err(|error| error.to_string());
+        assert_eq!(text, Err(expected(thing).1), "{thing} through {door}");
+    }
+    Ok(())
+}
+
+#[test]
+fn a_rust_thing_is_identified_by_its_type_not_by_its_path() -> Result<(), Error> {
+    // two types of one path (`type_name` cannot tell them apart), both calling themselves "twin"
+    let (first, first_made) = {
+        /// A twin.
+        #[derive(Clone, Debug, PartialEq, crate::Params)]
+        struct Twin {}
+        impl crate::Shaper for Twin {
+            const NAME: &'static str = "twin";
+            fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+                Ok(input * 2.0)
+            }
+        }
+        (
+            Thing::shaper::<Twin>(About::default())?,
+            Signal::constant(1.0)?.pipe(Twin {})?,
+        )
+    };
+    let (second, second_made) = {
+        /// The other twin.
+        #[derive(Clone, Debug, PartialEq, crate::Params)]
+        struct Twin {}
+        impl crate::Shaper for Twin {
+            const NAME: &'static str = "twin";
+            fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+                Ok(input * 3.0)
+            }
+        }
+        (
+            Thing::shaper::<Twin>(About::default())?,
+            Signal::constant(1.0)?.pipe(Twin {})?,
+        )
+    };
+    let mut registry = Registry::new();
+    registry.register(first.clone())?;
+    registry.register(first)?; // the same type again: a reload
+    assert_eq!(
+        registration(registry.register(second)).as_deref(),
+        Some(
+            "shaper 'twin': the name is taken by the shaper defined as \
+             bullterrier_control::registry::tests::a_rust_thing_is_identified_by_its_type_not_by_its_path::Twin"
+        )
+    );
+    // a recipe knows the very thing that made it, not just its name
+    let twin = registry.get("twin")?;
+    let made_by = |made: &Signal| made.recipe().is_some_and(|recipe| recipe.made_by(twin));
+    assert_eq!((made_by(&first_made), made_by(&second_made)), (true, false));
+    // a callback whose identity is a Rust type's path is another thing, and the other way round
+    let mut builtin = Registry::builtin().clone();
+    let posing = thing(
+        ("slew", "bullterrier_control::builtin::slew::Params"),
+        Kind::Shaper,
+        vec![],
+        &[],
+        Returns::Signal,
+    )?;
+    assert_eq!(
+        registration(builtin.register(posing.clone())).as_deref(),
+        Some("shaper 'slew': the name is taken by the shaper defined as bullterrier_control::builtin::slew::Params")
+    );
+    let mut callbacks = Registry::new();
+    callbacks.register(posing)?;
+    let rust = Thing::shaper::<crate::builtin::slew::Params>(About::default())?;
+    assert!(registration(callbacks.register(rust)).is_some());
+    Ok(())
+}
+
+#[test]
+fn a_rust_thing_whose_name_breaks_the_rule_is_refused_by_every_door() -> Result<(), Error> {
+    /// A shaper with a name that is not one.
+    #[derive(Clone, Debug, PartialEq, crate::Params)]
+    struct Loud {}
+    impl crate::Shaper for Loud {
+        const NAME: &'static str = "Loud";
+        fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+            Ok(input.clone())
+        }
+    }
+    let rule = format!("shaper 'Loud': {NAME_RULE}");
+    assert_eq!(
+        registration(Thing::shaper::<Loud>(About::default())).as_deref(),
+        Some(rule.as_str())
+    );
+    assert_eq!(
+        registration(Signal::constant(1.0)?.pipe(Loud {})).as_deref(),
+        Some(rule.as_str())
+    );
+    Ok(())
+}
+
+#[test]
+fn inputs_given_back_are_what_they_were_checked_into() -> Result<(), Error> {
+    use super::Inputs;
+    use crate::formats::{Series, SeriesOptions, Unit};
+    use crate::inputs::Keyframe;
+
+    let kicks = events(&[1.0, 0.5])?;
+    let grid = Grid::new(vec![0.0, 0.5], 4, 0).map_err(|source| Error::Format { source })?;
+    let series = Series::new(10.0, vec![0.0, 1.0], Unit::Ratio, SeriesOptions::default())
+        .map_err(|source| Error::Format { source })?;
+    let points = vec![Keyframe::at(0.0, 1.0), Keyframe::at(2.0, 0.0)];
+    // each kind, as `from_inputs` reads it back: events in time order, as an input holds them
+    assert_eq!(
+        <Vec<Event>>::from_inputs(&keyed(kicks.clone().into_inputs()?))?,
+        events(&[0.5, 1.0])?
+    );
+    assert_eq!(<Grid>::from_inputs(&keyed(grid.clone().into_inputs()?))?, grid);
+    assert_eq!(<Series>::from_inputs(&keyed(series.clone().into_inputs()?))?, series);
+    assert_eq!(
+        <Vec<Keyframe>>::from_inputs(&keyed(points.clone().into_inputs()?))?,
+        points
+    );
+    assert_eq!(<Vec<f64>>::from_inputs(&keyed(vec![0.25].into_inputs()?))?, vec![0.25]);
+    assert_eq!(
+        <Option<Grid>>::from_inputs(&keyed(Some(grid.clone()).into_inputs()?))?,
+        Some(grid)
+    );
+    assert_eq!(None::<Grid>.into_inputs()?, vec![]);
+    assert_eq!(().into_inputs()?, vec![]);
+    // checked by the input's rules on the way: a value that is not finite, keyframes out of order
+    assert!(matches!(vec![1.0, f64::NAN].into_inputs(), Err(Error::Input { .. })));
+    let backwards = vec![Keyframe::at(2.0, 0.0), Keyframe::at(1.0, 1.0)];
+    assert!(matches!(Some(backwards).into_inputs(), Err(Error::Input { .. })));
+    Ok(())
+}
+
+/// `inputs`, each under its kind's name.
+fn keyed(inputs: Vec<Input>) -> BTreeMap<String, Input> {
+    inputs
+        .into_iter()
+        .map(|input| (input.kind().name().to_owned(), input))
+        .collect()
 }

@@ -5,7 +5,7 @@
 
 use std::convert::Infallible;
 
-use crate::{Error, Params as _, Rendering, Shaper, Signal};
+use crate::{Error, Rendering, Shaper, Signal};
 
 /// How fast the output may climb and fall.
 #[derive(Clone, Copy, Debug, PartialEq, crate::Params)]
@@ -22,7 +22,8 @@ pub struct Params {
 }
 
 impl Signal {
-    /// This signal, climbing and falling no faster than `params` allow: the shaper [`slew`](super).
+    /// This signal, climbing and falling no faster than `params` allow: the shaper [`slew`](super), as
+    /// [`pipe`](Signal::pipe) of `params` makes it (checked, named and recorded alike).
     ///
     /// ```
     /// use bullterrier_control::builtin::slew;
@@ -37,14 +38,16 @@ impl Signal {
     /// ```
     ///
     /// # Errors
-    /// [`Error::Params`] listing every rule `params` breaks (a field out of its range or not finite).
+    /// As [`Signal::pipe`]: [`Error::Params`] under the name `slew` listing every rule `params` breaks (a field out
+    /// of its range or not finite).
     pub fn slew(&self, params: Params) -> Result<Signal, Error> {
-        let params = params.check().map_err(|error| Error::params("slew", error))?;
-        params.shape(self)
+        self.pipe(params)
     }
 }
 
 impl Shaper for Params {
+    const NAME: &'static str = "slew";
+
     /// Its causal recurrence over `input` sampled at `rate`, rendered as far as the reads need.
     fn shape(&self, input: &Signal) -> Result<Signal, Error> {
         let rendering = Rendering {

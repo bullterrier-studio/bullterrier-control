@@ -52,26 +52,16 @@ pub use signal::{FromValues, Interpolation, MAX_DEPTH, Rendering, Signal, maximu
 /// ```
 ///
 /// # Errors
-/// [`Error::UnknownShaper`] if the core runs no shaper of that name, [`Error::Params`] listing every rule `params`
-/// breaks (a field of another type, out of its range, or one the shaper does not have), and [`Error::Depth`] if the
-/// graph would be deeper than [`MAX_DEPTH`].
+/// As [`Registry::get`] and [`Thing::call`](registry::Thing::call): [`Error::UnknownName`] if the core runs nothing
+/// of that name, [`Error::Call`] if it is not a shaper (it takes no signal), [`Error::Params`] listing every rule
+/// `params` breaks (a field of another type, out of its range, or one the shaper does not have), and [`Error::Depth`]
+/// if the graph would be deeper than [`MAX_DEPTH`].
 pub fn shape(name: &str, input: &Signal, params: &serde_json::Value) -> Result<Signal, Error> {
-    let unknown = || Error::UnknownShaper { name: name.to_owned() };
-    let shaper = Registry::builtin()
-        .get(name)
-        .ok()
-        .filter(|thing| thing.kind() == registry::Kind::Shaper)
-        .ok_or_else(unknown)?;
-    let call = registry::Call {
+    Registry::builtin().get(name)?.signal(registry::Call {
         signals: vec![input.clone()],
         values: params.clone(),
         ..registry::Call::default()
-    };
-    match shaper.call(&call)? {
-        registry::Output::Signal(signal) => Ok(signal),
-        // a shaper gives a signal: its call checks it
-        _ => Err(unknown()),
-    }
+    })
 }
 
 /// The sources the core runs, as functions of their typed parameters (`lib::constant(constant::Params { .. })`), each
@@ -91,13 +81,16 @@ pub mod lib {
 /// ```
 ///
 /// # Errors
-/// [`Error::UnknownShaper`] if there is no built-in of that name (the name is the one asked for, whatever its kind),
-/// and [`Error::Params`] if its declaration breaks a rule (a bug in the core, which its tests rule out).
+/// [`Error::UnknownName`] listing the built-ins if there is none of that name, and [`Error::Params`] if its
+/// declaration breaks a rule (a bug in the core, which its tests rule out).
 pub fn parameters(name: &str) -> Result<&'static params::ParamTable, Error> {
     let (_, table) = builtin::PARAMS
         .iter()
         .find(|(built_in, _)| *built_in == name)
-        .ok_or_else(|| Error::UnknownShaper { name: name.to_owned() })?;
+        .ok_or_else(|| Error::UnknownName {
+            name: name.to_owned(),
+            available: builtins().into_iter().map(str::to_owned).collect(),
+        })?;
     table().map_err(|error| Error::params(name, error))
 }
 
@@ -149,11 +142,22 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_shaper_is_refused_by_name() {
-        let result = render("no_such_shaper", &slew_params());
+    fn a_name_the_core_runs_no_shaper_of_is_refused_as_the_registry_refuses_it() {
+        let unknown = "unknown source, shaper or operation 'no_such_shaper'; available: follow, slew";
+        for refused in [
+            render("no_such_shaper", &slew_params()).map(|_| ()),
+            crate::Registry::builtin().get("no_such_shaper").map(|_| ()),
+        ] {
+            assert_eq!(refused.map_err(|error| error.to_string()), Err(unknown.to_owned()));
+        }
+        // a built-in's table asked for by a name with none
+        let table = super::parameters("no_such_thing")
+            .map(|_| ())
+            .map_err(|error| error.to_string());
         assert!(
-            matches!(&result, Err(Error::UnknownShaper { name }) if name == "no_such_shaper"),
-            "{result:?}"
+            table.as_ref().is_err_and(|text| text
+                .starts_with("unknown source, shaper or operation 'no_such_thing'; available: beats, clip, constant,")),
+            "{table:?}"
         );
     }
 

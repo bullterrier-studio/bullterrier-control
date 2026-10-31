@@ -7,13 +7,14 @@
 //! named by `#[param(rule = rule)]` on the struct; the table runs it once every field is valid.
 //!
 //! A file that also implements one of [`Source`](crate::Source), [`Shaper`](crate::Shaper) and
-//! [`Operation`](crate::Operation) for its `Params` (`impl Shaper for Params`) is a thing the core runs: it is in
-//! [`Registry::builtin`](crate::Registry::builtin) under the file's name, with the file's leading `//!` lines as its
-//! doc (what `help()` shows) and the doc of `Params` as its parameters'; a source is also a function of
-//! [`lib`](crate::lib). A file without one only declares (its source, shaper or operation still runs in Python). A
-//! shaper may also be a method of [`Signal`](crate::Signal) taking its typed `Params` (checked by
-//! [`Params::check`](crate::Params::check)). A shaper that needs history builds its signal as a
-//! [`Signal::rendered`](crate::Signal::rendered) over its private causal recurrence `run` (`slew` is the model).
+//! [`Operation`](crate::Operation) for its `Params` (`impl Shaper for Params`, its `NAME` the file's name, which the
+//! build checks) is a thing the core runs: it is in [`Registry::builtin`](crate::Registry::builtin) under that name,
+//! with the file's leading `//!` lines as its doc (what `help()` shows) and the doc of `Params` as its parameters'; a
+//! source is also a function of [`lib`](crate::lib). A file without one only declares (its source, shaper or
+//! operation still runs in Python). A shaper may also be a method of [`Signal`](crate::Signal) taking its typed
+//! `Params`: [`Signal::pipe`](crate::Signal::pipe) of them, so it is checked, named and recorded as every door makes
+//! it. A shaper that needs history builds its signal as a [`Signal::rendered`](crate::Signal::rendered) over its
+//! private causal recurrence `run` (`slew` is the model).
 //! Built-ins never refer to one another: what two of them share goes in a module of the crate named for its concept.
 
 use crate::params::{ParamError, ParamTable};
@@ -22,6 +23,22 @@ use crate::params::{ParamError, ParamTable};
 pub(crate) type Table = fn() -> Result<&'static ParamTable, ParamError>;
 
 include!(concat!(env!("OUT_DIR"), "/builtin.rs"));
+
+/// Whether a thing's `NAME` is its file's name: what the generated registration asserts at compile time.
+const fn named(name: &str, file: &str) -> bool {
+    let (name, file) = (name.as_bytes(), file.as_bytes());
+    if name.len() != file.len() {
+        return false;
+    }
+    let mut at = 0;
+    while at < name.len() {
+        if name[at] != file[at] {
+            return false;
+        }
+        at += 1;
+    }
+    true
+}
 
 #[cfg(test)]
 mod tests {

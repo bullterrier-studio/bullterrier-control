@@ -1,7 +1,11 @@
-//! The traits a Rust thing implements: its parameters struct ([`Params`]) is the thing, and the trait says what it
-//! makes. A built-in implements one in its file (`src/builtin/<name>.rs`); a plugin the same way, registered by
-//! [`Thing::source`](super::Thing::source), [`Thing::shaper`](super::Thing::shaper) or
-//! [`Thing::operation`](super::Thing::operation).
+//! The traits a Rust thing implements: its parameters struct ([`Params`]) is the thing, and the trait says its name
+//! and what it makes. A built-in implements one in its file (`src/builtin/<name>.rs`, its `NAME` the file's name); a
+//! plugin the same way, registered by [`Thing::source`](super::Thing::source), [`Thing::shaper`](super::Thing::shaper)
+//! or [`Thing::operation`](super::Thing::operation).
+//!
+//! A trait's method is the thing's body. Called directly it is only that: unchecked and unrecorded. Every door
+//! ([`Thing::call`](super::Thing::call), [`Signal::pipe`], a typed method such as [`Signal::slew`], a `lib` function)
+//! checks the values, runs the body and records the [`Recipe`](super::Recipe) in one place, under `NAME`.
 
 use std::collections::BTreeMap;
 
@@ -24,6 +28,8 @@ use crate::{Error, Params, Signal};
 /// }
 ///
 /// impl Source for Level {
+///     const NAME: &'static str = "level";
+///
 ///     fn source(&self) -> Result<Signal, Error> {
 ///         Signal::constant(self.value)
 ///     }
@@ -32,9 +38,12 @@ use crate::{Error, Params, Signal};
 /// assert_eq!(Level { value: 0.25 }.source()?.at(9.0)?, 0.25);
 /// # Ok::<(), Error>(())
 /// ```
-pub trait Source: Params {
-    /// The signal these parameters make. They keep their table's rules: whoever calls a source checks them first (a
-    /// call through the registry reads them by the table; a typed call runs [`Params::check`]).
+pub trait Source: Params + 'static {
+    /// The name it is registered, called and recorded under (see [`NAME_PATTERN`](super::NAME_PATTERN)): its only
+    /// name, whichever door it is made through.
+    const NAME: &'static str;
+
+    /// The signal these parameters make: the body, which a door calls only with parameters its table accepted.
     ///
     /// # Errors
     /// Whatever the source cannot make: an [`Error`] its signal's constructor gives.
@@ -55,6 +64,8 @@ pub trait Source: Params {
 /// }
 ///
 /// impl Shaper for Fold {
+///     const NAME: &'static str = "fold";
+///
 ///     fn shape(&self, input: &Signal) -> Result<Signal, Error> {
 ///         let (line, input) = (1.0 - self.depth, input.clone());
 ///         Ok(Signal::from_fn(move |times, out| {
@@ -70,12 +81,17 @@ pub trait Source: Params {
 /// }
 ///
 /// let glow = Signal::from_values(&[0.25, 0.5, 0.75], 1.0, FromValues::default(), Interpolation::Hold)?;
-/// assert_eq!(glow.pipe(Fold { depth: 0.5 })?.sample(&[0.0, 1.0, 2.0])?, [0.25, 0.5, 0.25]);
+/// let folded = glow.pipe(Fold { depth: 0.5 })?;
+/// assert_eq!(folded.sample(&[0.0, 1.0, 2.0])?, [0.25, 0.5, 0.25]);
+/// assert_eq!(folded.recipe().map(|recipe| recipe.name.as_str()), Some("fold"));
 /// # Ok::<(), Error>(())
 /// ```
-pub trait Shaper: Params {
-    /// The signal these parameters make of `input`. They keep their table's rules: whoever calls a shaper checks them
-    /// first ([`Signal::pipe`] runs [`Params::check`]; a call through the registry reads them by the table).
+pub trait Shaper: Params + 'static {
+    /// The name it is registered, called and recorded under, as [`Source::NAME`].
+    const NAME: &'static str;
+
+    /// The signal these parameters make of `input`: the body, which a door calls only with parameters its table
+    /// accepted.
     ///
     /// # Errors
     /// Whatever the shaper cannot make: an [`Error`] its signal's constructor gives ([`Error::Depth`], ...).
@@ -98,6 +114,7 @@ pub trait Shaper: Params {
 /// }
 ///
 /// impl Operation for First {
+///     const NAME: &'static str = "first";
 ///     type Inputs = Vec<Event>;
 ///     const RETURNS: Returns = Returns::Events;
 ///
@@ -110,7 +127,10 @@ pub trait Shaper: Params {
 /// assert!(matches!(First { n: 1 }.run(events)?, Output::Events(kept) if kept.len() == 1));
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-pub trait Operation: Params {
+pub trait Operation: Params + 'static {
+    /// The name it is registered and called under, as [`Source::NAME`].
+    const NAME: &'static str;
+
     /// The data it takes: its inputs, as one Rust value ([`Inputs`]).
     type Inputs: Inputs;
 
@@ -118,7 +138,7 @@ pub trait Operation: Params {
     const RETURNS: Returns;
 
     /// The data these parameters make of `inputs`: an [`Output`] of the kind [`RETURNS`](Self::RETURNS) says. The
-    /// parameters keep their table's rules and the inputs theirs: whoever calls an operation checks them first.
+    /// body, which a door calls only with parameters its table accepted and inputs as [`Inputs::DECLARED`] says.
     ///
     /// # Errors
     /// Whatever the operation cannot make.
@@ -137,6 +157,10 @@ pub trait Operation: Params {
 /// assert_eq!(<Vec<Event>>::DECLARED, [(InputKind::Events, true)]);
 /// assert_eq!(<Option<Grid>>::DECLARED, [(InputKind::Grid, false)]);
 /// assert!(<()>::DECLARED.is_empty());
+/// // and back, as a recipe records them
+/// assert_eq!(None::<Grid>.into_inputs()?, []);
+/// assert!(vec![f64::NAN].into_inputs().is_err());
+/// # Ok::<(), bullterrier_control::Error>(())
 /// ```
 pub trait Inputs: Sized {
     /// Each input it takes, with whether it is required, in the order `help()` lists them.
@@ -148,6 +172,15 @@ pub trait Inputs: Sized {
     /// # Errors
     /// [`Error::Call`] if `given` is not as `DECLARED` says (a bug of the caller: the registry checks it first).
     fn from_inputs(given: &BTreeMap<String, Input>) -> Result<Self, Error>;
+
+    /// Each input it holds, checked by its kind's rules ([`Input::from_values`], ...): what a typed door records and
+    /// gives the body back through [`from_inputs`](Self::from_inputs), so an input left out here is one the thing
+    /// never sees, never one it uses unrecorded. Required, as `from_inputs` is: no type takes inputs without saying
+    /// both ways what they are.
+    ///
+    /// # Errors
+    /// [`Error::Input`] listing every rule an input breaks.
+    fn into_inputs(self) -> Result<Vec<Input>, Error>;
 }
 
 impl Inputs for () {
@@ -156,12 +189,16 @@ impl Inputs for () {
     fn from_inputs(_given: &BTreeMap<String, Input>) -> Result<Self, Error> {
         Ok(())
     }
+
+    fn into_inputs(self) -> Result<Vec<Input>, Error> {
+        Ok(Vec::new())
+    }
 }
 
-/// `Inputs` for the data of one input kind (`$kind`, the variant of [`Input`] holding a `$data`), required, and for
-/// an `Option` of it, optional.
+/// `Inputs` for the data of one input kind (`$kind`, the variant of [`Input`] holding a `$data`, checked into one by
+/// `$checked`), required, and for an `Option` of it, optional.
 macro_rules! one_input {
-    ($data:ty, $kind:ident) => {
+    ($data:ty, $kind:ident, $checked:expr) => {
         impl Inputs for $data {
             const DECLARED: &'static [(InputKind, bool)] = &[(InputKind::$kind, true)];
 
@@ -170,6 +207,10 @@ macro_rules! one_input {
                     Some(Input::$kind(data)) => Ok(data.clone()),
                     _ => Err(not_given(InputKind::$kind)),
                 }
+            }
+
+            fn into_inputs(self) -> Result<Vec<Input>, Error> {
+                Ok(vec![$checked(self)?])
             }
         }
 
@@ -183,15 +224,19 @@ macro_rules! one_input {
                     Some(_) => Err(not_given(InputKind::$kind)),
                 }
             }
+
+            fn into_inputs(self) -> Result<Vec<Input>, Error> {
+                self.map_or_else(|| Ok(Vec::new()), Inputs::into_inputs)
+            }
         }
     };
 }
 
-one_input!(Vec<Keyframe>, Points);
-one_input!(Vec<Event>, Events);
-one_input!(Grid, Grid);
-one_input!(Vec<f64>, Values);
-one_input!(Series, Series);
+one_input!(Vec<Keyframe>, Points, Input::from_points);
+one_input!(Vec<Event>, Events, |events| Ok::<_, Error>(Input::from_events(events)));
+one_input!(Grid, Grid, |grid| Ok::<_, Error>(Input::Grid(grid)));
+one_input!(Vec<f64>, Values, Input::from_values);
+one_input!(Series, Series, |series| Ok::<_, Error>(Input::Series(series)));
 
 /// The error for an input of `kind` that is not given as its kind.
 fn not_given(kind: InputKind) -> Error {

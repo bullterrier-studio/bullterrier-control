@@ -22,9 +22,9 @@
 //!
 //! // a thing whose body is a callback: how the Python package registers its own
 //! let level = Thing::custom(
-//!     About { name: "level".into(), doc: "A signal that holds 0.5.".into(), ..Default::default() },
-//!     Declared { kind: Kind::Source, identity: "example.level".into(), table: ParamTable::new(vec![])?,
-//!         inputs: vec![], returns: Returns::Signal },
+//!     About { doc: "A signal that holds 0.5.".into(), ..Default::default() },
+//!     Declared { name: "level".into(), kind: Kind::Source, identity: "example.level".into(),
+//!         table: ParamTable::new(vec![])?, inputs: vec![], returns: Returns::Signal },
 //!     |_call| Ok(Output::Signal(Signal::constant(0.5)?)),
 //! )?;
 //! let mut registry = Registry::new();
@@ -51,8 +51,12 @@
 //!   - a source and a shaper return a signal, an operation events or a series;
 //!   - a name is taken by the thing registered under it: another thing (another identity, or another kind) is
 //!     refused, while the same thing registered again replaces itself (a module reloaded).
-//! - Calling: see [`Thing::call`]. What a thing says about itself: [`Thing::help`] and [`Thing::description`], in the
-//!   words and shape of the Python package's `help()` and `bt-control list --json`.
+//! - Calling: one door. Whichever way a signal is made from a thing ([`Thing::call`], [`shape`](crate::shape),
+//!   [`Signal::pipe`], a typed method such as [`Signal::slew`], a [`lib`](crate::lib) function), it is checked, run,
+//!   named in its errors and recorded ([`Recipe`]) in the same place, as [`Thing::call`] says. A Rust thing has one
+//!   name, its trait's `NAME`, which a built-in's file name proves at compile time.
+//! - What a thing says about itself: [`Thing::help`] and [`Thing::description`], in the words and shape of the Python
+//!   package's `help()` and `bt-control list --json`.
 
 mod repr;
 #[cfg(test)]
@@ -71,7 +75,11 @@ use crate::inputs::{Input, InputKind};
 use crate::params::ParamTable;
 
 pub(crate) use repr::quoted;
+use thing::Identity;
 pub use thing::Thing;
+pub(crate) use thing::shaped;
+#[cfg_attr(not(test), expect(unused_imports, reason = "as `sourced` is"))]
+pub(crate) use thing::sourced;
 pub use traits::{Inputs, Operation, Shaper, Source};
 
 /// The pattern a thing's name matches in full (and, in a patch, a node's): lower case letters, digits and `_`,
@@ -249,13 +257,17 @@ impl Default for Call {
     }
 }
 
-/// How a signal was made through the registry ([`Thing::call`]): the thing, its parameter values as its table read
-/// them (every field), its inputs in the order it declares them, and the signal it shaped (a shaper's). What saving a
-/// graph as a patch writes; [`Signal::recipe`] gives it (an example is there).
+/// How a signal was made from a thing (by any door: see [the module](self)): the thing, its parameter values as its
+/// table read them (every field), its inputs in the order it declares them, and the signal it shaped (a shaper's).
+/// What saving a graph as a patch writes; [`Signal::recipe`] gives it (an example is there).
+///
+/// A name means a thing only within a registry: a recipe made by a type that was never registered, or by another thing
+/// under the same name, names nothing the loading registry would build. So a save checks, for each recipe, that the
+/// registry it saves for holds the very thing that made it ([`made_by`](Self::made_by)).
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct Recipe {
-    /// The name the thing was called by.
+    /// The thing's name.
     pub name: String,
     /// Its parameter values: a JSON object of every field, by name.
     pub values: serde_json::Value,
@@ -263,22 +275,46 @@ pub struct Recipe {
     pub inputs: Vec<(String, Input)>,
     /// The signal it shaped: a shaper's input; `None` for a source.
     pub signal: Option<Signal>,
+    /// The kind and identity of the thing that made it.
+    made_by: (Kind, Identity),
 }
 
-/// What a thing is called and says about itself; each field but the name may be empty.
+impl Recipe {
+    /// Whether `thing` is the thing this recipe was made by: of its name, kind and identity (a Rust thing's type, a
+    /// callback's [`Declared::identity`]), wherever it was made or registered.
+    ///
+    /// ```
+    /// use bullterrier_control::builtin::{follow, slew};
+    /// use bullterrier_control::registry::{About, Registry, Thing};
+    /// use bullterrier_control::Signal;
+    ///
+    /// let slewed = Signal::constant(1.0)?.slew(slew::Params::default())?;
+    /// let recipe = slewed.recipe().ok_or("a slewed signal has a recipe")?;
+    /// assert!(recipe.made_by(Registry::builtin().get("slew")?));
+    /// assert!(recipe.made_by(&Thing::shaper::<slew::Params>(About::default())?));
+    /// assert!(!recipe.made_by(Registry::builtin().get("follow")?));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn made_by(&self, thing: &Thing) -> bool {
+        let (kind, identity) = &self.made_by;
+        thing.name() == self.name && thing.is(*kind, identity)
+    }
+}
+
+/// What a thing says about itself; each field may be empty. Its name is not here: a Rust thing's is its trait's
+/// `NAME`, a callback's is [`Declared::name`].
 ///
 /// ```
 /// use bullterrier_control::registry::{About, Thing};
 /// use bullterrier_control::builtin::slew;
 ///
-/// let about = About { name: "smooth".into(), doc: "Smooths it.\n\nAt its own pace.".into(), ..Default::default() };
+/// let about = About { doc: "Smooths it.\n\nAt its own pace.".into(), ..Default::default() };
 /// assert_eq!(Thing::shaper::<slew::Params>(about)?.summary(), "Smooths it.");
 /// # Ok::<(), bullterrier_control::Error>(())
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct About {
-    /// The name it is registered and called under (see [`NAME_PATTERN`]).
-    pub name: String,
     /// What it does, as `help()` shows it: its first paragraph (up to the first blank line) is its summary.
     pub doc: String,
     /// The name of its parameters: the title of their schema in its description (`SlewParams`).
@@ -294,18 +330,23 @@ pub struct About {
 /// use bullterrier_control::params::ParamTable;
 /// use bullterrier_control::registry::{About, Declared, Kind, Output, Returns, Thing};
 ///
-/// let declared = Declared { kind: Kind::Operation, identity: "mine.pick".into(), table: ParamTable::new(vec![])?,
-///     inputs: vec![(InputKind::Events, true)], returns: Returns::Events };
-/// let pick = Thing::custom(About { name: "pick".into(), ..Default::default() }, declared, |_call| Ok(Output::Events(vec![])))?;
+/// let declared = Declared { name: "pick".into(), kind: Kind::Operation, identity: "mine.pick".into(),
+///     table: ParamTable::new(vec![])?, inputs: vec![(InputKind::Events, true)], returns: Returns::Events };
+/// let pick = Thing::custom(About::default(), declared, |_call| Ok(Output::Events(vec![])))?;
 /// assert!(pick.help().starts_with("operation pick(*, events, **values) -> events"));
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone, Debug)]
 pub struct Declared {
+    /// The name it is registered and called under (see [`NAME_PATTERN`]).
+    pub name: String,
     /// Its kind.
     pub kind: Kind,
-    /// Who defined it, as the error for a taken name shows it (a Python function's `module.qualname`): registering a
-    /// thing of the same kind and identity under its name again replaces it, any other is refused.
+    /// Who defined it, as the error for a taken name shows it: registering a thing of the same kind and identity
+    /// under its name again replaces it (a module reloaded); a thing of another identity, or a Rust thing (identified
+    /// by its type, never by text), is refused. It must tell apart every thing that may be registered: a Python
+    /// function's `module.qualname` does not tell apart two functions one factory makes (`make.<locals>.made`), so
+    /// the second would replace the first unless each is given an identity of its own.
     pub identity: String,
     /// Its parameters.
     pub table: ParamTable,
@@ -323,8 +364,8 @@ pub struct Declared {
 /// # use bullterrier_control::Signal;
 /// # let empty = ParamTable::new(vec![])?;
 /// # let thing = |name: &str, identity: &str| Thing::custom(
-/// #     About { name: name.into(), ..Default::default() },
-/// #     Declared { kind: Kind::Source, identity: identity.into(), table: empty.clone(),
+/// #     About::default(),
+/// #     Declared { name: name.into(), kind: Kind::Source, identity: identity.into(), table: empty.clone(),
 /// #         inputs: vec![], returns: Returns::Signal },
 /// #     |_call| Ok(Output::Signal(Signal::constant(1.0)?)),
 /// # );

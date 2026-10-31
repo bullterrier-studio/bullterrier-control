@@ -9,7 +9,7 @@
 
 use std::convert::Infallible;
 
-use crate::{Error, Params as _, Rendering, Shaper, Signal};
+use crate::{Error, Rendering, Shaper, Signal};
 
 /// How quickly the output chases its input upward and downward.
 #[derive(Clone, Copy, Debug, PartialEq, crate::Params)]
@@ -34,7 +34,8 @@ fn left(step: f64, time: f64) -> f64 {
 }
 
 impl Signal {
-    /// This signal smoothed with the attack and release times of `params`: the shaper [`follow`](super).
+    /// This signal smoothed with the attack and release times of `params`: the shaper [`follow`](super), as
+    /// [`pipe`](Signal::pipe) of `params` makes it (checked, named and recorded alike).
     ///
     /// ```
     /// use bullterrier_control::builtin::follow;
@@ -49,14 +50,16 @@ impl Signal {
     /// ```
     ///
     /// # Errors
-    /// [`Error::Params`] listing every rule `params` breaks (a field out of its range or not finite).
+    /// As [`Signal::pipe`]: [`Error::Params`] under the name `follow` listing every rule `params` breaks (a field out
+    /// of its range or not finite).
     pub fn follow(&self, params: Params) -> Result<Signal, Error> {
-        let params = params.check().map_err(|error| Error::params("follow", error))?;
-        params.shape(self)
+        self.pipe(params)
     }
 }
 
 impl Shaper for Params {
+    const NAME: &'static str = "follow";
+
     /// Its causal recurrence over `input` sampled at `rate`, rendered as far as the reads need.
     fn shape(&self, input: &Signal) -> Result<Signal, Error> {
         let rendering = Rendering {

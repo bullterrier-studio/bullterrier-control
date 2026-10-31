@@ -13,11 +13,6 @@ use crate::params::ParamError;
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Error {
-    /// The core has no shaper (or, asked for its parameters, no built-in) of this name.
-    UnknownShaper {
-        /// The name asked for.
-        name: String,
-    },
     /// A text names no easing curve; the message lists the valid forms.
     Ease {
         /// What is wrong with the text and what would be right.
@@ -29,9 +24,9 @@ pub enum Error {
         /// What cannot be read and why, naming the time where there is one.
         message: String,
     },
-    /// The parameters are not the built-in's: one is unknown, of the wrong type or out of its range.
+    /// The parameters are not the thing's: one is unknown, of the wrong type or out of its range.
     Params {
-        /// The built-in whose parameters these were meant to be.
+        /// The name of the thing whose parameters these were meant to be.
         shaper: String,
         /// What is wrong with them: each broken rule under the name of its field, the first 100 at most.
         problems: Vec<Problem>,
@@ -70,7 +65,8 @@ pub enum Error {
         /// The thing, by kind and name, and the rule it breaks.
         message: String,
     },
-    /// No thing of this name is registered.
+    /// No thing (or, asked for a built-in's parameters, no built-in) of this name: the one error for a name not
+    /// known, wherever it is asked for.
     UnknownName {
         /// The name asked for.
         name: String,
@@ -101,7 +97,6 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnknownShaper { name } => write!(formatter, "the Rust core has no shaper called {name:?}"),
             Self::Ease { message }
             | Self::Signal { message }
             | Self::Depth { message }

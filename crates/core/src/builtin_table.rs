@@ -28,11 +28,11 @@ pub(crate) struct Generated {
     pub(crate) lib: String,
 }
 
-/// The kinds of thing a file can be: the text that marks it, and the `Thing` constructor that registers it.
-const KINDS: [(&str, &str); 3] = [
-    ("impl Source for Params", "source"),
-    ("impl Shaper for Params", "shaper"),
-    ("impl Operation for Params", "operation"),
+/// The kinds of thing a file can be: the text that marks it, the `Thing` constructor that registers it and its trait.
+const KINDS: [(&str, &str, &str); 3] = [
+    ("impl Source for Params", "source", "Source"),
+    ("impl Shaper for Params", "shaper", "Shaper"),
+    ("impl Operation for Params", "operation", "Operation"),
 ];
 
 /// The Rust of the table of `files` (sorted by name), or the error naming a file whose text marks it as more than one
@@ -41,25 +41,29 @@ pub(crate) fn table(files: &[File<'_>]) -> Result<Generated, String> {
     let mut builtin = String::new();
     let mut lib = String::new();
     let mut registered = String::new();
+    let mut checks = String::new();
     for file in files {
-        let kinds: Vec<&str> = KINDS
+        let kinds: Vec<(&str, &str)> = KINDS
             .iter()
-            .filter(|(marker, _)| file.source.contains(marker))
-            .map(|(_, kind)| *kind)
+            .filter(|(marker, ..)| file.source.contains(marker))
+            .map(|(_, kind, named)| (*kind, *named))
             .collect();
         let kind = match kinds.as_slice() {
             [] => None,
             [kind] => Some(*kind),
-            _ => return Err(format!("{}: a built-in is one of {}", file.path, kinds.join(", "))),
+            _ => {
+                let names: Vec<&str> = kinds.iter().map(|(kind, _)| *kind).collect();
+                return Err(format!("{}: a built-in is one of {}", file.path, names.join(", ")));
+            }
         };
         write(
             &mut builtin,
             format_args!("#[path = {:?}]\npub mod {};\n", file.path, file.name),
         );
         if let Some(kind) = kind {
-            registration(&mut registered, file, kind);
+            registration(&mut checks, &mut registered, file, kind);
         }
-        if kind == Some("source") {
+        if kind.is_some_and(|(kind, _)| kind == "source") {
             source_function(&mut lib, file.name);
         }
     }
@@ -72,6 +76,7 @@ pub(crate) fn table(files: &[File<'_>]) -> Result<Generated, String> {
         );
     }
     builtin.push_str("];\n");
+    builtin.push_str(&checks);
     builtin.push_str("/// Registers every built-in the core runs, under its name, with its doc.\n");
     builtin
         .push_str("pub(crate) fn register(registry: &mut crate::registry::Registry) -> Result<(), crate::Error> {\n");
@@ -80,14 +85,22 @@ pub(crate) fn table(files: &[File<'_>]) -> Result<Generated, String> {
     Ok(Generated { builtin, lib })
 }
 
-/// Writes into `code` the registration of `file`, a thing of `kind`.
-fn registration(code: &mut String, file: &File<'_>, kind: &str) {
+/// Writes into `checks` a compile-time check that the trait's `NAME` of `file`, a thing of `kind` (its constructor
+/// and its trait), is the file's name, and into `code` its registration with its doc.
+fn registration(checks: &mut String, code: &mut String, file: &File<'_>, (kind, named): (&str, &str)) {
     let name = file.name;
+    write(
+        checks,
+        format_args!(
+            "const _: () = assert!(\n    named(<{name}::Params as crate::{named}>::NAME, {name:?}),\n    \
+             \"the NAME of a built-in is its file's name: {name}\"\n);\n"
+        ),
+    );
     write(
         code,
         format_args!(
             "    registry.register(crate::registry::Thing::{kind}::<{name}::Params>(crate::registry::About {{\n        \
-             name: {name:?}.to_owned(),\n        doc: {:?}.to_owned(),\n        params_title: {:?}.to_owned(),\n        \
+             doc: {:?}.to_owned(),\n        params_title: {:?}.to_owned(),\n        \
              params_doc: {:?}.to_owned(),\n    }})?)?;\n",
             doc(file.source),
             title(name),
@@ -101,12 +114,12 @@ fn source_function(code: &mut String, name: &str) {
     write(
         code,
         format_args!(
-            "/// The signal of the source [`{name}`](crate::builtin::{name}) with `params`, checked first.\n///\n\
-             /// # Errors\n/// [`Error::Params`](crate::Error::Params) listing every rule `params` breaks, and \
-             whatever error the source gives.\n\
+            "/// The signal of the source [`{name}`](crate::builtin::{name}) with `params`, made through the one door \
+             of the\n/// [registry](crate::registry): checked, named and recorded as every door makes it.\n///\n\
+             /// # Errors\n/// As [`Thing::call`](crate::registry::Thing::call): [`Error::Params`](crate::Error::Params) \
+             under the name `{name}`\n/// listing every rule `params` breaks, and whatever error the source gives.\n\
              pub fn {name}(params: crate::builtin::{name}::Params) -> Result<crate::Signal, crate::Error> {{\n    \
-             let params = crate::Params::check(&params).map_err(|error| crate::Error::params({name:?}, error))?;\n    \
-             crate::Source::source(&params)\n}}\n"
+             crate::registry::sourced(params)\n}}\n"
         ),
     );
 }
@@ -201,6 +214,12 @@ mod tests {
         for name in ["plain", "recurs"] {
             assert!(!registered.contains(name), "{name}: {}", code.builtin);
         }
+        // each registered one's trait `NAME` is checked to be its file's name when the core compiles
+        for (name, kind) in [("rises", "Source"), ("shapes", "Shaper"), ("picks", "Operation")] {
+            let check = format!("named(<{name}::Params as crate::{kind}>::NAME, {name:?})");
+            assert!(code.builtin.contains(&check), "{name}: {}", code.builtin);
+        }
+        assert!(!code.builtin.contains("named(<plain::Params"), "{}", code.builtin);
         // every file declares its parameters; only a source is a `lib` function
         let params = code.builtin.split("static PARAMS").nth(1).unwrap_or_default();
         for name in ["plain", "recurs", "rises", "shapes", "picks"] {
@@ -210,8 +229,12 @@ mod tests {
                 code.builtin
             );
         }
+        // through the one door, as every way of making a signal is
         assert!(
-            code.lib.contains("pub fn rises(params: crate::builtin::rises::Params)"),
+            code.lib.contains(
+                "pub fn rises(params: crate::builtin::rises::Params) -> Result<crate::Signal, crate::Error> {\n    \
+                 crate::registry::sourced(params)\n}"
+            ),
             "{}",
             code.lib
         );
@@ -232,7 +255,7 @@ mod tests {
                       And how.\n#[derive(Clone, crate::Params)]\n#[param(rule = rule)]\npub struct Params {}\n\
                       impl Shaper for Params {}\n";
         let code = built(&[file("lift_it", source)]);
-        let expected = "name: \"lift_it\".to_owned(),\n        doc: \"Lifts it.\\n\\nBy `depth`, \\\"exactly\\\".\".to_owned(),\n        \
+        let expected = "doc: \"Lifts it.\\n\\nBy `depth`, \\\"exactly\\\".\".to_owned(),\n        \
                         params_title: \"LiftItParams\".to_owned(),\n        params_doc: \"How far.\\nAnd how.\".to_owned(),";
         assert!(code.builtin.contains(expected), "{}", code.builtin);
         // a file without either has an empty doc
