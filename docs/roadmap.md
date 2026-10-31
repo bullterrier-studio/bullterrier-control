@@ -22,7 +22,7 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | R0.5 | Code-first API: the spec in Python and Rust, then the Python improvements | M | done |
 | R1 | Rust core: the formats | M | done |
 | R2 | Rust core: parameters | M | done |
-| R3 | Rust core: the signal graph | L | |
+| R3 | Rust core: the signal graph | L | done |
 | R4 | Rust core: registry, inputs, `lib`, patches | M | |
 | R5 | Rust core: the built-in sources, shapers and operations | L | |
 | R6 | Rust core: cleanup, the public crate | S | |
@@ -151,7 +151,7 @@ The Python suite runs unchanged against the Rust core throughout.
 
 - **R0 Foundation (done).** Cargo workspace (`crates/core`: pure Rust, no Python, builds for wasm32; `crates/python`: the
   bindings), maturin as build backend, Rust gates as strict as the Python ones (each proven by a known-bad input),
-  `slew` and `follow` rendered in Rust through the transitional boundary `_core.render`. Done when their tests pass
+  `slew` and `follow` rendered in Rust through a transitional boundary (`_core.render`, removed in R3). Done when their tests pass
   unchanged and the gate is green.
 - **R0b CI and wheels (done; first GitHub run pending).** Every workflow that imports the package builds the core; a wheel per
   platform (Linux x86_64 and aarch64, macOS arm64 and x86_64, Windows x86_64), each installed and run before release.
@@ -166,15 +166,19 @@ The Python suite runs unchanged against the Rust core throughout.
   plugin's included (its `class P(Params)` is unchanged); `help()`, `list --json` and `lib.pyi` read the table; pydantic
   is gone from `Params`. The Python API changed where noted in [design-decisions.md](design-decisions.md), "Parameters in
   Rust".
-- **R3 Signal graph.** `Signal`, arithmetic, `from_series`, `Rendered`, `sample` and the numeric helpers in Rust; a
-  Python `Signal` is a handle; Python `compute` and `Rendered(run=...)` stay possible for plugins. `poe new-source`
-  writes a Rust-backed shaper. Also removes what R2 left transitional: `Params.__getattr__` (a misspelt field is not yet a
-  type error), the copy of the `remap` ease names (easing moves to Rust), pydantic for `Keyframe` and the inputs'
-  models, the `Finite`/`Whole`/`Switch`/`Text` aliases that exist twice (plain in `params`, validated in `validated`),
-  the `PARAMS`/`SHAPERS` split of `build.rs`, and `gen_api`'s own range text.
+- **R3 Signal graph (done).** `Signal` is `Arc<dyn Node>` in Rust: constants, series, arithmetic, `maximum`/`minimum`,
+  `Rendered` (history kept in Rust) and `sample` need no Python or GIL; easing, cadence, hashing, scaling and rounding are
+  Rust primitives; `slew` and `follow` are Rust `Signal` shapers; `_core.render` is gone. Python's `Signal` is a handle
+  over the graph, and a plugin's `compute` and `Rendered(run=...)` are nodes that call back into Python. `poe new-source
+  --kind shaper` writes a Rust-backed shaper. Moved out: `Params.__getattr__` and the `PARAMS`/`SHAPERS` split of
+  `build.rs` to R5 (19 built-ins still run in Python); `gen_api`'s own range text, pydantic for `Keyframe` and the inputs'
+  models, and the duplicate `Finite`/`Whole`/`Switch`/`Text` aliases to R4 (they go with the inputs and `lib`). Decisions:
+  [design-decisions.md](design-decisions.md), "The signal graph in Rust".
 - **R4 Registry and patches.** Registry, inputs, `lib` and the patch in Rust: a patch is loaded and sampled with no
-  Python.
-- **R5 Built-ins.** Every other source, shaper and operation ported.
+  Python. Also pydantic leaves (`Keyframe`, the inputs' models, the duplicate `Finite`/`Whole`/`Switch`/`Text` aliases),
+  and `gen_api`'s own range text goes with `lib`.
+- **R5 Built-ins.** Every other source, shaper and operation ported. Then `Params.__getattr__` and the `PARAMS`/`SHAPERS`
+  split of `build.rs` go (no Python body is left to read a field or to need the difference).
 - **R6 Cleanup.** No Python duplicate left, crate documentation, final speed and memory measured against R0's baseline.
 
 ## R0.5 Code-first API (done)
