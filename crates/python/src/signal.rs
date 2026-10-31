@@ -276,8 +276,9 @@ pub(crate) fn shape<'py>(
 }
 
 /// Make every signal the extension makes from now on (an operator's result, `from_series`, `shape`, ...) an instance
-/// of `cls`: a subclass of `SignalBase` that does not implement `compute` and whose `__new__` takes no arguments. Once
-/// per process: naming another class later is a `ValueError`.
+/// of `cls`: a subclass of `SignalBase` that does not implement `compute` and can be made by `cls.__new__(cls)` alone
+/// (so not one with a `__new__` needing arguments, nor a subclass of `Constant` or `Rendered`: `TypeError`). Once per
+/// process: naming another class later is a `ValueError`.
 #[pyfunction]
 pub(crate) fn make_signals_as(cls: &Bound<'_, PyType>) -> PyResult<()> {
     let py = cls.py();
@@ -285,6 +286,15 @@ pub(crate) fn make_signals_as(cls: &Bound<'_, PyType>) -> PyResult<()> {
     if !cls.is_subclass(&base)? || !cls.getattr("compute")?.is(&base.getattr("compute")?) {
         return Err(PyTypeError::new_err(format!(
             "signals are made as a subclass of SignalBase that does not implement compute (got {})",
+            cls.name()?
+        )));
+    }
+    if !cls
+        .call_method1("__new__", (cls,))
+        .is_ok_and(|instance| instance.is_instance_of::<SignalBase>())
+    {
+        return Err(PyTypeError::new_err(format!(
+            "{} cannot be made without arguments, as signals are made",
             cls.name()?
         )));
     }

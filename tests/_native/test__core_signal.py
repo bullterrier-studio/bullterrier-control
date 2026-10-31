@@ -701,3 +701,31 @@ def test_the_signals_the_extension_makes_are_of_the_class_make_signals_as_names_
         _core.make_signals_as(Echo)
     with pytest.raises(TypeError, match="does not implement compute"):
         _core.make_signals_as(int)  # type: ignore[arg-type]  # not a signal class, on purpose
+
+
+class NeedsArguments(_core.SignalBase):
+    """A class that does not implement compute but cannot be made without arguments."""
+
+    def __new__(cls, value):
+        return super().__new__(cls)
+
+
+class ConstantKind(_core.Constant):
+    """A subclass of Constant: made without arguments, it would have no value."""
+
+
+class RenderedKind(_core.Rendered):
+    """A subclass of Rendered: made without arguments, it would have no signal."""
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        pytest.param(NeedsArguments, id="a __new__ that needs arguments"),
+        pytest.param(ConstantKind, id="a subclass of Constant"),
+        pytest.param(RenderedKind, id="a subclass of Rendered"),
+    ],
+)
+def test_a_class_that_cannot_be_made_without_arguments_is_refused_when_named(bad):
+    with pytest.raises(TypeError, match=f"{bad.__name__}.*without arguments"):
+        _core.make_signals_as(bad)
