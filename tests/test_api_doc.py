@@ -1,4 +1,4 @@
-"""docs/api.md: every Python example runs and shows the values it claims, and the Rust column is declared a target.
+"""docs/api.md: every Python example runs and shows the values it claims, and the Rust column says which blocks exist.
 
 A documentation test of the page's rules, not of the library: the examples' own behaviour is tested where it lives.
 """
@@ -10,7 +10,7 @@ import pytest
 
 PAGE = Path(__file__).resolve().parents[1] / "docs" / "api.md"
 TEXT = PAGE.read_text(encoding="utf-8") if PAGE.is_file() else ""
-RUST_NOTE = "The Rust blocks are the target API for the Rust core (not implemented yet)"
+RUST_NOTE = "The Rust blocks marked **implemented** exist and are the real signatures"
 # the ten tasks of the draft, in order: a deleted example (or a section without its Python or Rust side) fails
 TASKS = [
     "A curve from measured values",
@@ -48,7 +48,7 @@ def test_every_task_has_an_example_in_each_language(title, language):
     assert blocks(language, sections().get(title, ""))
 
 
-def test_the_page_says_once_above_the_first_rust_block_that_rust_is_the_target():
+def test_the_page_says_once_above_the_first_rust_block_which_rust_blocks_exist():
     assert TEXT.count(RUST_NOTE) == 1
     assert TEXT.index(RUST_NOTE) < TEXT.index("```rust")
 

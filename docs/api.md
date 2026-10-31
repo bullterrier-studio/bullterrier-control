@@ -3,11 +3,13 @@
 The programmatic API is the product. A patch file is a serialisation of the same graph, built only through this API
 (task 10, last, as the extra it is). Each task below is shown in Python, which exists today, and in Rust, the language
 of the core. The Python blocks run as tests (`tests/test_api_doc.py`); a `# array([...])` comment is the result of the
-`.sample(...)` call above it. The Rust blocks are the target API for the Rust core (not implemented yet), except the formats: `Event::new`,
-`Series::new`, `Grid::new` and `Bundle::from_json` exist, and so do the parameters: `#[derive(Params)]` structs
-(sections 2 and 9), `ParamTable`, `ParamUnit`, `parameters(name)` and `builtins()`. Their rustdoc examples
-(`crates/core/src/formats/`, `crates/core/src/params.rs`) run with `cargo test --doc -p bullterrier-control`. R3 to R5 build
-to the rest.
+`.sample(...)` call above it. The Rust blocks marked **implemented** exist and are the real signatures; the others are the target API that R4 and R5 build
+to. Implemented: the formats (`Event::new`, `Series::new`, `Grid::new`, `Bundle::from_json`), the parameters
+(`#[derive(Params)]` structs, `ParamTable`, `ParamUnit`, `parameters(name)`, `builtins()`) and the signal graph (R3):
+`Signal` (`constant`, `from_series`, `from_values`, `sample`, `sample_into`, `at`, `+ - *` and negation, `maximum`,
+`minimum`, `from_fn`, `rendered`), the `slew` and `follow` shapers and the primitives (`Ease`, `hashing::uniform`,
+`scaling::between`, `rounding`, `cadence::positions`). Their rustdoc examples (`crates/core/src/`) run with
+`cargo test --doc -p bullterrier-control`.
 
 ## Principles
 
@@ -27,7 +29,7 @@ and summary) comes from the registry: `registry.get("slew")`.
 
 Decided by the owner on 2026-10-29. They clarify the earlier decision that parameters are structs with `Default`.
 
-1. **A `Signal` is a newtype over `Arc<dyn Node + Send + Sync>`**: cheap to clone, `Debug`, `Send` and `Sync`, with `Node`
+1. **A `Signal`** (implemented) **is a newtype over `Arc<dyn Node + Send + Sync>`**: cheap to clone, `Debug`, `Send` and `Sync`, with `Node`
    sealed. Shaper methods take `&self`, so one signal can feed several chains.
 2. **Argument order:** required inputs first, then the parameter struct, then optional inputs
    (`envelope(&kicks, Envelope { .. })`; `lfo(Lfo { .. }, Some(&grid))`, where the grid is optional). A source or shaper
@@ -38,20 +40,24 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
    field added later breaks no call. Before 1.0, decide between keeping this and `#[non_exhaustive]` with generated
    setters; `cargo-semver-checks` runs from the first publish.
 4. **`events` and `from_values` take an options struct and return `Result`**, like everything else. No builders.
+   `Signal::from_values(&values, rate, FromValues { start }, Interpolation)` is implemented.
 5. **One error type per module family** (`Error` for rendering, `FormatError` for files, `ParamError` for a parameter
    table), each `#[non_exhaustive]`, `std::error::Error + Send + Sync`, carrying the problems (field and rule, with the
    value) with the same message as Python's. No panics, no `unwrap` or `expect`.
-6. **Sampling:** `sample(&self, &[f64]) -> Result<Vec<f64>>`; `sample_into(&self, &[f64], &mut [f64]) -> Result<()>`,
-   which allocates nothing, for a live loop; `at(&self, f64) -> Result<f64>`. Time is a plain `f64` in seconds, with no
+6. **Sampling** (implemented): `sample(&self, &[f64]) -> Result<Vec<f64>, Error>`; `sample_into(&self, &[f64], &mut [f64])
+   -> Result<(), Error>`, for a live loop; `at(&self, f64) -> Result<f64, Error>`. A buffer of the wrong length is an
+   error, not a panic. Time is a plain `f64` in seconds, with no
    unit newtypes. The Python binding restores the input's shape (a 0-d result for a scalar).
-7. **Combining:** `+`, `-`, `*` and negation work on `Signal` and `&Signal` with `f64`. `maximum` and `minimum` are
+7. **Combining** (implemented): `+`, `-`, `*` and negation work on `Signal` and `&Signal` with `f64`. `maximum` and `minimum` are
    infallible.
 8. **Entry points:** sources are free functions under `lib::`; shapers are methods, and `pipe` takes any shaper. Plugins
-   implement the public `Source` and `Shaper` traits.
+   implement the public `Source` and `Shaper` traits (R4); until then `Signal::from_fn` and `Signal::rendered` are how
+   code outside the crate adds a node.
 9. **The core crate** forbids `unsafe`, does no I/O, builds for wasm32, uses `libm` for the same result on every target,
    documents every public item, and carries these examples as doctests.
-10. **Concurrency:** no hand-written atomics. The only shared mutable state is the history cache of a stateful signal. A
-    Rust lock is never held while calling into Python.
+10. **Concurrency** (implemented): no hand-written atomics. The only shared mutable state is the history cache of a
+    stateful signal. A Rust lock is never held while calling into Python. A graph is at most `MAX_DEPTH` (1000) nodes
+    deep.
 
 ## 1. A curve from measured values
 
@@ -66,13 +72,15 @@ energy.sample([0.0, 0.05, 0.1, 0.25, 0.3, 1.0])  # halfway up, the peak, halfway
 ```
 
 ```rust
-use bullterrier_control as btc;
+// implemented (doctest of `Signal::from_values`)
+use bullterrier_control::{FromValues, Interpolation, Signal};
 
-let energy = btc::from_values(&[0.0, 1.0, 0.2, 0.0], 10.0, FromValues::default())?;
+let energy = Signal::from_values(&[0.0, 1.0, 0.2, 0.0], 10.0, FromValues::default(), Interpolation::Linear)?;
+assert_eq!(energy.sample(&[0.05, 0.1, 0.3, 1.0])?, [0.5, 1.0, 0.0, 0.0]);
 ```
 
-From a file: `btc.from_series(bundle.series["bass"])` and `btc::from_series(&bundle.series["bass"])`; the bundle is
-`Bundle::from_json(&text)?` in Rust (run as the doctest of `Bundle::from_json`).
+From a file: `btc.from_series(bundle.series["bass"])` and `Signal::from_series(&series, Interpolation::Linear)` (the
+series is a `Series`; the bundle is `Bundle::from_json(&text)?`, run as the doctest of `Bundle::from_json`).
 
 ## 2. Shape it: a chain
 
@@ -92,9 +100,12 @@ glow.sample([0.0, 0.05, 0.1, 0.2, 0.3, 1.0])  # climbs 5 a second, falls 2 a sec
 ```
 
 ```rust
+// `slew` and `follow` are implemented (`Signal::slew`, `Signal::follow`); `clip` comes with R5
+use bullterrier_control::builtin::slew;
+
 let glow = energy
-    .slew(Slew { rise: 0.2, fall: 0.5, ..Default::default() })?
-    .clip(Clip { low: 0.1, high: 0.8, ..Default::default() })?;
+    .slew(slew::Params { rise: 0.2, fall: 0.5, ..Default::default() })?
+    .clip(clip::Params { low: 0.1, high: 0.8, ..Default::default() })?;
 ```
 
 The parameters of `slew` as the core declares them (`bullterrier_control::builtin::slew::Params`):
@@ -130,7 +141,11 @@ glow.sample(times)  # one call for a whole timeline; one time per call gives the
 ```
 
 ```rust
+// implemented
 let values: Vec<f64> = glow.sample(&times)?;
+let mut frame = [0.0; 3];
+glow.sample_into(&[0.0, 0.1, 0.2], &mut frame)?; // into a buffer you keep, for a loop
+let now: f64 = glow.at(0.25)?;
 ```
 
 ## 4. Events, and an envelope on each
@@ -172,7 +187,7 @@ let ramp = btc::lib::keyframes(&[Keyframe::at(0.0, 0.0).ease(Ease::InOut), Keyfr
 ## 6. Combine
 
 Signals add, subtract and multiply with each other and with numbers, and `maximum` and `minimum` take the larger and
-the smaller at every time.
+the smaller at every time. A crossfade is `a * (1 - m) + b * m`.
 
 ```python
 import bullterrier_control as btc
@@ -194,8 +209,11 @@ louder.sample([0.5, 1.2, 2.5])  # the flare while it is above the ramp (1, e^-0.
 ```
 
 ```rust
-let look = &flare * 0.5 + &btc::lib::lfo(Lfo { rate: 2.0, ..Default::default() }, None)? * 0.25;
-let louder = btc::maximum(&flare, &ramp);
+// implemented, for any signals (`lfo` and `envelope` come with R5)
+use bullterrier_control::maximum;
+
+let look = &flare * 0.5 + &lfo * 0.25;
+let louder = maximum(&flare, &ramp);
 ```
 
 ## 7. A beat grid and a tempo-synced wobble
@@ -281,7 +299,8 @@ folded.sample([0.05, 0.1, 0.2, 0.3])  # 0.25 and 0.5 are below the fold; 0.57 fo
 ```
 
 ```rust
-use bullterrier_control::Params;
+// the parameters are implemented; the node is `Signal::from_fn`; the shaper trait (R4) is target
+use bullterrier_control::{Error, Params, Signal};
 
 /// Where the signal folds back.
 #[derive(Clone, Debug, PartialEq, Params)]
@@ -291,8 +310,33 @@ pub struct Fold {
     pub depth: f64,
 }
 
-// the shaper trait (target) takes it; `pipe` takes any shaper the same way
-let folded = glow.pipe(Fold { depth: 0.5, ..Default::default() })?;
+let params = Fold { depth: 0.5 }; // `params.check()` is the table's refusal of a depth outside 0 to 1, naming the field
+let line = 1.0 - params.depth;
+let source = glow.clone();
+let folded = Signal::from_fn(move |times, out| {
+    source.read_into(times, out)?;
+    for value in out.iter_mut() {
+        if *value > line {
+            *value = 2.0 * line - *value;
+        }
+    }
+    Ok::<(), Error>(())
+});
+// with the shaper trait (R4), `glow.pipe(Fold { depth: 0.5 })?` takes it the same way as a built-in
+```
+
+A signal that needs history is `Signal::rendered(&input, Rendering { rate, ..Default::default() }, run)`: `run` is a
+causal recurrence over the input sampled at `rate`, and the signal keeps what it rendered (Python: `Rendered`).
+
+```rust
+// implemented (doctest of `Signal::rendered`): the running sum of a constant 1 at 10 samples a second
+use bullterrier_control::{Rendering, Signal};
+
+let integral = Signal::rendered(&Signal::constant(1.0)?, Rendering { rate: 10.0, ..Default::default() }, |inputs| {
+    let mut sum = 0.0;
+    Ok::<_, std::fmt::Error>(inputs.iter().map(|input| { sum += input; sum / 10.0 }).collect())
+})?;
+assert_eq!(integral.sample(&[0.0, 0.15, 2.55])?, [0.1, 0.2, 2.6]);
 ```
 
 The derive names the crate `bullterrier_control` in the code it writes, so a dependency renamed in `Cargo.toml` breaks it.
