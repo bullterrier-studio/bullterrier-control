@@ -91,11 +91,10 @@ patch      Patch, load_patch: a graph of them as data (TOML), built against a bu
 plotting   plot: signals drawn as a PNG (matplotlib, an optional extra, imported when a picture is drawn)
 plugin     the author API: everything a source needs (built-ins use it too); the one door, enforced by a contract
 registry   the table of sources, shapers and operations; `@source`, `@shaper`, `@operation`; entry-point loading
-rendered   Rendered: a signal that needs history, rendered on a grid and read by holding the latest sample  |  inputs   `INPUTS`, Keyframe
+rendered   Rendered: a signal that needs history, rendered on a grid and read by holding the latest sample  |  inputs   `INPUTS`, Keyframe: the Rust core's input rules, named for Python
 signal     Signal (a handle over the Rust graph), Constant, from_series, from_values, minimum, maximum  |  params   Params, param: a plugin's declaration, built into the core's `ParamTable`  |  easing   `curve`: named and Bezier eases  |  cadence   `counter`: a read's position in cycles or steps, per second or beat  |  hashing   `uniform`: seeded random numbers by index  |  scaling   `between`: 0..1 onto `low`..`high`, exactly inside  |  rounding   decisions at a time boundary
 _chain     Chain: a typed method per built-in shaper, which Signal inherits (generated; rounding > _chain > formats)
 formats    Bundle > Series | Event | Grid > Unit: the Rust-backed classes of the extension, re-exported; `load`, `save`, `events`
-validated  ValidatedModel and the strict value types (Finite, Whole, Switch, Text): pydantic, for `Keyframe` and the inputs' models until R4
 errors     BullterrierControlError > InvalidError > FormatError | ParameterError; SignalError; UnknownNameError
 _native    home of the Rust extension `_native._core`      (imports `errors` only, lazily, to raise its errors)
 ```
@@ -194,7 +193,7 @@ Python body and its Rust twin do not coexist: port a shaper once and delete the 
 - `src/` holds only code and the data it runs on. Tests, examples and docs live outside it.
 - Public API has `__all__`: `bullterrier_control`, `bullterrier_control.plugin` (for authors) and `bullterrier_control.registry`
   (queries). Everything else is internal.
-- Runtime dependencies: numpy and pydantic, and the few Rust crates in `Cargo.toml` (`deny.toml` limits which; the core
+- Runtime dependency: numpy, and the few Rust crates in `Cargo.toml` (`deny.toml` limits which; the core
   never depends on PyO3 or numpy). Adding another needs a reason in `docs/design-decisions.md`: control must
   install without librosa, torch, Pillow or any media library. matplotlib is the one optional extra (`plot`), for
   `bt-control plot` and the gallery only; nothing else imports it.

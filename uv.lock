@@ -109,7 +109,6 @@ version = "0.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
-    { name = "pydantic" },
 ]
 
 [package.optional-dependencies]
@@ -148,7 +147,6 @@ dev = [
 requires-dist = [
     { name = "matplotlib", marker = "extra == 'plot'", specifier = ">=3.8" },
     { name = "numpy", specifier = ">=1.26.4" },
-    { name = "pydantic", specifier = ">=2.7.1" },
 ]
 provides-extras = ["plot"]
 

@@ -13,7 +13,6 @@ import only the layers below it:
                when a time counts as a bound
     _chain     the chain methods `Signal` inherits, one per built-in shaper (generated); `signal` imports it
     formats    the formats' file input and output and `events` (the classes are the Rust extension's)
-    validated  the base of every validated model and its strict value types
     _native    the home of the Rust extension (`_native._core`): the formats' classes and the shapers' kernels; it
                imports only `errors` (the extension imports its `FormatError` when it first raises one)
     errors     the exceptions; they import nothing from bullterrier_control, so every layer may raise them
@@ -43,7 +42,7 @@ LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-im
 
 LAYERS = (
     "Layers: app > builtin | lib | patch | plotting > plugin > registry > rendered | inputs > signal | params | easing"
-    " | cadence | hashing | scaling | rounding > _chain > formats > validated > _native > errors"
+    " | cadence | hashing | scaling | rounding > _chain > formats > _native > errors"
 )
 SOURCES_APART = "Built-in sources never import each other"
 SOURCES_DOOR = "Built-in sources use only the author API"
@@ -200,9 +199,9 @@ FORBIDDEN = {
         "bullterrier_control._native",
         LAYERS,
     ),
-    "the Rust extension's home to validated": (
+    "the Rust extension's home to inputs": (
         "_native/__init__.py",
-        "import bullterrier_control.validated",
+        "import bullterrier_control.inputs",
         "bullterrier_control._native",
         LAYERS,
     ),
@@ -238,8 +237,8 @@ ALLOWED = {
     "cli to sources": ("cli.py", "import bullterrier_control.builtin"),
     "a source to the plugin api": ("builtin/clip.py", "import bullterrier_control.plugin"),
     "registry to inputs": ("registry.py", "import bullterrier_control.inputs"),
-    "inputs to easing": ("inputs.py", "import bullterrier_control.easing"),
-    "inputs to validated": ("inputs.py", "import bullterrier_control.validated"),
+    "inputs to formats": ("inputs.py", "import bullterrier_control.formats"),
+    "inputs to the Rust extension": ("inputs.py", "from bullterrier_control._native import _core"),
     "rendered to errors": ("rendered.py", "import bullterrier_control.errors"),
     "signal to formats": ("signal.py", "import bullterrier_control.formats"),
     "formats to the Rust extension": ("formats/bundle.py", "from bullterrier_control._native import _core"),

@@ -1,5 +1,8 @@
 import ast
+import pickle
+from collections.abc import Mapping
 
+import numpy as np
 import pytest
 
 from bullterrier_control import Event, Grid, ParameterError, Series, Unit, registry
@@ -62,6 +65,20 @@ def test_a_bad_ease_lists_the_valid_ones():
         Keyframe.parse({"t": 1, "value": 1, "ease": "bounce"})
 
 
+def test_a_keyframe_survives_pickling():
+    frame = Keyframe(t=1.5, value=-2.0, ease="cubic-bezier(0.1, -2, 0.9, 3)")
+    assert pickle.loads(pickle.dumps(frame)) == frame  # noqa: S301  (the test's own object)
+
+
+def test_a_missing_ease_is_linear_whether_left_out_or_none():
+    assert Keyframe.parse({"t": 1, "value": 1, "ease": None}) == Keyframe(t=1.0, value=1.0, ease="linear")
+
+
+def test_a_bezier_ease_is_kept_in_its_tidy_form():
+    frame = Keyframe.parse({"t": 1, "value": 1, "ease": " cubic-bezier( 0.25, 0.1 ,0.25, 1.0 ) "})
+    assert frame.ease == "cubic-bezier(0.25, 0.1, 0.25, 1)"
+
+
 def check_points(value):
     return INPUTS["points"].check(value)
 
@@ -110,6 +127,7 @@ BAD = {
     "a bad ease at index 1": ([{"t": 0, "value": 1}, {"t": 1, "value": 1, "ease": "wobble"}], ["points[1].ease"]),
     "an unknown field at index 1": ([{"t": 0, "value": 1}, {"t": 1, "value": 1, "x": 1}], ["points[1].x"]),
     "a negative time at index 0": ([{"t": -1, "value": 1}, {"t": 1, "value": 1}], ["points[0].t"]),
+    "a key that is not text": ([{"t": 0, "value": 1, 2: 1}], ["points[0]"]),
     "every bad item is listed": (
         [{"t": 0, "value": "a"}, {"t": 1, "value": 1, "ease": "wobble"}],
         ["points[0].value", "points[1].ease"],
@@ -212,6 +230,22 @@ def test_bad_events_are_refused_naming_each_path(given, named, listen, reports):
     assert [path for path, _ in refused.value.problems] == named
 
 
+class Exploding(Mapping):
+    def __getitem__(self, key):
+        raise RuntimeError("this mapping is broken")
+
+    def __iter__(self):
+        raise RuntimeError("this mapping is broken")
+
+    def __len__(self):
+        return 1
+
+
+def test_an_exception_raised_by_a_users_own_mapping_reaches_the_caller_unchanged(listen):
+    with pytest.raises(RuntimeError, match="this mapping is broken"):
+        listen([KICK, Exploding()])
+
+
 def test_a_refused_event_is_reported_under_the_source_not_under_a_private_model(listen):
     with pytest.raises(ParameterError) as refused:
         listen([KICK, {"t": 1, "strength": 1.5}])
@@ -273,6 +307,8 @@ GOOD_VALUES = {
     "whole numbers become floats": ([1, 2, -3], (1.0, 2.0, -3.0)),
     "a single value": ([0.5], (0.5,)),
     "large and small": ([1e300, -1e-300], (1e300, -1e-300)),
+    "a numpy array": (np.array([0.25, 2.0]), (0.25, 2.0)),
+    "numpy scalars": ([np.float32(0.5), np.int64(3)], (0.5, 3.0)),
 }
 
 
@@ -293,6 +329,8 @@ BAD_VALUES = {
     "a set (no order)": ({1.0, 2.0}, ["values"]),
     "a mapping": ({"a": 1.0}, ["values"]),
     "a bool item": ([0.5, True], ["values[1]"]),
+    "a numpy bool item": ([0.5, np.True_], ["values[1]"]),
+    "a whole number too big for a float": ([2**60], ["values[0]"]),
     "a string item": ([0.5, "high"], ["values[1]"]),
     "a NaN item": ([0.0, 1.0, float("nan")], ["values[2]"]),
     "an infinite item": ([float("-inf"), 1.0], ["values[0]"]),
