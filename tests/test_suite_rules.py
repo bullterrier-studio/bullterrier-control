@@ -23,6 +23,13 @@ ALLOWED: dict[tuple[str, str], str] = {
         "the boundary between the package and the Rust core: what `render` reads and refuses, and that every shaper "
         "the core implements is a registered shaper (only the core can say which it implements)"
     ),
+    ("_native/test__core_signal.py", "bullterrier_control._native"): (
+        "the boundary the package's Signal, Constant and Rendered are built on: the GIL, threads, callbacks into "
+        "Python and deep graphs are the extension's to get right, before the package wraps it"
+    ),
+    ("_native/test__core_primitives.py", "bullterrier_control._native"): (
+        "the boundary the package's easing, hashing, scaling, cadence and rounding wrap"
+    ),
 }
 
 _PATCHERS = ("monkeypatch.setattr", "monkeypatch.delattr", "monkeypatch.setitem", "monkeypatch.delitem")

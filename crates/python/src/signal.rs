@@ -32,14 +32,15 @@ use crate::params;
 /// integer too large for an array of numbers) and a value that is not finite are refused with `SignalError`. The
 /// same times give the same values, whatever was read before. A read of a signal made in Rust runs without the GIL.
 ///
-/// `compute(times)` is only called with a 1-D float64 array of finite times from 0 up, and returns as many values
-/// (anything numpy makes float64 of: another shape is a `ValueError`); a signal made in Rust computes its values
-/// without refusing one that is not finite (the read that called it does). An exception `compute` raises reaches
-/// the caller of `sample` unchanged.
+/// A read calls a subclass's `compute(times)` with a 1-D float64 array of finite times from 0 up, of its own, and
+/// takes as many values (anything numpy makes float64 of: another shape is a `ValueError`); an exception `compute`
+/// raises reaches the caller of `sample` unchanged. A signal made in Rust (an operator's result, a `Constant`, a
+/// `Rendered`, ...) is read in Rust, a `compute` of a subclass of its class aside; its own `compute` gives the values
+/// at times of any shape without refusing one that is not finite (the read that called it does).
 ///
 /// Signals combine with `+`, `-`, `*` and negation, a number (a real one, numpy's too, not a bool) standing for a
-/// constant; a number that is not finite is refused at once with `SignalError`. A graph more than `MAX_DEPTH`
-/// operations deep is refused when read.
+/// constant; a number that is not finite is refused at once with `SignalError`. A graph deeper than the core allows
+/// (1000 nodes) is refused when read.
 #[pyclass(subclass, frozen, module = "bullterrier_control._native._core", name = "SignalBase")]
 pub(crate) struct SignalBase {
     /// The Rust signal of one the extension made; empty for a Python subclass, which is read through its `compute`.
@@ -143,8 +144,8 @@ impl Constant {
 /// `run` gets a fresh 1-D, C-contiguous float64 array of its own (whatever the input's `compute` returned) and returns
 /// as many outputs (another shape is a `ValueError`). It must be causal (output *i* depends on inputs 0 to *i* only):
 /// then the same time gives the same value whatever was read before, and a read at time t depends on the input only
-/// up to t (a float rounding of a billionth of a sample aside). The signal renders at least 1024 samples and at least
-/// twice what it holds; a read needing more than `limit` samples is a `SignalError` before anything is rendered.
+/// up to t (a float rounding of a billionth of a sample aside). The signal renders at least 1024 samples and twice what
+/// it holds, at most `limit`; a read needing more than `limit` samples is a `SignalError` before anything is rendered.
 /// Several threads may read it at once.
 ///
 /// A `rate` that is not a positive finite number and a `limit` that is not a whole number from 1 are `ValueError`s.
