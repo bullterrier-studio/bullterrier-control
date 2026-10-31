@@ -234,12 +234,17 @@ fn an_error_of_the_recurrence_or_of_the_input_comes_through_as_its_own() -> Resu
 
 #[test]
 fn a_rate_or_a_limit_out_of_range_is_refused_naming_it() -> Result<(), Error> {
-    for rate in [0.0, -1.0, f64::INFINITY, f64::NAN] {
+    // 1e-310: the last sample's time, 2e7 / rate, is not a number
+    for rate in [0.0, -1.0, f64::INFINITY, f64::NAN, 1e-310] {
         let refused = Signal::rendered(&constant(1.0)?, at_rate(rate), integrate);
-        assert!(signal_error(&refused).contains("rate"), "{rate}: {refused:?}");
+        let message = signal_error(&refused);
+        assert!(
+            message.starts_with("rate") && message.contains("rate"),
+            "{rate}: {refused:?}"
+        );
     }
     let refused = Signal::rendered(&constant(1.0)?, Rendering { rate: 10.0, limit: 0 }, integrate);
-    assert!(signal_error(&refused).contains("limit"), "{refused:?}");
+    assert!(signal_error(&refused).starts_with("limit"), "{refused:?}");
     let smallest = Signal::rendered(&constant(1.0)?, Rendering { rate: 10.0, limit: 1 }, integrate)?;
     assert_eq!(smallest.at(0.05)?, 0.1);
     Ok(())

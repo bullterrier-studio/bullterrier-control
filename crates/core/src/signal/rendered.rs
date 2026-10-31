@@ -59,7 +59,8 @@ impl Rendered {
     /// [`Error::Node`].
     ///
     /// # Errors
-    /// [`Error::Signal`] if the rate is not positive and finite or the limit is 0.
+    /// [`Error::Signal`] if the rate is not positive and finite (nor large enough that `limit / rate` is a time) or the limit
+    /// is 0.
     pub(crate) fn new<E>(
         input: &Signal,
         Rendering { rate, limit }: Rendering,
@@ -76,6 +77,14 @@ impl Rendered {
         if limit == 0 {
             return Err(Error::Signal {
                 message: "limit must be at least 1 sample (got 0)".to_owned(),
+            });
+        }
+        // the last sample's time, `limit / rate`, must be a number: the input is read at finite times only
+        #[expect(clippy::cast_precision_loss, reason = "a limit is far below 2^53: exact")]
+        let last_time = limit as f64 / rate;
+        if !last_time.is_finite() {
+            return Err(Error::Signal {
+                message: format!("rate {rate:?} is too small: {limit} samples would end beyond the largest time"),
             });
         }
         Ok(Self {
