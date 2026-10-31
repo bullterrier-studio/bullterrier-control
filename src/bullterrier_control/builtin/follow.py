@@ -1,10 +1,10 @@
 """follow: smooth a signal with separate attack and release times: a level that swells on a hit and eases back."""
 
-from functools import partial
+from typing import cast
 
 from bullterrier_control._native import _core
 
-from ..plugin import Params, Rendered, Signal, shaper
+from ..plugin import Params, Signal, shaper
 
 
 class FollowParams(Params, builtin="follow"):
@@ -22,4 +22,4 @@ def follow(signal: Signal, params: FollowParams) -> Signal:
     `slew` differs: it moves at a fixed speed, however far the input is, and arrives. The output stays between the
     lowest and highest value the input has had, to within float rounding.
     """
-    return Rendered(signal, rate=params.rate, run=partial(_core.render, "follow", params=params.to_dict()))
+    return cast("Signal", _core.shape("follow", signal, params.to_dict()))

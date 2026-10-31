@@ -1,10 +1,10 @@
 """slew: limit how fast a signal may rise and fall, so jumps become ramps."""
 
-from functools import partial
+from typing import cast
 
 from bullterrier_control._native import _core
 
-from ..plugin import Params, Rendered, Signal, shaper
+from ..plugin import Params, Signal, shaper
 
 
 class SlewParams(Params, builtin="slew"):
@@ -18,4 +18,4 @@ def slew(signal: Signal, params: SlewParams) -> Signal:
     It starts at the input's value at time 0. A limit is a time per unit of change: rise = 2 means at most 0.5 per
     second.
     """
-    return Rendered(signal, rate=params.rate, run=partial(_core.render, "slew", params=params.to_dict()))
+    return cast("Signal", _core.shape("slew", signal, params.to_dict()))
