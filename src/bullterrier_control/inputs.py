@@ -7,7 +7,8 @@
 
 A parameter is a number or a choice; an input is a structure (keyframes, events, a grid). A function declares the
 inputs it takes as keyword-only arguments named in `INPUTS`; the registry knows no kind by name: it looks the argument
-up here and calls `check`. Adding a kind is one entry in `INPUTS`.
+up here and calls `check`. Adding a kind is one entry in `INPUTS` and its rules in the Rust core
+(`crates/core/src/inputs.rs`).
 
 Promises:
 - `INPUTS[name].check(value)` returns the value in its checked form, or raises `ParameterError` listing each broken rule

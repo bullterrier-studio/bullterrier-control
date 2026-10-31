@@ -1,4 +1,4 @@
-"""The package has no pydantic: the Rust core checks every input, number and field (CLAUDE.md, "Dependencies").
+"""The package has no pydantic: the Rust core checks every input, number and field.
 
 An architecture test: its subject is the package's imports and its declared dependencies, so it reads the source files
 (with `ast`) and `pyproject.toml`.

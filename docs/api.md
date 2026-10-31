@@ -186,7 +186,7 @@ let ramp = btc::lib::keyframes(&[Keyframe::at(0.0, 0.0).ease(Ease::InOut), Keyfr
 ```
 
 Every input is checked by the Rust core, once, where it enters. Keyframes must start at 0 or later and strictly
-increase in `t`; a broken rule is a `ParameterError` that lists each one as `path: rule`, up to 100, then
+increase in `t`; a broken rule is a `ParameterError` that lists the first 20 as `path: rule`, then
 `... and N more`.
 
 ```python
