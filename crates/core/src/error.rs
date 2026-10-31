@@ -20,6 +20,12 @@ pub enum Error {
         /// What is wrong with the text and what would be right.
         message: String,
     },
+    /// A signal cannot be read as asked: a time or a value that is not a finite number, or one too far for a position to
+    /// be a number.
+    Signal {
+        /// What cannot be read and why, naming the time where there is one.
+        message: String,
+    },
     /// The parameters are not the built-in's: one is unknown, of the wrong type or out of its range.
     Params {
         /// The built-in whose parameters these were meant to be.
@@ -47,7 +53,7 @@ impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownShaper { name } => write!(formatter, "the Rust core has no shaper called {name:?}"),
-            Self::Ease { message } => formatter.write_str(message),
+            Self::Ease { message } | Self::Signal { message } => formatter.write_str(message),
             Self::Params {
                 shaper,
                 problems,
