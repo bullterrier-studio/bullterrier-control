@@ -705,6 +705,10 @@ Accepted differences from the Python inputs (a break, accepted before the first 
 - A whole number beyond 2^53 (`values=[2**60]`, `t=2**60`) is refused; it was accepted, rounded.
 - `np.bool_` in `values` is refused (it read as 1.0); a numpy array is accepted for `values` (it was refused). numpy
   scalars of every width are numbers; `longdouble` and numpy NaN are refused.
+- A number must be a Python `int`/`float` or a numpy scalar of those kinds: `Decimal` and `Fraction` are refused (they
+  were accepted through `float()`); `bytes` is not text for an ease; numpy arrays are read like their lists for
+  `points` and `events` too; a mapping that raises while it is read passes its exception through in every input; the
+  order check of `points` is reported beside other field problems (it was skipped when any field was invalid).
 - A key that is not text is a `ParameterError` at its item; it was `TypeError: keywords must be strings`.
 - A bezier ease is written back tidied (`" cubic-bezier( 0.25, 0.1 ,0.25, 1.0 ) "` reads `cubic-bezier(0.25, 0.1, 0.25,
   1)`); it was kept as written.
