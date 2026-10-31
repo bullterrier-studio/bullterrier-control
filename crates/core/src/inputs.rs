@@ -182,18 +182,26 @@ impl InputKind {
         let name = self.name();
         let mut problems = Problems::new();
         let found = match self {
-            Self::Points => items::<Object<RawKeyframe>, _>(data).map(|frames| {
-                let frames = frames
-                    .into_iter()
-                    .map(|frame| frame.map(|Object(raw)| Frame::from(raw)));
-                points(frames.collect(), &mut problems).map(Input::Points)
-            }),
-            Self::Events => items::<Object<RawEvent>, _>(data).map(|found| events(found, &mut problems)),
+            Self::Points => {
+                let mut rules = Points::new(&problems);
+                items::<Object<RawKeyframe>, _>(data, |frame| {
+                    rules.give(frame.map(|Object(raw)| Frame::from(raw)), &mut problems);
+                })
+                .map(|()| rules.end(&mut problems).map(Input::Points))
+            }
+            Self::Events => {
+                let mut rules = Events::new(&problems);
+                items::<Object<RawEvent>, _>(data, |event| rules.give(event, &mut problems))
+                    .map(|()| rules.end(&problems).map(Input::from_events))
+            }
             Self::Grid => decode::<RawGrid, _>(data).map(|raw| raw.read(name, &mut problems).map(Input::Grid)),
-            Self::Values => items::<Number, _>(data).map(|found| {
-                let found = found.into_iter().map(|value| value.map(|Number(value)| value));
-                values(found.collect(), &mut problems).map(Input::Values)
-            }),
+            Self::Values => {
+                let mut rules = Values::new(&problems);
+                items::<Number, _>(data, |value| {
+                    rules.give(value.map(|Number(value)| value), &mut problems)
+                })
+                .map(|()| rules.end(&mut problems).map(Input::Values))
+            }
             Self::Series => decode::<RawSeries, _>(data).map(|raw| raw.read(name, &mut problems).map(Input::Series)),
         };
         match found {
@@ -284,8 +292,12 @@ impl Input {
     /// the one before it.
     pub fn from_points(points: Vec<Keyframe>) -> Result<Self, Error> {
         let mut problems = Problems::new();
-        let frames = points.into_iter().map(|frame| Ok(Frame::from(frame))).collect();
-        self::points(frames, &mut problems)
+        let mut rules = Points::new(&problems);
+        for frame in points {
+            rules.give(Ok(Frame::from(frame)), &mut problems);
+        }
+        rules
+            .end(&mut problems)
             .map(Self::Points)
             .ok_or_else(|| refused(problems))
     }
@@ -317,7 +329,12 @@ impl Input {
     /// [`Error::Input`] listing every rule broken: no value, or a value that is not finite (`values[2]`).
     pub fn from_values(values: Vec<f64>) -> Result<Self, Error> {
         let mut problems = Problems::new();
-        self::values(values.into_iter().map(Ok).collect(), &mut problems)
+        let mut rules = Values::new(&problems);
+        for value in values {
+            rules.give(Ok(value), &mut problems);
+        }
+        rules
+            .end(&mut problems)
             .map(Self::Values)
             .ok_or_else(|| refused(problems))
     }
@@ -345,22 +362,35 @@ pub fn matching(events: &[Event], label: &str) -> Vec<Event> {
         .collect()
 }
 
-/// The rules of `points`, each keyframe given or the problem that stopped its reading: at least one; each one's own
-/// rules under `points[i]`, its `t` after the known `t` of the one before. The keyframes, if no rule is broken.
-fn points(frames: Vec<Result<Frame, FormatError>>, problems: &mut Problems) -> Option<Vec<Keyframe>> {
-    if frames.is_empty() {
-        push(problems, "", "points", "needs at least one keyframe");
-        return None;
+/// The rules of `points`, applied to each keyframe as it is given (read, or the problem that stopped its reading), so
+/// that a broken one costs nothing once the problems are full: at least one; each one's own rules under `points[i]`,
+/// its `t` after the known `t` of the one before.
+struct Points {
+    kept: Vec<Keyframe>,
+    given: usize,
+    /// The known `t` of the keyframe given last, if any.
+    previous: Option<f64>,
+    /// How many problems were recorded before the first keyframe.
+    before: usize,
+}
+
+impl Points {
+    fn new(problems: &Problems) -> Self {
+        Self {
+            kept: Vec::new(),
+            given: 0,
+            previous: None,
+            before: problems.len(),
+        }
     }
-    let before = problems.len();
-    let mut kept = Vec::with_capacity(frames.len());
-    let mut previous = None;
-    for (index, frame) in frames.into_iter().enumerate() {
-        let prefix = format!("points[{index}]");
-        previous = match frame {
+
+    fn give(&mut self, frame: Result<Frame, FormatError>, problems: &mut Problems) {
+        let prefix = format!("points[{}]", self.given);
+        self.given += 1;
+        self.previous = match frame {
             Ok(frame) => {
                 let t = frame.known_t();
-                kept.extend(frame.read(&prefix, previous, problems));
+                self.kept.extend(frame.read(&prefix, self.previous, problems));
                 t
             }
             Err(error) => {
@@ -369,22 +399,48 @@ fn points(frames: Vec<Result<Frame, FormatError>>, problems: &mut Problems) -> O
             }
         };
     }
-    (problems.len() == before).then_some(kept)
+
+    /// The keyframes, if no rule is broken.
+    fn end(self, problems: &mut Problems) -> Option<Vec<Keyframe>> {
+        if self.given == 0 {
+            push(problems, "", "points", "needs at least one keyframe");
+            return None;
+        }
+        (problems.len() == self.before).then_some(self.kept)
+    }
 }
 
-/// The rules of `events`, each event as data gives it or the problem that stopped its reading: each one's rules
-/// under `events[i]`. The events in time order, if no rule is broken.
-fn events(found: Vec<Result<Object<RawEvent>, FormatError>>, problems: &mut Problems) -> Option<Input> {
-    let before = problems.len();
-    let mut kept = Vec::with_capacity(found.len());
-    for (index, event) in found.into_iter().enumerate() {
-        let prefix = format!("events[{index}]");
+/// The rules of `events`, applied to each event as it is given (as data gives it, or the problem that stopped its
+/// reading): each one's rules under `events[i]`.
+struct Events {
+    kept: Vec<Event>,
+    given: usize,
+    /// How many problems were recorded before the first event.
+    before: usize,
+}
+
+impl Events {
+    fn new(problems: &Problems) -> Self {
+        Self {
+            kept: Vec::new(),
+            given: 0,
+            before: problems.len(),
+        }
+    }
+
+    fn give(&mut self, event: Result<Object<RawEvent>, FormatError>, problems: &mut Problems) {
+        let prefix = format!("events[{}]", self.given);
+        self.given += 1;
         match event {
-            Ok(Object(raw)) => kept.extend(raw.read(&prefix, problems)),
+            Ok(Object(raw)) => self.kept.extend(raw.read(&prefix, problems)),
             Err(error) => absorb_under(problems, &prefix, error),
         }
     }
-    (problems.len() == before).then(|| Input::from_events(kept))
+
+    /// The events, in the order given, if no rule is broken.
+    fn end(self, problems: &Problems) -> Option<Vec<Event>> {
+        (problems.len() == self.before).then_some(self.kept)
+    }
 }
 
 /// `events` sorted by time, those at the same time in the order given.
@@ -395,26 +451,45 @@ fn in_time_order(mut events: Vec<Event>) -> Vec<Event> {
     events
 }
 
-/// The rules of `values`, each number given or the problem that stopped its reading: at least one, each finite
-/// (`values[i]`). The values, if no rule is broken.
-fn values(found: Vec<Result<f64, FormatError>>, problems: &mut Problems) -> Option<Vec<f64>> {
-    if found.is_empty() {
-        push(problems, "", "values", "needs at least one value");
-        return None;
+/// The rules of `values`, applied to each number as it is given (read, or the problem that stopped its reading): at
+/// least one, each finite (`values[i]`).
+struct Values {
+    kept: Vec<f64>,
+    given: usize,
+    /// How many problems were recorded before the first value.
+    before: usize,
+}
+
+impl Values {
+    fn new(problems: &Problems) -> Self {
+        Self {
+            kept: Vec::new(),
+            given: 0,
+            before: problems.len(),
+        }
     }
-    let before = problems.len();
-    let mut kept = Vec::with_capacity(found.len());
-    for (index, value) in found.into_iter().enumerate() {
+
+    fn give(&mut self, value: Result<f64, FormatError>, problems: &mut Problems) {
+        let index = self.given;
+        self.given += 1;
         match value {
             Ok(value) => {
                 if finite(problems, "", format_args!("values[{index}]"), value) {
-                    kept.push(value);
+                    self.kept.push(value);
                 }
             }
             Err(error) => absorb_under(problems, &format!("values[{index}]"), error),
         }
     }
-    (problems.len() == before).then_some(kept)
+
+    /// The values, if no rule is broken.
+    fn end(self, problems: &mut Problems) -> Option<Vec<f64>> {
+        if self.given == 0 {
+            push(problems, "", "values", "needs at least one value");
+            return None;
+        }
+        (problems.len() == self.before).then_some(self.kept)
+    }
 }
 
 /// The error for the problems recorded, at least one.
