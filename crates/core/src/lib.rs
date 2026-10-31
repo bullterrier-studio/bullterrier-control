@@ -21,6 +21,7 @@ pub mod easing;
 mod error;
 pub mod formats;
 pub mod hashing;
+pub mod inputs;
 pub mod params;
 pub mod rounding;
 pub mod scaling;

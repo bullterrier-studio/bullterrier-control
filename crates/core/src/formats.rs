@@ -26,6 +26,9 @@ pub use grid::Grid;
 pub use series::{Series, SeriesOptions};
 pub use unit::Unit;
 
-pub(crate) use field::show;
+pub(crate) use event::RawEvent;
+pub(crate) use field::{Number, Object, check, decode, finite, push, push_with, required, show};
+pub(crate) use grid::RawGrid;
+pub(crate) use series::RawSeries;
 #[cfg(test)]
-pub(crate) use test_support::check_problems;
+pub(crate) use test_support::{check_problems, list_of_floats, object_of_floats};

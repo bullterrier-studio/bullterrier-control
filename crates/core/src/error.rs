@@ -6,9 +6,9 @@ use std::sync::Arc;
 use crate::formats::{FormatError, Problem, write_problems};
 use crate::params::ParamError;
 
-/// Why a signal could not be read, a shaper could not run, or a built-in's parameters could not be given. Each but
-/// [`Error::Node`] is a programming error of the caller, never a user's mistake: the Python package validates whatever
-/// a user gives before it reaches the core.
+/// Why a signal could not be read, a shaper could not run, or a built-in's parameters or a source's inputs could not be
+/// given. Each but [`Error::Node`] and [`Error::Input`] is a programming error of the caller, never a user's mistake:
+/// the Python package validates whatever else a user gives before it reaches the core.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Error {
@@ -33,6 +33,14 @@ pub enum Error {
         /// The built-in whose parameters these were meant to be.
         shaper: String,
         /// What is wrong with them: each broken rule under the name of its field, the first 100 at most.
+        problems: Vec<Problem>,
+        /// How many more problems there were than `problems` holds.
+        omitted: usize,
+    },
+    /// The data given as an input ([`inputs`](crate::inputs): keyframes, events, a grid, values, a series) breaks
+    /// its rules: a mistake in the data, which the bindings report as the user's.
+    Input {
+        /// Each broken rule under its path from the input's name (`points[1].ease`), the first 100 at most.
         problems: Vec<Problem>,
         /// How many more problems there were than `problems` holds.
         omitted: usize,
@@ -76,6 +84,7 @@ impl fmt::Display for Error {
                 write!(formatter, "the parameters of {shaper:?} do not fit: ")?;
                 write_problems(formatter, problems, *omitted)
             }
+            Self::Input { problems, omitted } => write_problems(formatter, problems, *omitted),
             Self::Format { source } => write!(formatter, "{source}"),
             Self::Node { source } => write!(formatter, "{source}"),
         }

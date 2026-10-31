@@ -1,6 +1,6 @@
 //! Test helpers shared by the formats' tests.
 
-use serde::de::value::{Error, MapDeserializer};
+use serde::de::value::{Error, MapDeserializer, SeqDeserializer};
 use serde::de::{Deserializer, IntoDeserializer, Visitor};
 use serde::forward_to_deserialize_any;
 
@@ -75,4 +75,9 @@ impl IntoDeserializer<'_, Error> for Decimal {
 /// An object whose fields are all `f64`s, delivered the way a Python float is: NaN and infinities arrive as numbers.
 pub(crate) fn object_of_floats<'de>(fields: &[(&'static str, f64)]) -> impl Deserializer<'de, Error = Error> {
     MapDeserializer::new(fields.iter().copied().map(|(name, value)| (name, Decimal(value))))
+}
+
+/// A list of `f64`s, delivered the way a Python list of floats is: NaN and infinities arrive as numbers.
+pub(crate) fn list_of_floats<'de>(values: &[f64]) -> impl Deserializer<'de, Error = Error> {
+    SeqDeserializer::new(values.iter().copied().map(Decimal))
 }
