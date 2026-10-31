@@ -1,5 +1,6 @@
-//! The numeric core of bullterrier-control: the shapers implemented in Rust and the primitives they share, and the
-//! plain-data [`formats`] (Unit, Event, Series, Grid, Bundle) that every package of the ecosystem reads and writes.
+//! The numeric core of bullterrier-control: a [`Signal`] (a value readable at any time in seconds, a graph of nodes
+//! that combine), the shapers implemented in Rust and the primitives they share, and the plain-data [`formats`] (Unit,
+//! Event, Series, Grid, Bundle) that every package of the ecosystem reads and writes.
 //! A thing's parameters are declared as a [`params`] table (in Rust by `#[derive(Params)]`), which holds every rule
 //! they follow.
 //!
