@@ -37,6 +37,14 @@ fn broken(value: f64) -> Signal {
     })
 }
 
+/// The message of a refusal that must be an `Error::Depth`, or why it is not one.
+fn depth_error<T: fmt::Debug>(result: &Result<T, Error>) -> String {
+    match result {
+        Err(Error::Depth { message }) => message.clone(),
+        other => format!("not a depth error: {other:?}"),
+    }
+}
+
 /// The message of a refusal that must be an `Error::Signal`, or why it is not one.
 fn signal_error<T: fmt::Debug>(result: &Result<T, Error>) -> String {
     match result {
@@ -709,11 +717,11 @@ fn a_graph_as_deep_as_the_limit_reads_and_one_deeper_is_refused() -> Result<(), 
         (-&deepest, "negation"),
         (maximum(&Signal::constant(0.0)?, &deepest), "the larger of two"),
     ] {
-        let message = signal_error(&signal.sample(&[0.0]));
+        let message = depth_error(&signal.sample(&[0.0]));
         assert!(message.contains(&too_deep), "{rule}: {message}");
     }
     // the refusal comes through whatever is built on it
-    let message = signal_error(&((&deepest + 1.0) * 2.0 + &echo()).sample(&[0.0]));
+    let message = depth_error(&((&deepest + 1.0) * 2.0 + &echo()).sample(&[0.0]));
     assert!(message.contains(&too_deep), "{message}");
     Ok(())
 }
@@ -725,7 +733,7 @@ fn a_sum_of_a_hundred_thousand_terms_is_refused_and_dropped_without_overflowing_
     for _ in 1..100_000 {
         sum = sum + &term;
     }
-    let message = signal_error(&sum.sample(&[0.0, 1.0]));
+    let message = depth_error(&sum.sample(&[0.0, 1.0]));
     assert!(message.contains("nodes deep"), "{message}");
     drop(sum);
     // the deepest graph there can be, dropped as its last handle goes

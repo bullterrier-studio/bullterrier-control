@@ -48,7 +48,7 @@ pub use signal::{FromValues, Interpolation, MAX_DEPTH, Rendering, Signal, maximu
 ///
 /// # Errors
 /// [`Error::UnknownShaper`] if the core implements no shaper of that name, [`Error::Params`] listing every rule
-/// `params` breaks (a field of another type, out of its range, or one the shaper does not have), and [`Error::Signal`]
+/// `params` breaks (a field of another type, out of its range, or one the shaper does not have), and [`Error::Depth`]
 /// if the graph would be deeper than [`MAX_DEPTH`].
 pub fn shape(name: &str, input: &Signal, params: &serde_json::Value) -> Result<Signal, Error> {
     let (_, shape) = builtin::SHAPERS

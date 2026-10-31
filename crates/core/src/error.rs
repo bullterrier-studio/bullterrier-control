@@ -49,6 +49,12 @@ pub enum Error {
         /// The callback's own error.
         source: Arc<dyn std::error::Error + Send + Sync>,
     },
+    /// A signal would be deeper than [`MAX_DEPTH`](crate::MAX_DEPTH) nodes. It is the shape of a graph the caller
+    /// built, not a wrong argument: an operator that makes one reports this on every read.
+    Depth {
+        /// How deep the graph would be and what to do instead.
+        message: String,
+    },
 }
 
 impl Error {
@@ -67,7 +73,7 @@ impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownShaper { name } => write!(formatter, "the Rust core has no shaper called {name:?}"),
-            Self::Ease { message } | Self::Signal { message } => formatter.write_str(message),
+            Self::Ease { message } | Self::Signal { message } | Self::Depth { message } => formatter.write_str(message),
             Self::Params {
                 shaper,
                 problems,
