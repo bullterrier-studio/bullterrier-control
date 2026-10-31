@@ -152,7 +152,7 @@ pub trait Params: Default + Clone + fmt::Debug + PartialEq {
     /// use bullterrier_control::builtin::slew;
     ///
     /// let fine = slew::Params { rise: 0.5, ..Default::default() };
-    /// assert_eq!(fine.check(), Ok(fine.clone()));
+    /// assert_eq!(fine.check(), Ok(fine));
     /// let refused = slew::Params { rise: -1.0, ..Default::default() }.check();
     /// assert!(refused.is_err_and(|error| error.problems[0].path == "rise"));
     /// ```

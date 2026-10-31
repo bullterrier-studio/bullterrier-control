@@ -5,8 +5,10 @@
 //! they follow.
 //!
 //! Pure Rust, no Python: the `bullterrier-control-python` crate binds it to the package. Every built-in source, shaper
-//! and operation declares its parameters in Rust ([`builtin`]); [`parameters`] gives a built-in's table and [`render`]
-//! runs a shaper with values it reads through that table, so a value is checked the same way wherever it comes from.
+//! and operation declares its parameters in Rust ([`builtin`]); [`parameters`] gives a built-in's table, and [`shape`]
+//! shapes a signal with a shaper the core implements and values it reads through that table, so a value is checked the
+//! same way wherever it comes from. A shaper is also a method of [`Signal`] taking its typed parameters
+//! ([`Signal::slew`]).
 
 #![forbid(unsafe_code)]
 
@@ -28,30 +30,32 @@ pub use error::Error;
 pub use params::{Choice, Params};
 pub use signal::{FromValues, Interpolation, MAX_DEPTH, Rendering, Signal, maximum, minimum};
 
-/// Run the shaper called `name` over `inputs` (its input signal sampled at the shaper's rate from time 0) with `params`
-/// (an object of the shaper's parameters by name; one left out takes its default); a new series of the same length,
-/// output `i` depending on inputs `0..=i` only.
+/// The signal the shaper called `name` makes of `input` with `params` (an object of the shaper's parameters by name;
+/// one left out takes its default).
 ///
 /// ```
+/// use bullterrier_control::{FromValues, Interpolation, Signal, shape};
 /// use serde_json::json;
 ///
-/// let out = bullterrier_control::render("slew", &[0.0, 1.0, 1.0], &json!({"rise": 0.5, "fall": 0.5, "rate": 10.0}))?;
-/// assert_eq!(out.len(), 3);
+/// let step = Signal::from_values(&[0.0, 1.0], 10.0, FromValues::default(), Interpolation::Hold)?;
+/// let ramp = shape("slew", &step, &json!({"rise": 0.5, "fall": 0.5, "rate": 10.0}))?;
+/// assert_eq!(ramp.sample(&[0.0, 0.1, 0.2])?, [0.0, 0.2, 0.4]);
 ///
-/// let refused = bullterrier_control::render("slew", &[0.0], &json!({"rise": "slow"})).map_err(|error| error.to_string());
-/// assert_eq!(refused, Err(r#"the parameters of "slew" do not fit: rise: must be a number (got "slow")"#.to_owned()));
+/// let refused = shape("slew", &step, &json!({"rise": "slow"})).map_err(|error| error.to_string());
+/// assert_eq!(refused.err().as_deref(), Some(r#"the parameters of "slew" do not fit: rise: must be a number (got "slow")"#));
 /// # Ok::<(), bullterrier_control::Error>(())
 /// ```
 ///
 /// # Errors
-/// [`Error::UnknownShaper`] if the core implements no shaper of that name, and [`Error::Params`] listing every rule
-/// `params` breaks (a field of another type, out of its range, or one the shaper does not have).
-pub fn render(name: &str, inputs: &[f64], params: &serde_json::Value) -> Result<Vec<f64>, Error> {
-    let (_, run) = builtin::SHAPERS
+/// [`Error::UnknownShaper`] if the core implements no shaper of that name, [`Error::Params`] listing every rule
+/// `params` breaks (a field of another type, out of its range, or one the shaper does not have), and [`Error::Signal`]
+/// if the graph would be deeper than [`MAX_DEPTH`].
+pub fn shape(name: &str, input: &Signal, params: &serde_json::Value) -> Result<Signal, Error> {
+    let (_, shape) = builtin::SHAPERS
         .iter()
         .find(|(shaper, _)| *shaper == name)
         .ok_or_else(|| Error::UnknownShaper { name: name.to_owned() })?;
-    run(inputs, params)
+    shape(input, params)
 }
 
 /// The parameter table of the built-in called `name`: a source, shaper or operation, whether or not the core runs it.
@@ -91,18 +95,39 @@ mod builtin_table;
 
 #[cfg(test)]
 mod tests {
-    use super::{Error, render, shapers};
+    use super::{Error, FromValues, Interpolation, Signal, shape, shapers};
     use serde_json::json;
 
     fn slew_params() -> serde_json::Value {
         json!({"rise": 0.5, "fall": 0.5, "rate": 10.0})
     }
 
+    /// A step from 0 to 1 at 0.1 s.
+    fn step() -> Result<Signal, Error> {
+        Signal::from_values(&[0.0, 1.0], 10.0, FromValues::default(), Interpolation::Hold)
+    }
+
+    /// `shape` of `name` over [`step`] with `params`.
+    fn render(name: &str, params: &serde_json::Value) -> Result<Signal, Error> {
+        shape(name, &step()?, params)
+    }
+
     #[test]
-    fn a_shaper_runs_by_its_name_into_a_series_of_the_inputs_length() -> Result<(), Error> {
-        let out = render("slew", &[0.0, 1.0, 1.0], &slew_params())?;
-        assert_eq!(out.len(), 3);
-        assert!((out[1] - 0.2).abs() <= 1e-12, "{out:?}");
+    fn a_shaper_shapes_a_signal_by_its_name() -> Result<(), Error> {
+        // 0.1 s a sample, 0.2 a sample up: 0.2 at 0.1 s, 0.4 at 0.25 s (sample 2), 1 from 0.5 s
+        let out = render("slew", &slew_params())?.sample(&[0.0, 0.1, 0.25, 0.5, 9.0])?;
+        assert_eq!(out.len(), 5);
+        assert!(
+            out.iter()
+                .zip([0.0, 0.2, 0.4, 1.0, 1.0])
+                .all(|(got, want)| (got - want).abs() <= 1e-12),
+            "{out:?}"
+        );
+        // follow, with an instant attack, is its input
+        assert_eq!(
+            render("follow", &json!({"attack": 0, "rate": 10.0}))?.sample(&[0.0, 0.1])?,
+            [0.0, 1.0]
+        );
         Ok(())
     }
 
@@ -115,7 +140,7 @@ mod tests {
 
     #[test]
     fn an_unknown_shaper_is_refused_by_name() {
-        let result = render("no_such_shaper", &[0.0], &slew_params());
+        let result = render("no_such_shaper", &slew_params());
         assert!(
             matches!(&result, Err(Error::UnknownShaper { name }) if name == "no_such_shaper"),
             "{result:?}"
@@ -130,7 +155,7 @@ mod tests {
                 fields.insert(format!("extra_{index:03}"), json!(index));
             }
         }
-        let result = render("slew", &[0.0], &given);
+        let result = render("slew", &given);
         let Err(error) = &result else {
             assert!(result.is_err(), "accepted 150 unknown fields");
             return;
@@ -166,7 +191,7 @@ mod tests {
             ),
             (json!(3), vec![""]),
         ] {
-            let result = render("slew", &[0.0], &given);
+            let result = render("slew", &given);
             let named = match &result {
                 Err(Error::Params { shaper, problems, .. }) if shaper == "slew" => {
                     problems.iter().map(|problem| problem.path.clone()).collect()
@@ -176,6 +201,6 @@ mod tests {
             assert_eq!(named, fields, "{given}");
         }
         // a field left out takes its default
-        assert!(render("slew", &[0.0], &missing).is_ok());
+        assert!(render("slew", &missing).is_ok());
     }
 }

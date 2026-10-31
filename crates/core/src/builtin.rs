@@ -4,20 +4,24 @@
 //! comment (its description) and `#[param(..)]` (its default, unit and range), and a `#[derive(Choice)]` enum for each
 //! field that picks among names. That declaration is the only one: the table, the defaults, the description and the
 //! checks all come from it. A rule between fields (`high` is not below `low`) is a `fn rule(&Params) -> Vec<Problem>`
-//! named by `#[param(rule = rule)]` on the struct; the table runs it once every field is valid. A file that also defines `pub(crate) fn run(inputs: &[f64], params: &Params) -> Vec<f64>`,
-//! the causal recurrence over the input sampled at the shaper's rate, is a shaper the core runs; one without it only
-//! declares (its source or operation still runs in Python). Built-ins never refer to one another: what two of them
-//! share goes in a module of the crate named for its concept.
+//! named by `#[param(rule = rule)]` on the struct; the table runs it once every field is valid.
+//!
+//! A file that also defines `pub(crate) fn shape(input: &Signal, params: &Params) -> Result<Signal, Error>` is a
+//! shaper the core runs ([`shape`](crate::shape) by name), and gives it as a method of [`Signal`] taking its typed
+//! `Params` (checked by [`Params::check`](crate::Params::check)); one without it only declares (its source,
+//! shaper or operation still runs in Python). A shaper that needs history defines `shape` as a
+//! [`Signal::rendered`] over its private causal recurrence `run` (`slew` is the model). Built-ins never refer to one
+//! another: what two of them share goes in a module of the crate named for its concept.
 
-use crate::Error;
 use crate::Params as _;
 use crate::params::{ParamError, ParamTable};
+use crate::{Error, Signal};
 
 /// The function that gives one built-in's parameter table.
 pub(crate) type Table = fn() -> Result<&'static ParamTable, ParamError>;
 
-/// The function that runs one shaper: reads its parameters, then runs it over the inputs.
-pub(crate) type Run = fn(&[f64], &serde_json::Value) -> Result<Vec<f64>, Error>;
+/// The function that shapes a signal with one shaper: reads its parameters, then shapes the input with them.
+pub(crate) type Shape = fn(&Signal, &serde_json::Value) -> Result<Signal, Error>;
 
 include!(concat!(env!("OUT_DIR"), "/builtin.rs"));
 
@@ -72,7 +76,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_built_ins_with_a_run_function_are_shapers() {
+    fn only_the_built_ins_with_a_shape_function_are_shapers() {
         let shapers: Vec<&str> = SHAPERS.iter().map(|(name, _)| *name).collect();
         assert_eq!(shapers, ["follow", "slew"]);
     }

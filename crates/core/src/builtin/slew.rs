@@ -1,9 +1,12 @@
 //! `slew`: follows its input but climbs and falls no faster than `rise` and `fall` allow. Its parameters are declared here, once; what it
 //! does is documented once, on the Python shaper.
 
+use std::convert::Infallible;
+
+use crate::{Error, Params as _, Rendering, Signal};
 
 /// How fast the output may climb and fall.
-#[derive(Clone, Debug, PartialEq, crate::Params)]
+#[derive(Clone, Copy, Debug, PartialEq, crate::Params)]
 pub struct Params {
     /// Seconds the output takes to climb by 1; larger is slower. 0 follows a rise at once.
     #[param(default = 0.1, unit = Seconds, min = 0, max = 3600)]
@@ -16,9 +19,43 @@ pub struct Params {
     pub rate: f64,
 }
 
+impl Signal {
+    /// This signal, climbing and falling no faster than `params` allow ([`slew`](super)); what it does is documented
+    /// on the Python shaper `slew`.
+    ///
+    /// ```
+    /// use bullterrier_control::builtin::slew;
+    /// use bullterrier_control::{FromValues, Interpolation, Signal};
+    ///
+    /// let step = Signal::from_values(&[0.0, 1.0], 10.0, FromValues::default(), Interpolation::Hold)?;
+    /// // 0.1 s a sample, 0.5 s to climb by 1: 0.2 a sample
+    /// let ramp = step.slew(slew::Params { rise: 0.5, fall: 0.5, rate: 10.0 })?;
+    /// assert_eq!(ramp.sample(&[0.0, 0.1, 0.2])?, [0.0, 0.2, 0.4]);
+    /// assert!(step.slew(slew::Params { rise: -1.0, ..Default::default() }).is_err());
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    /// [`Error::Params`] listing every rule `params` breaks (a field out of its range or not finite).
+    pub fn slew(&self, params: Params) -> Result<Signal, Error> {
+        let params = params.check().map_err(|error| Error::params("slew", error))?;
+        shape(self, &params)
+    }
+}
+
+/// The shaper as the core runs it: [`run`] over `input` sampled at `params.rate`, rendered as far as the reads need.
+pub(crate) fn shape(input: &Signal, params: &Params) -> Result<Signal, Error> {
+    let rendering = Rendering {
+        rate: params.rate,
+        ..Rendering::default()
+    };
+    let params = *params;
+    Signal::rendered(input, rendering, move |inputs| Ok::<_, Infallible>(run(inputs, &params)))
+}
+
 /// The slew-limited series: it starts at the first input and moves toward each next one by at most a sample's limit
 /// (a sample is `1 / rate` seconds, the limit that over `rise` up, over `fall` down; a time of 0 has no limit).
-pub(crate) fn run(inputs: &[f64], params: &Params) -> Vec<f64> {
+fn run(inputs: &[f64], params: &Params) -> Vec<f64> {
     let step = 1.0 / params.rate;
     let up = if params.rise > 0.0 { step / params.rise } else { f64::INFINITY };
     let down = if params.fall > 0.0 { step / params.fall } else { f64::INFINITY };
@@ -46,7 +83,15 @@ pub(crate) fn run(inputs: &[f64], params: &Params) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{FromValues, Interpolation};
     use proptest::prelude::*;
+
+    /// The shaper over `inputs` (a series at `params.rate`, holding each value), read at each input's time.
+    fn shaped(inputs: &[f64], params: &Params) -> Result<Vec<f64>, Error> {
+        let input = Signal::from_values(inputs, params.rate, FromValues::default(), Interpolation::Hold)?;
+        let times: Vec<f64> = (0..inputs.len()).map(|index| f64::from(u32::try_from(index).unwrap_or(0)) / params.rate).collect();
+        shape(&input, params)?.sample(&times)
+    }
 
     fn params(rise: f64, fall: f64, rate: f64) -> Params {
         Params { rise, fall, rate }
@@ -76,7 +121,60 @@ mod tests {
         assert!(out[0].abs() <= 1e-12 && out[1].is_nan(), "{out:?}");
     }
 
+    #[test]
+    fn as_a_signal_a_step_up_climbs_by_one_step_s_limit_a_sample_until_it_arrives() -> Result<(), Error> {
+        let out = shaped(&[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], &params(0.5, 0.5, 10.0))?;
+        assert!(close(&out, &[0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.0]), "{out:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn as_a_signal_a_nan_input_makes_a_read_from_there_a_signal_error() -> Result<(), Error> {
+        let broken = Signal::from_fn(|times, out| {
+            for (value, time) in out.iter_mut().zip(times) {
+                *value = if *time < 0.1 { 1.0 } else { f64::NAN };
+            }
+            Ok::<(), std::fmt::Error>(())
+        });
+        let slewed = shape(&broken, &params(0.5, 0.5, 10.0))?;
+        assert_eq!(slewed.sample(&[0.0, 0.05])?, [1.0, 1.0]);
+        let refused = slewed.at(0.1);
+        assert!(
+            matches!(&refused, Err(Error::Signal { message }) if message.contains("not finite")),
+            "{refused:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_signal_slews_with_typed_parameters_checked_as_values_by_name_are() -> Result<(), Error> {
+        let step = Signal::from_values(&[0.0, 1.0], 10.0, FromValues::default(), Interpolation::Hold)?;
+        let out = step.slew(params(0.5, 0.25, 10.0))?.sample(&[0.0, 0.1, 0.2, 0.3])?;
+        assert!(close(&out, &[0.0, 0.2, 0.4, 0.6]), "{out:?}");
+        let refused = step.slew(params(-1.0, 0.5, 5.0));
+        let named: Vec<String> = match &refused {
+            Err(Error::Params { shaper, problems, .. }) if shaper == "slew" => {
+                problems.iter().map(|problem| problem.path.clone()).collect()
+            }
+            other => vec![format!("not slew's parameter error: {other:?}")],
+        };
+        assert_eq!(named, ["rise", "rate"]);
+        Ok(())
+    }
+
     proptest! {
+        #[test]
+        fn as_a_signal_it_gives_what_its_recurrence_gives_on_the_same_inputs(
+            inputs in prop::collection::vec(-5.0_f64..=5.0, 1..40),
+            rise in 0.0_f64..=3.0,
+            fall in 0.0_f64..=3.0,
+            rate in 10.0_f64..=48000.0,
+        ) {
+            let params = params(rise, fall, rate);
+            let out = shaped(&inputs, &params).map_err(|error| TestCaseError::fail(error.to_string()))?;
+            prop_assert_eq!(out, run(&inputs, &params));
+        }
+
         #[test]
         fn the_output_never_moves_faster_than_its_limits_and_never_overshoots_its_input(
             inputs in prop::collection::vec(-5.0_f64..=5.0, 1..40),

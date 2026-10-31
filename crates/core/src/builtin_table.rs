@@ -14,13 +14,13 @@ pub(crate) struct File<'a> {
 }
 
 /// The text that marks a built-in file as a shaper the core runs. A textual check on purpose: until the sources and
-/// operations move to Rust, a file that only declares parameters has no `run`, and this is the whole convention (it
+/// operations move to Rust, a file that only declares parameters has no `shape`, and this is the whole convention (it
 /// goes when every built-in runs in Rust).
-const RUN: &str = "pub(crate) fn run(";
+const SHAPE: &str = "pub(crate) fn shape(";
 
 /// The Rust source of the table of `files` (sorted by name): a public module for each file; `PARAMS`, every built-in's
-/// parameter table by name; and `SHAPERS`, each file that defines [`RUN`] by name with the function that parses its
-/// parameters through the table and runs it.
+/// parameter table by name; and `SHAPERS`, each file that defines [`SHAPE`] by name with the function that parses its
+/// parameters through the table and shapes a signal with them.
 pub(crate) fn table(files: &[File<'_>]) -> Result<String, fmt::Error> {
     let mut code = String::new();
     for file in files {
@@ -37,16 +37,16 @@ pub(crate) fn table(files: &[File<'_>]) -> Result<String, fmt::Error> {
     writeln!(code, "];")?;
     writeln!(
         code,
-        "/// Every shaper the core implements, sorted by name, with the function that runs it."
+        "/// Every shaper the core implements, sorted by name, with the function that shapes a signal with it."
     )?;
-    writeln!(code, "pub(crate) static SHAPERS: &[(&str, Run)] = &[")?;
-    for File { name, .. } in files.iter().filter(|file| file.source.contains(RUN)) {
-        writeln!(code, "    ({name:?}, |inputs, values| {{")?;
+    writeln!(code, "pub(crate) static SHAPERS: &[(&str, Shape)] = &[")?;
+    for File { name, .. } in files.iter().filter(|file| file.source.contains(SHAPE)) {
+        writeln!(code, "    ({name:?}, |input, values| {{")?;
         writeln!(
             code,
             "        let params = {name}::Params::parse(values).map_err(|error| Error::params({name:?}, error))?;"
         )?;
-        writeln!(code, "        Ok({name}::run(inputs, &params))")?;
+        writeln!(code, "        {name}::shape(input, &params)")?;
         writeln!(code, "    }}),")?;
     }
     writeln!(code, "];")?;
@@ -62,7 +62,7 @@ mod tests {
     }
 
     #[test]
-    fn a_file_with_a_run_function_is_a_shaper_and_one_without_is_not() {
+    fn a_file_with_a_shape_function_is_a_shaper_and_one_without_is_not() {
         let code = built(&[
             File {
                 name: "plain",
@@ -70,16 +70,32 @@ mod tests {
                 source: "pub struct Params {}\n",
             },
             File {
-                name: "runs",
-                path: "runs.rs",
+                name: "recurs",
+                path: "recurs.rs",
                 source: "pub struct Params {}\npub(crate) fn run(inputs: &[f64]) {}\n",
+            },
+            File {
+                name: "shapes",
+                path: "shapes.rs",
+                source: "pub struct Params {}\npub(crate) fn shape(input: &Signal, params: &Params) {}\n",
             },
         ]);
         let shapers = code.split("static SHAPERS").nth(1).unwrap_or_default();
         let shapers = shapers.split("static PARAMS").next().unwrap_or_default();
-        assert!(shapers.contains("\"runs\""), "{code}");
-        assert!(!shapers.contains("\"plain\""), "{code}");
+        assert!(
+            shapers.contains("(\"shapes\"") && shapers.contains("shapes::shape(input, &params)"),
+            "{code}"
+        );
+        assert!(
+            !shapers.contains("\"plain\"") && !shapers.contains("\"recurs\""),
+            "{code}"
+        );
         let params = code.split("static PARAMS").nth(1).unwrap_or_default();
-        assert!(params.contains("\"runs\"") && params.contains("\"plain\""), "{code}");
+        for name in ["plain", "recurs", "shapes"] {
+            assert!(
+                params.contains(&format!("({name:?}, <{name}::Params")),
+                "{name}: {code}"
+            );
+        }
     }
 }

@@ -1,5 +1,5 @@
 //! Writes the table of built-ins the core compiles in: one module per file in `src/builtin/`, every built-in by name with
-//! its parameters, and every shaper by name with the function that runs it. Adding a built-in adds its file and edits
+//! its parameters, and every shaper by name with the function that shapes a signal with it. Adding a built-in adds its file and edits
 //! nothing else.
 
 #[path = "src/builtin_table.rs"]
