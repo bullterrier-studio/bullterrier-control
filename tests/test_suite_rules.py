@@ -30,6 +30,10 @@ ALLOWED: dict[tuple[str, str], str] = {
     ("_native/test__core_primitives.py", "bullterrier_control._native"): (
         "the boundary the package's easing, hashing, scaling, cadence and rounding wrap"
     ),
+    ("_native/test__core_inputs.py", "bullterrier_control._native"): (
+        "the boundary the package's inputs are read through: Python objects of every kind, hostile ones too, read "
+        "as the core's data"
+    ),
 }
 
 _PATCHERS = ("monkeypatch.setattr", "monkeypatch.delattr", "monkeypatch.setitem", "monkeypatch.delitem")
