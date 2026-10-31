@@ -1,10 +1,12 @@
-//! The core's `FormatError` and `ParamError` raised as the package's `bullterrier_control.errors.FormatError` and
-//! `ParameterError`.
+//! The core's errors raised as the package's exceptions of `bullterrier_control.errors`: a `FormatError` and a
+//! `ParamError` as `FormatError` and `ParameterError`, and an [`Error`] by [`raised`].
 
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyTuple, PyType};
 
+use bullterrier_control::Error;
 use bullterrier_control::formats::{FormatError, Problem};
 
 /// How many problems a message lists; `problems` holds up to the first 100 (the core's cap), and the message says how
@@ -17,6 +19,44 @@ static FORMAT_ERROR: PyOnceLock<Py<PyType>> = PyOnceLock::new();
 
 /// The package's `ParameterError`, imported and kept as [`FORMAT_ERROR`] is.
 static PARAMETER_ERROR: PyOnceLock<Py<PyType>> = PyOnceLock::new();
+
+/// The package's `SignalError`, imported and kept as [`FORMAT_ERROR`] is.
+static SIGNAL_ERROR: PyOnceLock<Py<PyType>> = PyOnceLock::new();
+
+/// The package's `InvalidError`, imported and kept as [`FORMAT_ERROR`] is.
+static INVALID_ERROR: PyOnceLock<Py<PyType>> = PyOnceLock::new();
+
+/// The Python exception for `error`: a signal that cannot be read is a `SignalError`, a text naming no easing curve an
+/// `InvalidError`, data breaking a format's rules a `FormatError`, parameters breaking theirs a `ParameterError`; a
+/// callback's error is the exception the Python callback raised, unchanged. Anything else is a bug of the caller: a
+/// `ValueError`.
+pub(crate) fn raised(py: Python<'_>, error: Error) -> PyErr {
+    match error {
+        Error::Signal { message } => package(py, (&SIGNAL_ERROR, "SignalError"), message),
+        Error::Ease { message } => package(py, (&INVALID_ERROR, "InvalidError"), message),
+        Error::Format { source } => format_error(py, "", &source),
+        Error::Params {
+            shaper,
+            problems,
+            omitted,
+        } => parameter_error(py, &shaper, &problems, omitted),
+        // every callback the bindings give the core fails with the Python exception it raised
+        Error::Node { source } => match source.downcast_ref::<PyErr>() {
+            Some(raised) => raised.clone_ref(py),
+            None => PyValueError::new_err(source.to_string()),
+        },
+        other => PyValueError::new_err(other.to_string()),
+    }
+}
+
+/// The exception of `class` (kept in its lock, named as `bullterrier_control.errors` names it) with `message`.
+fn package(py: Python<'_>, (class, name): (&'static PyOnceLock<Py<PyType>>, &str), message: String) -> PyErr {
+    match class.import(py, "bullterrier_control.errors", name) {
+        Ok(class) => PyErr::from_type(class.clone(), message),
+        // the package's errors module cannot be imported: that failure is the error to see
+        Err(error) => error,
+    }
+}
 
 /// `bullterrier_control.errors.FormatError` for `error`, the data of `about` (`"Series"`, or empty for no class): its
 /// message is `about: path: rule; path: rule` with the first [`SHOWN`] problems (and `... and N more`, N counting the

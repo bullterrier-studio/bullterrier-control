@@ -2,26 +2,36 @@
 # extension's own (`help(_core.render)`, `help(Event)`). The formats' classes are the package's
 # (`bullterrier_control.Event`, ...): their `__module__` is `bullterrier_control`.
 
-from collections.abc import Mapping, Sequence
-from typing import Any, ClassVar, Self, final
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, ClassVar, Literal, Self, final
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from typing_extensions import disjoint_base
 
 __all__ = [
     "Bundle",
+    "Constant",
     "Event",
     "Grid",
     "ParamTable",
+    "Rendered",
     "Series",
+    "SignalBase",
     "Unit",
     "builtins",
     "bundle_schema",
     "dumps",
+    "from_series",
+    "from_values",
     "is_bundle_name",
+    "make_signals_as",
+    "maximum",
+    "minimum",
     "parameters",
     "parse_parameters",
     "render",
+    "shape",
     "shapers",
 ]
 
@@ -171,3 +181,39 @@ class Bundle:
 def bundle_schema() -> dict[str, Any]: ...
 def dumps(bundle: Bundle, *, ascii_only: bool = False) -> str: ...
 def is_bundle_name(name: str) -> bool: ...
+
+@disjoint_base
+class SignalBase:
+    __array_ufunc__: ClassVar[None]
+    def __new__(cls, *args: object, **kwargs: object) -> Self: ...
+    def sample(self, times: ArrayLike) -> NDArray[np.float64]: ...
+    def compute(self, times: NDArray[np.float64]) -> NDArray[np.float64]: ...
+    def __add__(self, other: SignalBase | float, /) -> SignalBase: ...
+    def __radd__(self, other: SignalBase | float, /) -> SignalBase: ...
+    def __sub__(self, other: SignalBase | float, /) -> SignalBase: ...
+    def __rsub__(self, other: SignalBase | float, /) -> SignalBase: ...
+    def __mul__(self, other: SignalBase | float, /) -> SignalBase: ...
+    def __rmul__(self, other: SignalBase | float, /) -> SignalBase: ...
+    def __neg__(self) -> SignalBase: ...
+
+class Constant(SignalBase):
+    def __new__(cls, value: float) -> Self: ...
+
+class Rendered(SignalBase):
+    def __new__(
+        cls,
+        signal: SignalBase,
+        *,
+        rate: float,
+        run: Callable[[NDArray[np.float64]], ArrayLike],
+        limit: int = 20000000,
+    ) -> Self: ...
+
+def from_series(series: Series, *, interpolation: Literal["linear", "hold"] = "linear") -> SignalBase: ...
+def from_values(
+    values: ArrayLike, rate: float, *, start: float = 0.0, interpolation: Literal["linear", "hold"] = "linear"
+) -> SignalBase: ...
+def maximum(first: SignalBase | float, second: SignalBase | float) -> SignalBase: ...
+def minimum(first: SignalBase | float, second: SignalBase | float) -> SignalBase: ...
+def shape(name: str, signal: SignalBase, params: Mapping[str, object]) -> SignalBase: ...
+def make_signals_as(cls: type[SignalBase]) -> None: ...

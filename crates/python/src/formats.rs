@@ -358,6 +358,11 @@ pub(crate) struct PySeries {
 }
 
 impl PySeries {
+    /// The series this holds.
+    pub(crate) const fn series(&self) -> &Series {
+        &self.inner
+    }
+
     fn wrap(py: Python<'_>, inner: Series) -> PyResult<Self> {
         // over an immutable `bytes` copy: numpy cannot make such an array writeable, nor reach the memory another way
         let bytes: Vec<u8> = inner.values().iter().flat_map(|value| value.to_ne_bytes()).collect();

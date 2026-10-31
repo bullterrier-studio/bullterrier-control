@@ -7,10 +7,12 @@
 //! `ParameterError`, each imported when the first one is raised: importing the extension imports nothing of the
 //! package.
 
+mod callback;
 mod data;
 mod error;
 mod formats;
 mod params;
+mod signal;
 
 use std::convert::Infallible;
 
@@ -28,6 +30,10 @@ mod _core {
     use super::formats::{PyBundle, PyEvent, PyGrid, PySeries, PyUnit, bundle_schema, dumps, is_bundle_name};
     #[pymodule_export]
     use super::params::{PyParamTable, builtins, parameters, parse_parameters};
+    #[pymodule_export]
+    use super::signal::{
+        Constant, Rendered, SignalBase, from_series, from_values, make_signals_as, maximum, minimum, shape,
+    };
     #[pymodule_export]
     use super::{render, shapers};
 
