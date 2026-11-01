@@ -35,12 +35,22 @@ use crate::signal::{self, SignalBase, made};
 
 /// What a registry holds: the core's registry (what a patch is read with) and, for each of its things, the `Thing`
 /// object Python is given, so finding one twice gives the same object. Never changed once shared.
-struct Held {
+pub(crate) struct Held {
     registry: Registry,
     things: BTreeMap<String, Py<PyThing>>,
 }
 
 impl Held {
+    /// The core's registry.
+    pub(crate) const fn registry(&self) -> &Registry {
+        &self.registry
+    }
+
+    /// The `Thing` object of the thing called `name`, if there is one.
+    pub(crate) fn thing(&self, name: &str) -> Option<&Py<PyThing>> {
+        self.things.get(name)
+    }
+
     /// A copy to change.
     fn copy(&self, py: Python<'_>) -> Self {
         Self {
@@ -78,7 +88,7 @@ pub(crate) struct PyRegistry {
 
 impl PyRegistry {
     /// What it holds now.
-    fn held(&self) -> Arc<Held> {
+    pub(crate) fn held(&self) -> Arc<Held> {
         Arc::clone(&self.lock())
     }
 
@@ -339,7 +349,7 @@ fn output(result: &Bound<'_, PyAny>, returns: Returns, label: &str) -> PyResult<
 }
 
 /// What a call gave, as the package's objects: a signal, a tuple of `Event` or a `Series`.
-fn python(py: Python<'_>, output: Output) -> PyResult<Bound<'_, PyAny>> {
+pub(crate) fn python(py: Python<'_>, output: Output) -> PyResult<Bound<'_, PyAny>> {
     match output {
         Output::Signal(one) => made(py, one),
         Output::Events(events) => Ok(PyTuple::new(py, events.into_iter().map(PyEvent))?.into_any()),
@@ -396,7 +406,7 @@ impl PyThing {
     /// The Python exception for `error`, a refusal of a call of this thing whose values were `given`: the call's
     /// shape a `TypeError`, its values a `ParameterError` naming the thing and its table; anything else as the core's
     /// errors are raised (a body's exception unchanged).
-    fn refused(&self, py: Python<'_>, error: Error, given: Option<&Given>) -> PyErr {
+    pub(crate) fn refused(&self, py: Python<'_>, error: Error, given: Option<&Given>) -> PyErr {
         match error {
             Error::Call { message } => PyTypeError::new_err(message),
             Error::Params {

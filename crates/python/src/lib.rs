@@ -14,6 +14,7 @@ mod error;
 mod formats;
 mod inputs;
 mod params;
+mod patch;
 mod primitives;
 mod registry;
 mod signal;
@@ -32,6 +33,8 @@ mod _core {
     use super::inputs::{PyKeyframe, check_input, input_docs};
     #[pymodule_export]
     use super::params::{PyParamTable, builtins, parameters, parse_parameters};
+    #[pymodule_export]
+    use super::patch::{PyNode, PyPatch, patch_schema};
     #[pymodule_export]
     use super::primitives::{Counter, PyEase, at_least, between, counter, ease, more_than, uniform};
     #[pymodule_export]

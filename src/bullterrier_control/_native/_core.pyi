@@ -3,7 +3,7 @@
 # (`bullterrier_control.Event`, ...): their `__module__` is `bullterrier_control`.
 
 import inspect
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any, ClassVar, Literal, Self, final, overload
 
 import numpy as np
@@ -20,7 +20,9 @@ __all__ = [
     "Event",
     "Grid",
     "Keyframe",
+    "Node",
     "ParamTable",
+    "Patch",
     "Registry",
     "Rendered",
     "Series",
@@ -45,6 +47,7 @@ __all__ = [
     "more_than",
     "parameters",
     "parse_parameters",
+    "patch_schema",
     "shape",
     "uniform",
 ]
@@ -299,6 +302,26 @@ class Registry:
     def things(self) -> dict[str, Thing]: ...
     def unregister(self, name: str) -> None: ...
     def replace(self, other: Registry) -> Registry: ...
+
+@final
+class Node:
+    @property
+    def use(self) -> str: ...
+    @property
+    def returns(self) -> Literal["signal", "events", "series"]: ...
+
+@final
+class Patch:
+    @staticmethod
+    def parse(data: Mapping[Any, object], *, registry: Registry) -> Patch: ...
+    @staticmethod
+    def from_toml(text: str, *, registry: Registry) -> Patch: ...
+    @property
+    def nodes(self) -> dict[str, Node]: ...
+    def build(self, bundle: Bundle | None = None, only: Iterable[str] | None = None) -> dict[str, Any]: ...
+    def __eq__(self, other: object, /) -> bool: ...
+
+def patch_schema() -> dict[str, Any]: ...
 
 EASES: tuple[str, ...]
 TOLERANCE: float

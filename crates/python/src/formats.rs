@@ -660,6 +660,11 @@ impl PyBundle {
         })
     }
 
+    /// The bundle this holds.
+    pub(crate) const fn bundle(&self) -> &Bundle {
+        &self.inner
+    }
+
     /// The bundle `inner`, its parts made Python objects.
     fn wrap(py: Python<'_>, inner: Bundle) -> PyResult<Self> {
         let grid = inner.grid().map(|grid| Py::new(py, PyGrid(grid.clone()))).transpose()?;

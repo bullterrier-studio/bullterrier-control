@@ -34,6 +34,39 @@ pub(crate) fn unknown_name(py: Python<'_>, message: String) -> PyErr {
     package(py, (&UNKNOWN_NAME_ERROR, "UnknownNameError"), message)
 }
 
+/// `bullterrier_control.errors.FormatError` with `message` (one the core wrote, listing them) and `problems`.
+pub(crate) fn format_error_saying(py: Python<'_>, message: String, problems: &[Problem]) -> PyErr {
+    listing(py, (&FORMAT_ERROR, "FormatError"), message, problems)
+}
+
+/// `error`, raised while the patch node `node` was built: an `InvalidError` (of any kind) made again as its own kind,
+/// its message starting with the node (`low: ...`) and each problem's path too (`low.depth`); any other exception
+/// unchanged.
+pub(crate) fn at_node(py: Python<'_>, node: &str, error: PyErr) -> PyErr {
+    match named(py, node, &error) {
+        Ok(Some(named)) => named,
+        Ok(None) => error,
+        // the package's errors module cannot be imported, or the error cannot be made again: that is the error to see
+        Err(failure) => failure,
+    }
+}
+
+/// `error` made again naming the node `node`, if it is an `InvalidError` (see [`at_node`]).
+fn named(py: Python<'_>, node: &str, error: &PyErr) -> PyResult<Option<PyErr>> {
+    let value = error.value(py);
+    if !value.is_instance(INVALID_ERROR.import(py, "bullterrier_control.errors", "InvalidError")?)? {
+        return Ok(None);
+    }
+    let problems: Vec<(String, String)> = value.getattr("problems")?.extract()?;
+    let prefixed = problems
+        .into_iter()
+        .map(|(path, rule)| (format!("{node}.{path}"), rule));
+    let made = value
+        .get_type()
+        .call1((format!("{node}: {value}"), PyTuple::new(py, prefixed)?))?;
+    Ok(Some(PyErr::from_value(made)))
+}
+
 /// The Python exception for `error`: a signal that cannot be read, or is too deep, is a `SignalError`, a text naming no
 /// easing curve an `InvalidError`, data breaking a format's rules a `FormatError`, parameters or an input breaking theirs
 /// a `ParameterError`; a callback's error is the exception the Python callback raised, unchanged. Anything else is a
