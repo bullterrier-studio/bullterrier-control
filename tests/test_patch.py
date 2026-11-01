@@ -146,6 +146,13 @@ def test_each_node_says_what_it_gives_without_building_anything():
     assert patch.nodes["slow"].use == "slew"
 
 
+def test_the_nodes_of_a_patch_are_read_once_and_cannot_be_changed():
+    patch = Patch.parse(patch_of(level={"use": "constant", "value": 0.5}))
+    assert patch.nodes is patch.nodes
+    with pytest.raises(TypeError):
+        patch.nodes["other"] = patch.nodes["level"]  # type: ignore[index]
+
+
 def test_a_patch_given_as_a_mapping_is_read_without_touching_it():
     # a video project holds its patches as tables of its own file: `parse` is the way in for those
     data = patch_of(glow={"use": "envelope", "events": KICKS, "decay": 0.25})

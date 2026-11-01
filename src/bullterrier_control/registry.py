@@ -21,8 +21,8 @@ rules are the Rust core's (`_native._core.Registry`); this module checks what is
 signature, its inputs, an operation's return annotation) and loads the packages.
 
 Where they come from: what the Rust core runs (`constant`, `select`, `slew`, `follow`) is in the table from the start;
-the first query (`get`, `sources`, `shapers`, `operations`, `all_registered`) loads every
-installed package of the entry-point group `bullterrier_control.sources`, once. A package is a module whose import
+the first query (`get`, `sources`, `shapers`, `operations`, `all_registered`, `table`, `unregister` or `isolated`) loads
+every installed package of the entry-point group `bullterrier_control.sources`, once. A package is a module whose import
 registers sources, shapers and operations: bullterrier-control's own is one (declared in its `pyproject.toml`); a third
 party declares its own (see `bullterrier_control.plugin`). A package that fails to import raises
 `BullterrierControlError` naming its entry point, whatever it registered before failing is taken back, and the next

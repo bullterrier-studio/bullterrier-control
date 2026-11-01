@@ -48,6 +48,7 @@ Promises:
 
 from collections.abc import Iterable, Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Self
 
 from ._native import _core
@@ -67,11 +68,12 @@ class Patch:
     """The nodes of a patch by name, in file order. Make one with `Patch.parse`, `load_patch` or
     `Patch.from_signals`."""
 
-    __slots__ = ("_patch",)
+    __slots__ = ("_nodes", "_patch")
 
     def __init__(self, patch: _core.Patch, /) -> None:
         """Hold the core's `patch`; the class methods and `load_patch` make one."""
         self._patch = patch
+        self._nodes: Mapping[str, Node] | None = None
 
     @classmethod
     def parse(cls, data: Mapping[str, object]) -> Self:
@@ -86,17 +88,20 @@ class Patch:
 
     @property
     def nodes(self) -> Mapping[str, Node]:
-        """Each node by name, in file order."""
-        return self._patch.nodes
+        """Each node by name, in file order (read-only; read from the core once)."""
+        if self._nodes is None:
+            self._nodes = MappingProxyType(dict(self._patch.nodes))
+        return self._nodes
 
     def build(self, bundle: Bundle | None = None, only: Iterable[str] | None = None) -> dict[str, Any]:
         """Every node by name, in file order, built against `bundle` (None when the patch names nothing in one).
 
         A `Signal` for a source or shaper; for an operation its events or its series. With `only`, just those nodes
         come back, and only they and what they use are built, so the rest of the patch needs nothing of the bundle; a
-        name the patch lacks is an `UnknownNameError`. A path into the bundle that it does not hold, or any path without
-        a bundle, is a `FormatError` at `<node>.<key>`; an error a source, shaper or operation raises keeps its kind
-        and starts with the node."""
+        name the patch lacks is an `UnknownNameError`, and `only` is a list of names (a single text is a `TypeError`). A
+        path into the bundle that it does not hold, or any path without a bundle, is a `FormatError` at
+        `<node>.<key>`; a parameter or input error a source, shaper or operation raises keeps its kind and starts with
+        the node (any other error, such as a body's own exception or the depth limit, reaches the caller unchanged)."""
         return self._patch.build(bundle, only)
 
     def to_toml(self) -> str:

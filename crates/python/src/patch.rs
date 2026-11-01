@@ -35,7 +35,7 @@ use crate::signal::{self, SignalBase};
 /// in the mapping's order (a node uses only the nodes above it); `Patch.from_toml(text, *, registry)` reads a TOML
 /// text. Each looks up what a node uses in `registry` as it holds it then, and refuses with one `FormatError` listing
 /// every problem as `<node>.<key>: rule` (the first 100); a text that is not TOML is a `FormatError` saying where
-/// (`not TOML (line 1, column 10: ...)`). A key that is not text is read as its `str`; a value JSON cannot hold (NaN, an
+/// (`not TOML (line 1, column 10: ...)`). A top-level key that is not text is read as its `str` (one inside a node must be text); a value JSON cannot hold (NaN, an
 /// infinity, an integer beyond 64 bits, a `set`) is refused at its path, before anything else is checked. An exception
 /// the mapping raises while read reaches the caller unchanged.
 ///

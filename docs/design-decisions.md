@@ -804,8 +804,9 @@ Accepted differences from the Python registry and patch (a break, accepted befor
   object), and an operation's events arrive as new `Event`s. A body that gives the wrong kind of result is a `TypeError`;
   Python passed anything through. An exception a body raises reaches the caller unchanged.
 - A `Signal` subclass that defines a built-in shaper's name (`slew`, `clip`, ...) is a `TypeError` at class creation.
-- A patch key that is not text is read as its `str`; a NaN or infinity reads `must be finite (got nan)`; problems within a
-  node are in key-name order.
+- A top-level patch key that is not text is read as its `str`, a key inside a node must be text; a NaN or infinity reads
+  `must be finite (got nan)`; problems within a node list unknown keys first (by name), then the parameters in table
+  order.
 - `bt-control list --json` is byte-identical to before. `gen_api` takes each range from the core's table (the noise seed now
   reads `0 to 4294967295`, not `4.29497e+09`).
 - The shaper scaffold writes no Python module: the Rust file registers itself.
