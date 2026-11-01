@@ -17,6 +17,8 @@ Promises:
   times from 0 up, and returns as many values (a `compute` written for times of any shape works). An exception it
   raises reaches the caller of `sample` unchanged. A subclass that does not implement it is a `TypeError` naming it
   when read.
+- Every signal has a method per built-in shaper (`signal.slew(rise=0.2)`, `_chain.py`); a subclass that defines an
+  attribute of one's name is refused with a `TypeError` naming it when the class is made.
 - `signal.pipe(shaper, **params)` is `shaper(signal, **params)` and must give a signal (`TypeError` naming the
   callable if not): any registered shaper (`lib.clip`) or plain function shapes a signal, and the result can be piped
   again.
@@ -26,7 +28,7 @@ Promises:
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -50,6 +52,8 @@ class _Shapers:
 
 
 _SHAPERS = _Shapers()
+# the built-in shapers, each a method of every signal (`energy.slew(rise=0.2)`): a subclass may not hide one
+_RESERVED = frozenset(name for name in vars(Chain) if not name.startswith("_"))
 
 
 def connect_shapers(lookup: Callable[[str], Callable[..., "Signal"]]) -> None:
@@ -59,7 +63,18 @@ def connect_shapers(lookup: Callable[[str], Callable[..., "Signal"]]) -> None:
 
 
 class Signal(_core.SignalBase, Chain["Signal"]):
-    """A value that changes over time, readable at any moment in seconds. Subclasses implement `compute`."""
+    """A value that changes over time, readable at any moment in seconds. Subclasses implement `compute`; a name of a
+    built-in shaper (`slew`, `clip`, ...) is every signal's method, so a subclass that defines one is a `TypeError`."""
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Refuse a subclass that defines an attribute named like a built-in shaper, naming it."""
+        super().__init_subclass__(**kwargs)
+        hidden = sorted(vars(cls).keys() & _RESERVED)
+        if hidden:
+            raise TypeError(
+                f"{cls.__qualname__}.{hidden[0]}: {hidden[0]!r} is a built-in shaper, a method of every signal"
+                f" (`signal.{hidden[0]}(...)`); name it otherwise"
+            )
 
     def pipe(self, shaper: Callable[..., "Signal"], /, **params: object) -> "Signal":
         """`shaper(self, **params)`: shape this signal with a registered shaper (`lib.clip`) or any function that takes

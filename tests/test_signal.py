@@ -360,3 +360,20 @@ class Unwritten(Signal):
 def test_a_signal_that_does_not_implement_compute_is_a_type_error_naming_it_when_read():
     with pytest.raises(TypeError, match="Unwritten"):
         Unwritten().sample(1.0)
+
+
+@pytest.mark.parametrize(
+    ("attributes", "refused"),
+    [
+        pytest.param({"compute": lambda self, times: times, "wobble": 1.0}, None, id="names of its own are fine"),
+        pytest.param({"slew": lambda self: self}, "slew", id="a method named like a built-in shaper"),
+        pytest.param({"clip": 0.5}, "clip", id="any attribute named like one"),
+    ],
+)
+def test_a_signal_subclass_may_not_hide_a_built_in_shaper_and_is_refused_when_made(attributes, refused):
+    # every signal has the built-in shapers as methods (`energy.slew(rise=0.2)`): a subclass's own would hide one
+    if refused is None:
+        assert issubclass(type("Mine", (Signal,), attributes), Signal)
+    else:
+        with pytest.raises(TypeError, match=rf"Mine\.{refused}: .*built-in shaper"):
+            type("Mine", (Signal,), attributes)
