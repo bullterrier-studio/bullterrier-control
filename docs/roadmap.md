@@ -187,7 +187,7 @@ The Python suite runs unchanged against the Rust core throughout.
   (`Patch.from_signals`, `to_toml`, `save`). `gen_api` reads ranges from the core's table. Decisions and accepted
   differences: [design-decisions.md](design-decisions.md), "The registry and patches in Rust".
 - **R4c Iterative walk (done).** A graph is read and dropped by loops on the heap, not by recursion, so `MAX_DEPTH` (1000)
-  bounds memory and time, not stack, on every target; callbacks nested more than 48 deep per thread are refused; the
+  bounds memory, not stack, on every target; callbacks nested more than 48 deep per thread are refused; the
   smallest supported thread stack is 256 KiB. Decisions and numbers: [design-decisions.md](design-decisions.md), "The graph
   walks by loop, not recursion (batch R4c)".
 - **R5 Built-ins.** Every other source, shaper and operation ported (17). R4 leaves it: `Source` and `Shaper` with input
