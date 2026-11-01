@@ -640,17 +640,6 @@ def test_sixteen_threads_calling_a_python_thing_at_once_get_their_own_values(min
 # ---- a thing's table ----
 
 
-def test_the_table_of_a_built_in_reads_its_values_and_names_it_in_a_refusal():
-    table = _core.Registry(builtin=True).get("slew").params
-    assert table.parse({"rise": 0.5}) == {"rise": 0.5, "fall": 0.1, "rate": 1000.0}
-    assert list(table.describe()) == ["rise", "fall", "rate"]
-    with pytest.raises(ParameterError, match=r"^slew: rise: "):
-        table.parse({"rise": -1})
-
-
-def test_the_table_of_a_python_thing_is_its_params_class_and_names_it_in_a_refusal(mine):
-    table = register(mine, level).params
-    assert table.describe() == Level.describe()
-    assert table.parse({"value": 0.25}) == {"value": 0.25}
-    with pytest.raises(ParameterError, match=r"^Level: value: "):
-        table.parse({"value": 2})
+def test_a_thing_describes_its_parameters_rust_or_python_alike(mine):
+    assert list(_core.Registry(builtin=True).get("slew").describe_params()) == ["rise", "fall", "rate"]
+    assert register(mine, level).describe_params() == Level.describe()

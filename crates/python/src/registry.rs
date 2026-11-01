@@ -399,8 +399,9 @@ pub(crate) fn python(py: Python<'_>, output: Output) -> PyResult<Bound<'_, PyAny
 ///
 /// It says what it is: `name`, `kind`, `returns`, `summary` (the first paragraph of its doc), `inputs` (each input's
 /// name to whether it is required, in its order, read-only), `__doc__` (what `help()` shows), `__signature__`,
-/// `description()` (its data, for `bt-control list --json`), `params` (its parameter table), and for one whose body
-/// is Python its `function` and `params_model` (both `None` for a thing of the Rust core).
+/// `description()` (its data, for `bt-control list --json`), `describe_params()` (each parameter, as
+/// `Params.describe()` gives it), and for one whose body is Python its `function` and `params_model` (both `None` for a
+/// thing of the Rust core).
 #[pyclass(frozen, dict, module = "bullterrier_control._native._core", name = "Thing")]
 pub(crate) struct PyThing {
     thing: Thing,
@@ -577,11 +578,11 @@ impl PyThing {
         self.python.as_ref().map(|(_, params)| params.clone_ref(py))
     }
 
-    /// Its parameter table (`ParamTable`), a Rust thing's and a Python one's alike: `describe()` lists each field as
-    /// `Params.describe()` does, `parse(values)` reads values as a call does, a refusal naming its table.
-    #[getter]
-    fn params(&self) -> PyParamTable {
-        PyParamTable::of(self.thing.table().clone(), self.table.clone())
+    /// Its parameters as data, a Rust thing's and a Python one's alike: each field's description by name, as
+    /// `Params.describe()` gives it (basic fields first, then advanced, each in declaration order; per field its JSON
+    /// Schema properties and, for a number, `range`, the range as help words it).
+    fn describe_params<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        params::described(py, self.thing.table())
     }
 
     /// How to call it, for `inspect.signature`: its signal (a shaper's) positional, then each input (`None` by default

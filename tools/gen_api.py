@@ -105,7 +105,7 @@ def _check_compiles(label: str, text: str) -> None:
 def _arguments(one: Registered) -> list[Argument]:
     """The inputs, then the parameters, of `one`, from its description (and each range from the core's table)."""
     described = one.description()
-    ranges = {name: field.get("range") for name, field in one.params.describe().items()}  # as the core's table words it
+    ranges = {name: field.get("range") for name, field in one.describe_params().items()}  # as the core's table words it
     arguments = []
     for name, given in described["inputs"].items():
         required = given["required"]

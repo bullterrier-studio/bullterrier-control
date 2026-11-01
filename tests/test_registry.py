@@ -52,7 +52,15 @@ def test_the_registered_thing_knows_its_name_kind_and_parameters():
     assert (level.name, level.kind, level.params_model) == ("level", "source", Level)
     assert level.summary == "A constant level."
     assert list(level.params_model.describe()) == ["value"]
-    assert level.params.describe() == Level.describe()
+    assert level.describe_params() == level.params_model.describe()
+
+
+def test_a_built_in_describes_its_parameters_in_order_with_unit_and_range():
+    described = registry.get("slew").describe_params()
+    assert list(described) == ["rise", "fall", "rate"]  # `rate` is advanced: after the basic ones
+    rise, rate = described["rise"], described["rate"]
+    assert (rise["unit"], rise["minimum"], rise["maximum"], rise["default"]) == ("seconds", 0, 3600, 0.1)
+    assert (rate["unit"], rate["advanced"]) == ("hertz", True)
 
 
 def test_a_call_with_the_wrong_number_of_signals_is_a_type_error():

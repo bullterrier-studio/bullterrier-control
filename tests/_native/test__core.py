@@ -1,5 +1,5 @@
 """The Rust extension's boundary, `_native._core`: the parameter tables (`ParamTable`, a built-in's through its
-`Thing.params`) the package's parameters are read through.
+`Thing.describe_params`) the package's parameters are read through.
 
 An architecture test: the extension is internal (the package reaches it through its parameter classes, and only this
 test calls it directly). A table refuses a declaration or values with a `ParameterError` listing every rule broken.
@@ -77,18 +77,18 @@ def assert_lists(refused, expected):
 @pytest.mark.parametrize("name", BUILT_INS)
 def test_the_core_has_a_table_for_every_registered_built_in(name):
     assert name in registry.all_registered()
-    table = CORE.get(name).params
-    assert list(table.parse({})) == list(table.describe())
+    thing = CORE.get(name)
+    assert list(thing.describe_params()) == list(thing.description()["parameters"]["properties"])
 
 
 def test_a_built_ins_table_describes_each_field_with_its_range_basic_fields_first():
-    described = CORE.get("slew").params.describe()
+    described = CORE.get("slew").describe_params()
     assert described == SLEW_DESCRIBED
     assert list(described) == ["rise", "fall", "rate"]
 
 
 def test_a_table_declared_as_a_built_in_describes_it_the_same():
-    assert _core.ParamTable(SLEW_SPEC, name="Slew").describe() == CORE.get("slew").params.describe()
+    assert _core.ParamTable(SLEW_SPEC, name="Slew").describe() == CORE.get("slew").describe_params()
 
 
 def test_a_table_lists_its_basic_fields_before_its_advanced_ones_each_in_declaration_order():
@@ -267,24 +267,28 @@ def test_a_declaration_is_accepted_only_when_it_follows_every_rule(spec, expecte
 
 
 def test_a_built_ins_values_are_read_through_its_table():
-    assert CORE.get("lfo").params.parse({"phase": 1.25, "shape": "saw-down"}) == {
-        "shape": "saw-down", "rate": 1.0, "per": "second", "phase": 0.25, "low": 0.0, "high": 1.0, "duty": 0.5,
-    }  # fmt: skip
-    with pytest.raises(ParameterError, match=r"^lfo: shape: ") as refused:
-        CORE.get("lfo").params.parse({"rate": -1.0, "shape": "tri"})
+    lfo = CORE.get("lfo")
+    times = [0.0, 0.3, 0.7]
+    # a phase one cycle further is the same position
+    assert (
+        lfo(phase=1.25, shape="saw-down").sample(times).tolist()
+        == lfo(phase=0.25, shape="saw-down").sample(times).tolist()
+    )
+    with pytest.raises(ParameterError, match=r"lfo: shape: ") as refused:
+        lfo(rate=-1.0, shape="tri")
     assert [path for path, _ in refused.value.problems] == ["shape", "rate"]
 
 
 def test_a_built_ins_rule_between_fields_is_checked():
-    clip = CORE.get("clip").params
-    assert clip.parse({"low": 0.5, "high": 0.5})["high"] == 0.5
+    clip = CORE.get("clip")
+    assert clip(_core.Constant(1.0), low=0.5, high=0.5).sample(0.0).tolist() == 0.5
     with pytest.raises(ParameterError, match="high"):
-        clip.parse({"low": 0.5, "high": 0.25})
+        clip(_core.Constant(1.0), low=0.5, high=0.25)
 
 
 def test_the_core_refuses_an_ease_the_package_does_not_name():
     with pytest.raises(ParameterError, match="ease"):
-        CORE.get("remap").params.parse({"ease": "wobble"})
+        CORE.get("remap")(_core.Constant(0.0), ease="wobble")
 
 
 # ---- nesting ----
@@ -311,14 +315,6 @@ def nested(depth):
         pytest.param(
             lambda value: _core.ParamTable(RATE_SPEC, name="X").parse({"rate": value}),
             DEEPEST + 1, ParameterError, "nested too deeply (limit 128)", id="a value past the limit is refused",
-        ),
-        pytest.param(
-            lambda value: CORE.get("lfo").params.parse({"rate": value}),
-            DEEPEST, ParameterError, "must be a number", id="a built-in's value at the limit",
-        ),
-        pytest.param(
-            lambda value: CORE.get("lfo").params.parse({"rate": value}),
-            DEEPEST + 1, ParameterError, "nested too deeply", id="a built-in's value past the limit",
         ),
         pytest.param(
             lambda value: _core.ParamTable([{**RATE_SPEC[0], "default": value}], name="X"),
@@ -365,7 +361,6 @@ held = numpy.empty((), dtype=object)  # an array whose tolist() is itself
 held[()] = held
 table = _core.ParamTable([{"name": "rate", "kind": "float", "default": 1.0, "doc": "d", "unit": "hertz", "min": 0,
                           "max": 10}], name="X")
-lfo = _core.Registry(builtin=True).get("lfo").params
 try:
     READ
 except (BullterrierControlError, ValueError) as error:
@@ -378,10 +373,6 @@ except (BullterrierControlError, ValueError) as error:
     [
         pytest.param("table.parse({'rate': cyclic})", "ParameterError X: rate: nested too deeply", id="table, a cycle"),
         pytest.param("table.parse({'rate': deep})", "ParameterError X: rate: nested too deeply", id="table, 1M deep"),
-        pytest.param("lfo.parse({'rate': cyclic})", "ParameterError lfo: rate: nested too deeply",
-                     id="a built-in, a cycle"),
-        pytest.param("lfo.parse({'rate': deep})", "ParameterError lfo: rate: nested too deeply",
-                     id="a built-in, 1M deep"),
         pytest.param("table.parse({'rate': held})", "ParameterError X: rate: nested too deeply",
                      id="table, an array that holds itself"),
         pytest.param("_core.ParamTable([{'name': 'rate', 'kind': 'text', 'default': cyclic, 'doc': 'd'}], name='X')",

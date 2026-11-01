@@ -1,6 +1,6 @@
-//! The core's parameter tables for Python: a built-in's and a plugin's (`ParamTable`, from a list of declarations or
-//! a thing's `params`). Every rule is the table's (`bullterrier_control::params`): the bindings read Python values as
-//! the JSON a table takes and refuse what JSON cannot hold (NaN, an infinity, an integer beyond 64 bits, a lone
+//! The core's parameter tables for Python (`ParamTable`, from a list of declarations; a thing's described by
+//! `Thing.describe_params`). Every rule is the table's (`bullterrier_control::params`): the bindings read Python values
+//! as the JSON a table takes and refuse what JSON cannot hold (NaN, an infinity, an integer beyond 64 bits, a lone
 //! surrogate) as a problem of its field, listed with every other rule broken.
 //!
 //! Concurrency: `ParamTable` is frozen and holds no lock; nothing here runs without the GIL (a table's work is small).
@@ -128,7 +128,7 @@ pub(crate) fn python<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py,
 }
 
 /// The description of `table` (see [`PyParamTable::describe`]).
-fn described<'py>(py: Python<'py>, table: &ParamTable) -> PyResult<Bound<'py, PyDict>> {
+pub(crate) fn described<'py>(py: Python<'py>, table: &ParamTable) -> PyResult<Bound<'py, PyDict>> {
     let properties = table.describe();
     let dict = PyDict::new(py);
     for param in table.listed() {
@@ -401,11 +401,6 @@ pub(crate) struct PyParamTable {
 }
 
 impl PyParamTable {
-    /// `table`, its refusals' messages starting with `name`.
-    pub(crate) const fn of(table: ParamTable, name: String) -> Self {
-        Self { table, name }
-    }
-
     /// The table.
     pub(crate) const fn table(&self) -> &ParamTable {
         &self.table

@@ -81,8 +81,9 @@ input is leaving it out. An input it does not declare, or a required one that is
 that breaks the rules of its kind or a value that breaks a parameter's is a `ParameterError` naming the thing (and the
 field). It says what it is: `name`, `kind`, `returns` (`signal`, `events` or `series`), `summary`, `inputs` (each
 input's name to whether it is required, in declaration order, read-only), `__doc__` (what `help()` shows),
-`__signature__`, `description()`; and for one whose body is Python its `function` and `params_model` (`None` for a
-built-in the Rust core runs)."""
+`__signature__`, `description()`, `describe_params()` (each parameter by name, as `Params.describe()` gives it, a
+built-in's too); and for one whose body is Python its `function` and `params_model` (`None` for a built-in the Rust
+core runs)."""
 
 # The table: a registry of the Rust core, seeded with the things the core runs (`slew`, `constant`, ...). `isolated`
 # and a package that fails to load change what it holds, never which object it is.
