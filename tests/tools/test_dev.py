@@ -21,7 +21,7 @@ pytestmark = pytest.mark.xdist_group("dev-scaffold")
 @pytest.fixture
 def checkout(tmp_path):
     skip = shutil.ignore_patterns("__pycache__", "*.pyc")
-    for folder in ("src", "tests", "tools", "crates"):
+    for folder in ("src", "tests", "tools", "crates", "schemas"):
         shutil.copytree(ROOT / folder, tmp_path / folder, ignore=skip)
     for file in ("pyproject.toml", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml"):
         shutil.copy(ROOT / file, tmp_path)
@@ -115,8 +115,7 @@ def test_a_new_thing_is_found_by_the_build_and_its_rust_and_python_tests_pass_as
         *(["examples/gallery/fresh_one.toml"] if gallery else []),
         "tests/builtin/test_fresh_one.py",
     ]
-    # the one edit the author still makes by hand, said before they run into it
-    assert "crates/core/src/builtin.rs" in made.stdout
+    assert "builtin.rs" not in made.stdout  # no list to add the name to
     assert "uv run poe api" in made.stdout  # lib.pyi (and a shaper's _chain.py) are generated
 
     formatted = cargo(checkout, "fmt", "--all", "--check")
@@ -212,7 +211,7 @@ def test_a_name_whose_rust_file_exists_is_refused_and_nothing_is_written(checkou
     assert not (checkout / "examples" / "gallery" / "fresh_one.toml").exists()
 
 
-RESERVED = ["format", "version", "events", "series", "grid", "use", "signal"]
+RESERVED = ["format", "version", "events", "series", "grid"]  # what a patch cannot name a node
 MALFORMED = ["Bad-Name", "Upper", "9lives", "_lead", "has space", ""]
 
 

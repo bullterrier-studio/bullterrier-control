@@ -14,6 +14,7 @@ Interface: main(argv) -> exit code: 0 written, 1 refused (the reason on stderr),
 """
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -21,22 +22,20 @@ from string import Template
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = Path(__file__).resolve().parent / "templates"
-NAME = re.compile(r"[a-z][a-z0-9_]*")
-# What a patch node or a call cannot be called: the header (`format`, `version`), the data inputs (`events`, `series`,
-# `grid`) and the keys of a node (`use`, `signal`).
-RESERVED = ("format", "version", "events", "series", "grid", "use", "signal")
 
 
 def new_source(name: str, kind: str, root: Path) -> list[Path]:
     """Write the Rust file, the test file and, for a source or shaper, the gallery patch of a new thing; return the
     paths.
 
-    `ValueError` if refused: a name that is malformed or reserved, or a file that exists already (nothing is written
-    then)."""
-    if not NAME.fullmatch(name):
+    `ValueError` if refused: a name the core's patch schema refuses (as a thing's name, or as the name of the node
+    its gallery patch gives it), or a file that exists already (nothing is written then)."""
+    schema = json.loads((root / "schemas" / "patch-1.schema.json").read_text(encoding="utf-8"))
+    (node_name,) = schema["patternProperties"]
+    if not re.fullmatch(schema["$defs"]["node"]["properties"]["use"]["pattern"], name):
         raise ValueError(f"{name!r}: a name is lower case letters, digits and _, starting with a letter")
-    if name in RESERVED:
-        raise ValueError(f"{name!r} is reserved (a patch uses it): not one of {', '.join(RESERVED)}")
+    if not re.fullmatch(node_name, name):
+        raise ValueError(f"{name!r} is reserved: a patch cannot name a node so")
     made = [
         (f"test_{kind}.py.tmpl", root / "tests" / "builtin" / f"test_{name}.py"),
         (f"{kind}.rs.tmpl", root / "crates" / "core" / "src" / "builtin" / f"{name}.rs"),
@@ -71,12 +70,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     for path in written:
         print(f"wrote {path.relative_to(ROOT).as_posix()}")
-    print(
-        "next: add the name to the pins in the tests of crates/core/src/builtin.rs (NAMES and its count, the things\n"
-        "      the core runs, and a row for each parameter in declared_fields), fill the Rust file in,"
-    )
     gallery = "" if args.kind == "operation" else "`uv run poe gallery` and "
-    print(f"then run {gallery}`uv run poe api` (it types `lib`, and a shaper's method of Signal)")
+    print(
+        f"next: fill the files in, then run {gallery}`uv run poe api` (it types `lib`, and a shaper's method of Signal)"
+    )
     return 0
 
 
