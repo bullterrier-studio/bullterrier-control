@@ -98,32 +98,44 @@ pub(super) fn read(signal: &Signal, times: &[f64], out: &mut [f64]) -> Read {
                 Next::Done => None,
                 Next::As(input) => Some((&*input.0, at, into)),
                 Next::InPlace(input) => {
-                    frames.push(Frame {
-                        node,
-                        times: at,
-                        out: into,
-                        waiting: Waiting::InPlace,
-                    });
+                    push(
+                        &mut frames,
+                        signal,
+                        Frame {
+                            node,
+                            times: at,
+                            out: into,
+                            waiting: Waiting::InPlace,
+                        },
+                    );
                     Some((&*input.0, at, into))
                 }
                 Next::Both(first, second) => {
-                    frames.push(Frame {
-                        node,
-                        times: at,
-                        out: into,
-                        waiting: Waiting::Second(second),
-                    });
+                    push(
+                        &mut frames,
+                        signal,
+                        Frame {
+                            node,
+                            times: at,
+                            out: into,
+                            waiting: Waiting::Second(second),
+                        },
+                    );
                     Some((&*first.0, at, into))
                 }
                 Next::At(input, grid) => {
                     buffers.push(vec![0.0; grid.len()]);
                     grids.push(grid);
-                    frames.push(Frame {
-                        node,
-                        times: at,
-                        out: into,
-                        waiting: Waiting::Grid,
-                    });
+                    push(
+                        &mut frames,
+                        signal,
+                        Frame {
+                            node,
+                            times: at,
+                            out: into,
+                            waiting: Waiting::Grid,
+                        },
+                    );
                     Some((&*input.0, Times::Grid(grids.len() - 1), Out::Buffer(buffers.len() - 1)))
                 }
             };
@@ -157,6 +169,15 @@ pub(super) fn read(signal: &Signal, times: &[f64], out: &mut [f64]) -> Read {
         };
         node.finish(times_of(times, &grids, at), &inputs, out_of(out, &mut buffers, into))?;
     }
+}
+
+/// `frame` on top of `frames`, which the first push sizes for the deepest read of `signal` (a frame a node, the
+/// leaf's excepted): one allocation a read that has inputs, none for one that has not.
+fn push<'g>(frames: &mut Vec<Frame<'g>>, signal: &Signal, frame: Frame<'g>) {
+    if frames.capacity() == 0 {
+        frames.reserve_exact(signal.0.depth());
+    }
+    frames.push(frame);
 }
 
 /// The times at `at`.
