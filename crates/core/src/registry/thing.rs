@@ -11,6 +11,7 @@ use super::repr::{python, quoted};
 use super::{
     About, Call, Declared, Inputs, Kind, NODE_KEYS, Operation, Output, Recipe, Returns, Shaper, Source, is_name,
 };
+use crate::formats::Event;
 use crate::inputs::InputKind;
 use crate::params::{ParamTable, Values};
 use crate::{Error, Params, Signal};
@@ -481,18 +482,19 @@ impl Thing {
     /// 4. the parameter values, read by its table: an object by name, a value left out taking its default.
     ///
     /// The thing's body then gets the call with the values as the table read them (every field, a cyclic one
-    /// wrapped); what it gives must be what it [`returns`](Self::returns). A signal it gives carries its
-    /// [`Recipe`] ([`Signal::recipe`]): this thing's name, the values as read, the inputs in its order and the signal
-    /// it shaped. It reads as the body's signal and is as deep, but at least one deeper than the signal it shaped, so
-    /// a chain of calls whose bodies make no node (one that gives its input back) is bounded by
+    /// wrapped); what it gives must be what it [`returns`](Self::returns), events in time order. A signal it gives
+    /// carries its [`Recipe`] ([`Signal::recipe`]): this thing's name, the values as read, the inputs in its order and
+    /// the signal it shaped. It reads as the body's signal and is as deep, but at least one deeper than the signal it
+    /// shaped, so a chain of calls whose bodies make no node (one that gives its input back) is bounded by
     /// [`MAX_DEPTH`](crate::MAX_DEPTH) as a chain of nodes is.
     ///
     /// # Errors
     /// [`Error::Call`] naming the thing (`shaper 'slew' takes 1 signal(s), not 0`; `operation 'select' takes no input
     /// 'grid'`; `... needs the input 'events'`; `... the input 'events' holds values`; `... gave events, not the
-    /// series it returns`); [`Error::Params`] under its name listing every rule the values break; [`Error::Depth`] if
-    /// the signal it gives would be deeper than [`MAX_DEPTH`](crate::MAX_DEPTH); and whatever error its body gives,
-    /// unchanged.
+    /// series it returns`); [`Error::Output`] naming it if its events are out of time order (`operation 'x' returned
+    /// events out of time order (event 1 at 1 s comes after one at 3 s)`); [`Error::Params`] under its name listing
+    /// every rule the values break; [`Error::Depth`] if the signal it gives would be deeper than
+    /// [`MAX_DEPTH`](crate::MAX_DEPTH); and whatever error its body gives, unchanged.
     ///
     /// ```
     /// use bullterrier_control::registry::{Call, Registry};
@@ -578,8 +580,11 @@ impl Thing {
                 output.returns()
             )));
         }
-        let Output::Signal(signal) = output else {
-            return Ok(output); // data: a later node uses it inline, so there is nothing to record
+        let signal = match output {
+            Output::Signal(signal) => signal,
+            Output::Events(events) => return self.in_time_order(events).map(Output::Events),
+            // data: a later node uses it inline, so there is nothing to record
+            other => return Ok(other),
         };
         let Call {
             signals,
@@ -597,6 +602,24 @@ impl Thing {
             made_by: (*kind, identity.clone()),
         };
         Ok(Output::Signal(Signal::recorded(recipe, signal)?))
+    }
+
+    /// `events`, the events its body gave, if they are in time order (events at one time in any order); they are not
+    /// sorted for it, as an order a body meant may differ.
+    fn in_time_order(&self, events: Vec<Event>) -> Result<Vec<Event>, Error> {
+        let late = events.windows(2).position(|pair| pair[1].t() < pair[0].t());
+        match late {
+            None => Ok(events),
+            Some(index) => Err(Error::Output {
+                message: format!(
+                    "{} returned events out of time order (event {} at {} s comes after one at {} s)",
+                    self.label(),
+                    index + 1,
+                    events[index + 1].t(),
+                    events[index].t()
+                ),
+            }),
+        }
     }
 
     /// Who defined it.

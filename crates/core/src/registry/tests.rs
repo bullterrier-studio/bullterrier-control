@@ -1111,6 +1111,87 @@ impl crate::Operation for Beats {
     }
 }
 
+/// The events given, last first (an operation of these tests that breaks the time order it promises).
+#[derive(Clone, Debug, PartialEq, crate::Params)]
+struct Backwards {}
+
+impl crate::Operation for Backwards {
+    const NAME: &'static str = "backwards";
+    type Inputs = Vec<Event>;
+    const RETURNS: Returns = Returns::Events;
+
+    fn run(&self, events: Vec<Event>) -> Result<Output, Error> {
+        Ok(Output::Events(events.into_iter().rev().collect()))
+    }
+}
+
+/// A row of [`events_a_thing_gives_are_in_time_order_or_refused_naming_it`]: (row, the times a body gives, the times a
+/// call gives or its refusal).
+type OrderRow = (&'static str, Vec<f64>, Result<Vec<f64>, String>);
+
+#[test]
+fn events_a_thing_gives_are_in_time_order_or_refused_naming_it() -> Result<(), Error> {
+    let backwards = Thing::operation::<Backwards>(About::default())?;
+    let call = |times: &[f64]| -> Result<Call, Error> {
+        Ok(Call {
+            inputs: [("events".to_owned(), Input::from_events(events(times)?))].into(),
+            ..Call::default()
+        })
+    };
+    // the input arrives sorted (0.5, 1, 2), so the body gives 2, 1, 0.5: the event at index 1 comes after a later one
+    assert_eq!(
+        times(backwards.call(&call(&[1.0, 0.5, 2.0])?)),
+        Err(
+            "operation 'backwards' returned events out of time order (event 1 at 1 s comes after one at 2 s)"
+                .to_owned()
+        )
+    );
+    assert_eq!(times(backwards.call(&call(&[1.5])?)), Ok(vec![1.5]));
+
+    // a callback's (a Python body's) events are held to the same rule; events at one time keep their order
+    let rows: [OrderRow; 4] = [
+        (
+            "in time order, two at once",
+            vec![1.0, 2.0, 2.0, 3.0],
+            Ok(vec![1.0, 2.0, 2.0, 3.0]),
+        ),
+        ("none", vec![], Ok(vec![])),
+        (
+            "later first",
+            vec![3.0, 1.0],
+            Err(
+                "operation 'given' returned events out of time order (event 1 at 1 s comes after one at 3 s)"
+                    .to_owned(),
+            ),
+        ),
+        (
+            "one out of order at the end",
+            vec![1.0, 2.0, 1.5],
+            Err(
+                "operation 'given' returned events out of time order (event 2 at 1.5 s comes after one at 2 s)"
+                    .to_owned(),
+            ),
+        ),
+    ];
+    for (row, given, expected) in rows {
+        let declared = Declared {
+            name: "given".to_owned(),
+            kind: Kind::Operation,
+            identity: "tests.given".to_owned(),
+            shown: None,
+            table: ParamTable::new(vec![]).map_err(|error| Error::params("given", error))?,
+            inputs: vec![],
+            returns: Returns::Events,
+        };
+        let made = events(&given)?;
+        let thing = Thing::custom(About::default(), declared, move |_call| {
+            Ok(Output::Events(made.clone()))
+        })?;
+        assert_eq!(times(thing.call(&Call::default())), expected, "{row}");
+    }
+    Ok(())
+}
+
 /// The events of `output`'s times, or why there are none.
 fn times(output: Result<Output, Error>) -> Result<Vec<f64>, String> {
     match output {

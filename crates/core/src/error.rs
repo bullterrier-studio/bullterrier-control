@@ -80,6 +80,11 @@ pub enum Error {
         /// The thing, by kind and name, and what was wrong with the call.
         message: String,
     },
+    /// A thing's body gave a result of its kind that breaks what such a result promises: events out of time order.
+    Output {
+        /// The thing, by kind and name, and what is wrong with what it gave.
+        message: String,
+    },
 }
 
 impl Error {
@@ -101,7 +106,8 @@ impl fmt::Display for Error {
             | Self::Signal { message }
             | Self::Depth { message }
             | Self::Registration { message }
-            | Self::Call { message } => formatter.write_str(message),
+            | Self::Call { message }
+            | Self::Output { message } => formatter.write_str(message),
             Self::UnknownName { name, available } => write!(
                 formatter,
                 "unknown source, shaper or operation {}; available: {}",
