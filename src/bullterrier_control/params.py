@@ -6,9 +6,6 @@ defaulted. The declaration is a parameter table of the Rust core, which holds ev
 
         depth: Finite = param(0.5, doc="How far the wave moves the value.", unit="fraction", min=0, max=1)
 
-    class SlewParams(Params, builtin="slew"):  # a built-in: the table the core declares for it
-        \"\"\"How fast the output may climb and fall.\"\"\"
-
 Promises:
 - A field is annotated `Finite` (a decimal), `Whole`, `Switch`, `Text` (or plain `float`, `int`, `bool`, `str`) or a
   `Literal` of strings, and declared with `param`. The class is checked when it is made: a broken declaration (no
@@ -92,20 +89,15 @@ def _entry(name: str, annotation: object, declared: object) -> dict[str, object]
 
 
 class Params:
-    """The parameters of a source, shaper or operation: subclass it with a docstring, declare fields with `param`.
-
-    A built-in's class is `class XParams(Params, builtin="x")`, with a docstring only: its fields are the core's."""
+    """The parameters of a source, shaper or operation: subclass it with a docstring, declare fields with `param`."""
 
     # the core's table of the class, made with it; the registry hands it to the core with the class
     _table: ClassVar[_core.ParamTable]
 
-    def __init_subclass__(cls, *, builtin: str | None = None, **kwargs: Any) -> None:
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         """Build the class's table from its annotations and `param` declarations (`ParameterError` naming each broken
-        field), or take the core's table of `builtin`."""
+        field)."""
         super().__init_subclass__(**kwargs)
-        if builtin is not None:
-            cls._table = _core.ParamTable.builtin(builtin)
-            return
         annotations = inspect.get_annotations(cls, eval_str=True)
         declared = {name: cls.__dict__.get(name, _NOTHING) for name in annotations}
         cls._table = _core.ParamTable(

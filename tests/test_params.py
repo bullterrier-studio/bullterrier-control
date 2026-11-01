@@ -271,26 +271,3 @@ def test_the_description_keeps_the_turn_as_minimum_and_maximum_beside_cyclic():
     phase = Turn.describe()["phase"]
     assert (phase["minimum"], phase["maximum"], phase["unit"], phase["cyclic"]) == (0, 1, "cycles", True)
     assert not any(field["cyclic"] for field in Wave.describe().values())
-
-
-class Probe(Params, builtin="lfo"):
-    """A class made from the table the core declares for a built-in."""
-
-
-class Clipped(Params, builtin="clip"):
-    """The table of a built-in with a rule between its fields."""
-
-
-def test_a_built_in_class_has_the_fields_defaults_and_wrapping_its_table_declares():
-    assert list(Probe.describe()) == ["shape", "rate", "per", "phase", "low", "high", "duty"]
-    probe = Probe.parse({"phase": 1.25})
-    assert (probe.shape, probe.rate, probe.phase, probe.high) == ("sine", 1.0, 0.25, 1.0)
-
-
-def test_a_built_in_class_refuses_what_its_table_refuses_including_a_rule_between_fields(reports):
-    assert Clipped.parse({"low": 0.5, "high": 0.5}).to_dict() == {"low": 0.5, "high": 0.5}
-    with pytest.raises(ParameterError) as refused:
-        Clipped.parse({"low": 0.5, "high": 0.2})
-    reports(refused.value, "high")
-    with pytest.raises(ParameterError, match="rise"):
-        Probe.parse({"rise": 0.1})
