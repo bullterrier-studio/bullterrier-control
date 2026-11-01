@@ -13,6 +13,7 @@ name = "bullterrier_control"
 
 [dependencies]
 bullterrier-control-macros.workspace = true
+libm.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

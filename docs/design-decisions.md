@@ -867,6 +867,14 @@ door and back); the 17 that remain in Python are ported in R5.
   while its node drops is one a thread: one for all made that 7 times slower.
 - The wheel check of the deepest chains on a 256 KiB thread is in "Resource gates (R4c, owner, 2026-11-01)".
 
+## libm for exp (R5a)
+
+`follow` calls `libm::exp` (the `libm` crate, MIT, pure Rust, pinned exact), not std's. *Reason:* std's `exp` calls the
+platform's math library, so the same signal could differ by an ulp between targets (rule 6 allows float tolerance across
+platforms, but the core's easing and hashing already give the same bits everywhere, and a patch's hash and a rendered
+file should too). Over 10 000 seeded arguments the two differ by at most 1 ulp. Later built-ins that need `sin`, `exp` or
+`powf` use `libm` the same way.
+
 ## Resource gates (R4c, owner, 2026-11-01)
 
 Unbounded memory, unbounded output and stack overflow are impossible by design where the design can make them so, and caught

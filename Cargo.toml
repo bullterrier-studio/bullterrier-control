@@ -18,6 +18,9 @@ bullterrier-control = { path = "crates/core" }
 bullterrier-control-macros = { path = "crates/macros" }
 # cap: the core's test binary allocates through it, so a runaway test aborts at a cap instead of filling the memory
 cap = "0.1.2"
+# libm: `exp` as pure Rust, the same bits on every target (std's calls the platform's, which differs by an ulp); exact pin so a
+# release cannot move a result
+libm = "=0.2.16"
 numpy = "0.30"
 # proc-macro2, quote, syn: the derives of crates/macros read a struct or an enum and write its impls with them
 proc-macro2 = "1"

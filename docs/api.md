@@ -57,7 +57,7 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
    of making a signal from one checks, names and records it alike. `Signal::from_fn` and `Signal::rendered` are how
    code outside the crate adds a node.
 9. **The core crate** forbids `unsafe`, does no I/O, builds for wasm32, gives the same result on every target (no
-   platform math in easing or hashing; `follow` still calls std `exp`, which `libm` replaces before 1.0), documents
+   platform math: `follow`'s `exp` is `libm`'s), documents
    every public item, and carries these examples as doctests.
 10. **Concurrency** (implemented): no hand-written atomics. The only shared mutable state is the history cache of a
     stateful signal. A Rust lock is never held while calling into Python. A graph is at most `MAX_DEPTH` (1000) nodes

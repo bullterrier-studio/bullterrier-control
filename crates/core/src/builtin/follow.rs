@@ -30,7 +30,7 @@ pub struct Params {
 /// The share of the gap an input leaves after one step: `e^(-step / time)`, and none for a time of 0 (so the output is
 /// the input, and nothing divides).
 fn left(step: f64, time: f64) -> f64 {
-    if time > 0.0 { (-step / time).exp() } else { 0.0 }
+    if time > 0.0 { libm::exp(-step / time) } else { 0.0 }
 }
 
 impl Signal {
@@ -132,6 +132,14 @@ mod tests {
         let out = run(&[1.0, 0.0], &params(0.1, 0.2, 10.0));
         assert_eq!(out.len(), 2);
         assert!((out[0] - 1.0).abs() <= 1e-12 && (out[1] - 0.606_530_659_712_633_4).abs() <= 1e-12, "{out:?}");
+    }
+
+    #[test]
+    fn a_fall_with_a_release_of_two_samples_leaves_e_to_the_minus_two_of_the_gap() {
+        // rate 10, release 0.05 s: the gap left is e^(-0.1 / 0.05) = e^-2 = 0.1353352832366127 (to 1 ulp)
+        let out = run(&[1.0, 0.0], &params(0.3, 0.05, 10.0));
+        assert_eq!(out.len(), 2);
+        assert!((out[1] - 0.135_335_283_236_612_7).abs() <= 1e-15, "{out:?}");
     }
 
     #[test]
