@@ -460,8 +460,8 @@ impl Patch {
     /// # Errors
     /// [`PatchError::Unsaved`] listing, each at its path (`glow`, `glow.signal` for the signal it shapes, and so on
     /// up), every signal given or above one that a patch cannot hold, with why: it is made by an operator, from
-    /// values held as they are (a constant, [`from_values`](Signal::from_values), [`from_series`](Signal::from_series)),
-    /// by a callback ([`from_fn`](Signal::from_fn)) or by a recurrence of one ([`rendered`](Signal::rendered)), or
+    /// values held as they are (a constant, [`from_values`](Signal::from_values), [`from_series`](Signal::from_series),
+    /// or a bundle's series a patch read as `series.<name>`: such a graph is kept as that patch), by a callback ([`from_fn`](Signal::from_fn)) or by a recurrence of one ([`rendered`](Signal::rendered)), or
     /// by a thing other than the one `registry` holds under its name (or `registry` holds none). Also each name that
     /// is no node name, or is given twice.
     pub fn from_signals_with(registry: &Registry, signals: &[(&str, &Signal)]) -> Result<Self, PatchError> {

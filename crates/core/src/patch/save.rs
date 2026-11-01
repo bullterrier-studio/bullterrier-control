@@ -215,14 +215,21 @@ fn at(name: &str, up: usize, rule: String) -> Problem {
 
 /// The recipe of `signal`, or why a patch cannot hold it: it was not made by a thing.
 fn recipe_of(signal: &Signal) -> Result<&Recipe, String> {
-    let why = match signal.origin() {
+    let (why, or) = match signal.origin() {
         Origin::Thing(recipe) => return Ok(recipe),
-        Origin::Operator => "is made by an operator (+, -, *, negation, minimum or maximum)",
-        Origin::Values => "holds values given as they are (a constant, from_values or from_series)",
-        Origin::Callback => "is made by a callback (from_fn, or a Python compute)",
-        Origin::Rendered => "is rendered by a callback (rendered, or a Python Rendered(run=...))",
+        Origin::Operator => ("is made by an operator (+, -, *, negation, minimum or maximum)", ""),
+        // a patch reads a bundle's `series.<name>` as from_series: its signal is saved as that patch
+        Origin::Values => (
+            "holds values given as they are (a constant, from_values, from_series, or a bundle's series a patch read)",
+            ", or keep the patch that read the series",
+        ),
+        Origin::Callback => ("is made by a callback (from_fn, or a Python compute)", ""),
+        Origin::Rendered => (
+            "is rendered by a callback (rendered, or a Python Rendered(run=...))",
+            "",
+        ),
     };
     Err(format!(
-        "{why}, which a patch has no node for: make it with a source, shaper or operation"
+        "{why}, which a patch has no node for: make it with a source, shaper or operation{or}"
     ))
 }

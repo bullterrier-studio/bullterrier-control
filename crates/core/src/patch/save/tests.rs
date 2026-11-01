@@ -20,6 +20,7 @@ use crate::builtin::constant;
 use crate::builtin::follow;
 use crate::builtin::slew;
 use crate::easing::Ease;
+use crate::formats::Bundle;
 use crate::formats::Event;
 use crate::formats::EventOptions;
 use crate::formats::FormatError;
@@ -460,7 +461,7 @@ fn what_a_patch_cannot_hold_is_refused_at_its_path_saying_why() -> Outcome {
     let made = Registry::new();
     let mine = || registry.clone();
     let operator = "is made by an operator (+, -, *, negation, minimum or maximum), which a patch has no node for";
-    let values_rule = "holds values given as they are (a constant, from_values or from_series)";
+    let values_rule = "holds values given as they are (a constant, from_values, from_series, or a bundle's";
     let not_a_name = "is not a node name: lower case letters, digits and _, starting with a letter";
     // (row, what is saved, the problems: each path and a part of its rule; none when it saves)
     let rows: Vec<(&str, Given, Expected)> = vec![
@@ -623,6 +624,31 @@ fn a_refusal_says_where_and_why_in_its_message() -> Outcome {
             "cannot save as a patch: mix: is made by an operator (+, -, *, negation, minimum or maximum), which a patch \
              has no node for: make it with a source, shaper or operation"
         )
+    );
+    Ok(())
+}
+
+#[test]
+fn a_signal_read_from_a_bundle_by_a_patch_is_refused_saying_to_keep_that_patch() -> Outcome {
+    let text = "format = 'bullterrier-control/patch'\nversion = 1\n[smooth]\nuse = 'slew'\nsignal = 'series.energy'\n";
+    let bundle = Bundle::from_json(
+        r#"{"format": "bullterrier-control/bundle", "version": 1,
+            "series": {"energy": {"rate": 10, "values": [0, 1], "unit": "ratio"}}}"#,
+    )?;
+    let Some(Output::Signal(smooth)) = Patch::from_toml(text)?.build(&bundle)?.get("smooth").cloned() else {
+        return Err("a shaper gives a signal".into());
+    };
+    let Err(PatchError::Unsaved { problems, .. }) = Patch::from_signals(&[("smooth", &smooth)]) else {
+        return Err("refused".into());
+    };
+    let found: Vec<(&str, &str)> = problems
+        .iter()
+        .map(|problem| (problem.path.as_str(), problem.rule.as_str()))
+        .collect();
+    assert!(
+        matches!(found.as_slice(), [("smooth.signal", rule)]
+            if rule.contains("a bundle's series a patch read") && rule.ends_with("or keep the patch that read the series")),
+        "{found:?}"
     );
     Ok(())
 }
