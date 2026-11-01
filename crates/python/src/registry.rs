@@ -87,6 +87,11 @@ pub(crate) struct PyRegistry {
 }
 
 impl PyRegistry {
+    /// A registry of the things the core runs, as `Registry(builtin=True)` makes one.
+    pub(crate) fn builtin(py: Python<'_>) -> PyResult<Self> {
+        Self::new(py, true)
+    }
+
     /// What it holds now.
     pub(crate) fn held(&self) -> Arc<Held> {
         Arc::clone(&self.lock())

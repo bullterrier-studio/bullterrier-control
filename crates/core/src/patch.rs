@@ -244,7 +244,7 @@ pub enum Given {
 
 /// A name written where data goes: a node above, or an entry of the bundle. Its [`Display`](fmt::Display) is how a
 /// patch writes it: `glow`, `events.kick`, `series.energy`, `grid`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Reference {
     /// The node of this name, above the one that refers to it.
     Node(String),

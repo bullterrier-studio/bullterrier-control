@@ -20,7 +20,7 @@ import pytest
 from bullterrier_control import Bundle, Event
 from bullterrier_control._native import _core  # noqa: PLC2701  architecture: the boundary a patch is read through
 from bullterrier_control.errors import FormatError, ParameterError, UnknownNameError
-from bullterrier_control.plugin import Finite, Params, Signal, param
+from bullterrier_control.plugin import Constant, Finite, Params, Signal, param
 
 TIMEOUT = 60.0  # seconds a thread test waits before it fails as a deadlock
 HEADER = {"format": "bullterrier-control/patch", "version": 1}
@@ -330,3 +330,229 @@ def test_a_body_may_read_and_build_a_patch_while_a_patch_builds_it(registry):
     registry.register(nested, kind="source", params=Nothing, table=NOTHING, inputs={}, returns="signal")
     outer = _core.Patch.parse({**HEADER, "outer": {"use": "nested"}}, registry=registry)
     assert outer.build()["outer"].sample(0.0).tolist() == 0.75
+
+
+# ---- reading a node: what it is built from ----
+
+
+def written(reference: Any) -> tuple[str, str, str] | None:
+    """A reference as (text, root, name), `None` for no reference."""
+    return None if reference is None else (reference.text, reference.root, reference.name)
+
+
+def test_a_node_says_what_it_is_built_from_and_with_which_values(registry):
+    data = {
+        **HEADER,
+        "strong": {"use": "select", "events": "events.kick", "threshold": 0.5},
+        "glow": {"use": "slew", "signal": "series.energy", "rise": 1},
+        "held": {"use": "last_point", "points": [{"t": 0.0, "value": 2.0}, {"t": 1.0, "value": -1.0}]},
+        "next": {"use": "fold", "signal": "glow", "depth": 0.25},
+    }
+    nodes = _core.Patch.parse(data, registry=registry).nodes
+    strong, glow, held, after = (nodes[name] for name in ("strong", "glow", "held", "next"))
+    # a reference is where the data is: a bundle entry, or a node above
+    assert [written(r) for r in (glow.signal, strong.inputs["events"], after.signal)] == [
+        ("series.energy", "series", "energy"),
+        ("events.kick", "events", "kick"),
+        ("glow", "node", "glow"),
+    ]
+    assert (strong.signal, held.signal) == (None, None)
+    # what is written inline is the data, checked as its kind
+    assert [(point.t, point.value) for point in held.inputs["points"]] == [(0.0, 2.0), (1.0, -1.0)]
+    # the values are those written: a whole number stays whole, and nothing is added for what was left out
+    assert (dict(strong.parameters), dict(glow.parameters), dict(after.parameters), dict(held.parameters)) == (
+        {"threshold": 0.5},
+        {"rise": 1},
+        {"depth": 0.25},
+        {},
+    )
+    assert type(dict(glow.parameters)["rise"]) is int
+
+
+def test_a_grid_is_a_reference_or_inline_data_and_a_reference_is_equal_by_what_it_names(registry):
+    grid = {"beats": [0.0, 0.5, 1.0], "meter": 2, "first_downbeat": 0}
+
+    def beat(params: Nothing, *, grid: object = None) -> Signal:
+        return last_point(params, points=())
+
+    registry.register(beat, kind="source", params=Nothing, table=NOTHING, inputs={"grid": False}, returns="signal")
+    nodes = _core.Patch.parse(
+        {**HEADER, "a": {"use": "beat", "grid": "grid"}, "b": {"use": "beat", "grid": grid}}, registry=registry
+    ).nodes
+    named, inline = nodes["a"].inputs["grid"], nodes["b"].inputs["grid"]
+    assert (named.text, named.root, named.name) == ("grid", "grid", "")
+    assert inline.beats == (0.0, 0.5, 1.0)
+    other = (
+        _core.Patch.parse({**HEADER, "x": {"use": "beat", "grid": "grid"}}, registry=registry).nodes["x"].inputs["grid"]
+    )
+    assert named == other
+    assert named != nodes["a"].signal  # nothing: None is not a reference
+    assert len({named, other}) == 1
+
+
+def test_the_inputs_and_values_of_a_node_cannot_be_changed(registry):
+    node = _core.Patch.parse({**HEADER, "glow": {"use": "slew", "signal": "series.energy"}}, registry=registry).nodes[
+        "glow"
+    ]
+    with pytest.raises(TypeError):
+        node.parameters["rise"] = 1  # type: ignore[index]
+    with pytest.raises(TypeError):
+        node.inputs["points"] = ()  # type: ignore[index]
+
+
+# ---- saving: a graph made by the registry's things, as a patch ----
+
+
+def things(registry: Any) -> tuple[Any, Any, Any]:
+    return registry.get("constant"), registry.get("slew"), registry.get("follow")
+
+
+CHAIN = """\
+format = "bullterrier-control/patch"
+version = 1
+
+[glow_1]
+use = "constant"
+value = 0.5
+
+[glow_2]
+use = "slew"
+signal = "glow_1"
+rise = 0.25
+fall = 0.1
+rate = 1000.0
+
+[glow]
+use = "follow"
+signal = "glow_2"
+attack = 0.0
+release = 0.5
+rate = 2000.0
+"""
+
+
+def test_a_chain_made_by_the_registry_is_saved_as_the_hand_written_patch(registry):
+    constant, slew, follow = things(registry)
+    glow = follow(slew(constant(value=0.5), rise=0.25), attack=0.0, release=0.5, rate=2000.0)
+    saved = _core.Patch.from_signals({"glow": glow}.items(), registry=registry)
+    assert saved.to_toml() == CHAIN
+    assert list(saved.nodes) == ["glow_1", "glow_2", "glow"]
+    assert written(saved.nodes["glow_2"].signal) == ("glow_1", "node", "glow_1")
+    assert dict(saved.nodes["glow_2"].parameters) == {"rise": 0.25, "fall": 0.1, "rate": 1000.0}
+
+
+def test_a_saved_patch_builds_what_the_graph_samples_and_reads_back_equal(registry):
+    constant, slew, follow = things(registry)
+    glow = follow(slew(constant(value=0.5), rise=0.25), attack=0.0, release=0.5, rate=2000.0)
+    saved = _core.Patch.from_signals({"glow": glow}.items(), registry=registry)
+    times = [-1.0, 0.0, 0.001, 0.25, 0.3, 1.0, 7.5]
+    assert saved.build()["glow"].sample(times).tolist() == glow.sample(times).tolist()
+    again = _core.Patch.from_toml(saved.to_toml(), registry=registry)
+    assert again == saved
+    assert again.build()["glow"].sample(times).tolist() == glow.sample(times).tolist()
+
+
+def test_the_signals_are_saved_in_the_order_the_items_give_them_and_shared_upstream_is_one_node(registry):
+    constant, slew, _ = things(registry)
+    base = slew(constant(value=0.25))
+    fast, slow = slew(base, rise=0.01), slew(base, rise=1.0)
+    saved = _core.Patch.from_signals([("slow", slow), ("fast", fast)], registry=registry)
+    assert list(saved.nodes) == ["slow_1", "slow_2", "slow", "fast"]
+    assert written(saved.nodes["fast"].signal) == ("slow_2", "node", "slow_2")
+
+
+def test_without_a_registry_the_things_the_core_runs_are_saved(registry):
+    constant, slew, _ = things(registry)
+    smooth = slew(constant(value=0.75), rise=0.5)
+    saved = _core.Patch.from_signals({"smooth": smooth}.items())
+    assert list(saved.nodes) == ["smooth_1", "smooth"]
+    assert saved.build()["smooth"].sample([0.0, 0.5, 2.0]).tolist() == smooth.sample([0.0, 0.5, 2.0]).tolist()
+
+
+def test_a_python_thing_is_saved_and_read_back_in_the_registry_that_holds_it(registry):
+    constant, slew, _ = things(registry)
+    folded = registry.get("fold")(slew(constant(value=0.9), rise=0.5), depth=0.25)
+    text = _core.Patch.from_signals({"folded": folded}.items(), registry=registry).to_toml()
+    assert text.endswith('[folded]\nuse = "fold"\nsignal = "folded_2"\ndepth = 0.25\n')
+    rebuilt = _core.Patch.from_toml(text, registry=registry).build()["folded"]
+    times = [0.0, 0.25, 0.5, 1.0, 3.0]
+    assert rebuilt.sample(times).tolist() == folded.sample(times).tolist()
+    # 0.9 is above the fold at 0.75: mirrored to 0.6
+    assert rebuilt.sample([3.0]).tolist() == pytest.approx([0.6])
+    # a registry that does not hold that very thing cannot take the graph
+    unheld = r"^cannot save as a patch: folded: is made by 'fold', which the registry it is saved for does not hold"
+    with pytest.raises(FormatError, match=unheld):
+        _core.Patch.from_signals({"folded": folded}.items(), registry=_core.Registry(builtin=True))
+
+
+class Computed(Signal):
+    """A signal a Python `compute` makes."""
+
+    def compute(self, times):
+        return np.asarray(times) * 2.0
+
+
+def test_what_a_patch_cannot_hold_is_refused_at_its_path_saying_why(registry):
+    constant, slew, follow = things(registry)
+    smooth = slew(constant(value=0.5))
+    rows: dict[str, tuple[dict[str, Any], list[tuple[str, str]]]] = {
+        "a constant of Python": ({"level": Constant(0.5)}, [("level", "holds values given as they are")]),
+        "values given": ({"level": _core.from_values([0.0, 1.0], 2.0)}, [("level", "holds values given as they are")]),
+        "a compute": ({"level": Computed()}, [("level", "is made by a callback")]),
+        "a sum": ({"mix": smooth + smooth}, [("mix", "is made by an operator")]),
+        "a shaper of a sum": (
+            {"glow": follow(smooth * 2.0)},
+            [("glow.signal", "is made by an operator")],
+        ),
+        "a shaper of values": (
+            {"glow": follow(slew(Constant(1.0)))},
+            [("glow.signal.signal", "holds values given as they are")],
+        ),
+        "two at once": (
+            {"a": Constant(1.0), "b": Computed()},
+            [("a", "holds values"), ("b", "is made by a callback")],
+        ),
+        "a name no node may have": ({"Glow": smooth}, [("Glow", "is not a node name")]),
+        "a reserved name": ({"grid": smooth}, [("grid", "is not a node name")]),
+    }
+    for row, (graph, wanted) in rows.items():
+        with pytest.raises(FormatError, match=r"^cannot save as a patch: ") as refused:
+            _core.Patch.from_signals(graph.items(), registry=registry)
+        got = [(path, rule) for path, rule in refused.value.problems]
+        assert len(got) == len(wanted), row
+        for (path, rule), (want_path, want_rule) in zip(got, wanted, strict=True):
+            assert path == want_path, row
+            assert want_rule in rule, row
+
+
+def test_a_refusal_reads_as_path_and_reason_pairs_in_the_message(registry):
+    with pytest.raises(FormatError) as refused:
+        _core.Patch.from_signals({"a": Constant(1.0)}.items(), registry=registry)
+    path, rule = refused.value.problems[0]
+    assert str(refused.value) == f"cannot save as a patch: {path}: {rule}"
+
+
+@pytest.mark.parametrize(
+    ("items", "error", "match"),
+    [
+        pytest.param([("glow", 0.5)], TypeError, "signal", id="a number is no signal"),
+        pytest.param([("glow",)], TypeError, "pair", id="an item that is no pair"),
+        pytest.param([(1, Constant(1.0))], TypeError, "name", id="a name that is not text"),
+        pytest.param(5, TypeError, "items", id="items that are not iterable"),
+    ],
+)
+def test_items_that_are_no_pairs_of_a_name_and_a_signal_are_a_type_error(registry, items, error, match):
+    with pytest.raises(error, match=match):
+        _core.Patch.from_signals(items, registry=registry)
+
+
+def test_saving_nothing_is_a_patch_with_no_node(registry):
+    saved = _core.Patch.from_signals([], registry=registry)
+    assert saved.to_toml() == 'format = "bullterrier-control/patch"\nversion = 1\n'
+    assert saved.nodes == {}
+
+
+def test_a_patch_read_from_toml_is_written_as_it_reads(registry):
+    patch = _core.Patch.from_toml(GLOW, registry=registry)
+    assert tomllib.loads(patch.to_toml()) == tomllib.loads(GLOW)
+    assert _core.Patch.from_toml(patch.to_toml(), registry=registry) == patch

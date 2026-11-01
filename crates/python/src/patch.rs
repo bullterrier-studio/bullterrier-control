@@ -12,19 +12,22 @@ use std::sync::Arc;
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyMappingProxy;
 use pyo3::types::{PyDict, PyMapping, PyString};
 use serde::de::{DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value};
 
-use bullterrier_control::Patch;
 use bullterrier_control::formats::{Problem, Problems};
-use bullterrier_control::patch::PatchError;
+use bullterrier_control::patch::{Given, Node, PatchError, Reference};
+use bullterrier_control::{Patch, Signal};
 
 use crate::data::{self, beyond_64_bits, shown};
 use crate::error::{at_node, format_error_saying, raised, unknown_name};
 use crate::formats::{PyBundle, type_name};
+use crate::inputs;
 use crate::params;
 use crate::registry::{self, Held, PyRegistry};
+use crate::signal::{self, SignalBase};
 
 /// The nodes of a patch by name, in the order it gives them, read and built by the Rust core.
 ///
@@ -36,7 +39,14 @@ use crate::registry::{self, Held, PyRegistry};
 /// infinity, an integer beyond 64 bits, a `set`) is refused at its path, before anything else is checked. An exception
 /// the mapping raises while read reaches the caller unchanged.
 ///
-/// `nodes` gives each node by name (`use`, `returns`). `build(bundle=None, only=None)` gives every node (or those named
+/// `Patch.from_signals(items, registry=None)` saves the signals of `items`, pairs of a node name and a signal (a dict's
+/// `items()`), in the order given, as a patch for `registry` (the things the core runs when `None`): every thing a
+/// signal is made by must be one `registry` holds. A signal a patch cannot hold (an operator, a `Constant`, values
+/// given as they are, a `compute`, a `Rendered(run=...)`, a thing `registry` does not hold) or a name no node may have
+/// is a `FormatError` listing each as `<path>: reason` (`cannot save as a patch: glow.signal: ...`); `to_toml()` writes
+/// the patch as text that reads back, with the same `registry`, as an equal patch.
+///
+/// `nodes` gives each node by name (a `Node`). `build(bundle=None, only=None)` gives every node (or those named
 /// in `only` and none other, building only what they use), in file order: a signal, a tuple of `Event` or a `Series`.
 /// A path into the bundle it does not hold (or any, without a bundle) is a `FormatError` at `<node>.<key>`, a name
 /// `only` gives that the patch lacks an `UnknownNameError`. A refusal or exception of a node's thing keeps its kind:
@@ -72,16 +82,33 @@ impl PyPatch {
         Ok(Self { patch, held })
     }
 
+    #[staticmethod]
+    #[pyo3(signature = (items, registry = None))]
+    fn from_signals(items: &Bound<'_, PyAny>, registry: Option<&Bound<'_, PyRegistry>>) -> PyResult<Self> {
+        let py = items.py();
+        let held = match registry {
+            Some(registry) => registry.get().held(),
+            None => PyRegistry::builtin(py)?.held(),
+        };
+        let given = signals(items)?;
+        let refs: Vec<(&str, &Signal)> = given.iter().map(|(name, signal)| (name.as_str(), signal)).collect();
+        let patch = py
+            .detach(|| Patch::from_signals_with(held.registry(), &refs))
+            .map_err(|error| refused(py, error))?;
+        Ok(Self { patch, held })
+    }
+
+    /// The patch as TOML text, which reads back with the same registry as an equal patch.
+    fn to_toml(&self, py: Python<'_>) -> String {
+        py.detach(|| self.patch.to_toml())
+    }
+
     /// Each node by name, in file order.
     #[getter]
     fn nodes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let dict = PyDict::new(py);
         for (name, node) in self.patch.nodes() {
-            let node = PyNode {
-                uses: node.uses().to_owned(),
-                returns: node.returns().name(),
-            };
-            dict.set_item(name, node)?;
+            dict.set_item(name, PyNode(node.clone()))?;
         }
         Ok(dict)
     }
@@ -132,13 +159,13 @@ impl PyPatch {
     }
 }
 
-/// One node of a patch: `use`, the name of the thing it uses, and `returns`, what it gives when built (`signal`,
-/// `events` or `series`).
+/// One node of a patch, read only: `use`, the name of the thing it uses; `returns`, what it gives when built (`signal`,
+/// `events` or `series`); `signal`, the `Reference` it shapes (`None` unless it is a shaper); `inputs`, a read-only
+/// mapping of each input's name to a `Reference` or to the data written inline (as the package's classes: a tuple of
+/// `Keyframe` or `Event`, a `Grid`, a tuple of numbers, a `Series`), in the order its thing declares them; and
+/// `parameters`, a read-only mapping of the values written (those left out are not there).
 #[pyclass(frozen, module = "bullterrier_control._native._core", name = "Node")]
-pub(crate) struct PyNode {
-    uses: String,
-    returns: &'static str,
-}
+pub(crate) struct PyNode(Node);
 
 #[pymethods]
 impl PyNode {
@@ -146,13 +173,83 @@ impl PyNode {
     #[getter]
     #[pyo3(name = "use")]
     fn uses(&self) -> &str {
-        &self.uses
+        self.0.uses()
     }
 
     /// What it gives when built: `signal`, `events` or `series`.
     #[getter]
-    const fn returns(&self) -> &'static str {
-        self.returns
+    fn returns(&self) -> &'static str {
+        self.0.returns().name()
+    }
+
+    /// The signal it shapes, as it writes it; `None` for a source or an operation.
+    #[getter]
+    fn signal(&self) -> Option<PyReference> {
+        self.0.signal().cloned().map(PyReference)
+    }
+
+    /// Its inputs by name: a `Reference`, or the data written inline.
+    #[getter]
+    fn inputs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyMappingProxy>> {
+        let dict = PyDict::new(py);
+        for (kind, given) in self.0.inputs() {
+            let value = match given {
+                Given::Reference(reference) => Bound::new(py, PyReference(reference.clone()))?.into_any(),
+                Given::Data(input) => inputs::python(py, input.clone())?,
+            };
+            dict.set_item(kind.name(), value)?;
+        }
+        Ok(PyMappingProxy::new(py, dict.as_mapping()))
+    }
+
+    /// Its parameter values as written, by name.
+    #[getter]
+    fn parameters<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyMappingProxy>> {
+        let dict = PyDict::new(py);
+        for (name, value) in self.0.values() {
+            dict.set_item(name, params::python(py, value)?)?;
+        }
+        Ok(PyMappingProxy::new(py, dict.as_mapping()))
+    }
+}
+
+/// A name written where data goes: a node above (`root` is `"node"`, `name` its name) or an entry of the bundle (`root`
+/// is `"events"`, `"series"` or `"grid"`; `name` is the entry, empty for the grid). `text` is how a patch writes it
+/// (`glow`, `events.kick`, `series.energy`, `grid`). Two references are equal when they name the same thing.
+#[pyclass(frozen, eq, hash, module = "bullterrier_control._native._core", name = "Reference")]
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub(crate) struct PyReference(Reference);
+
+#[pymethods]
+impl PyReference {
+    /// The reference as a patch writes it.
+    #[getter]
+    fn text(&self) -> String {
+        self.0.to_string()
+    }
+
+    /// `"node"`, `"events"`, `"series"` or `"grid"`.
+    #[getter]
+    const fn root(&self) -> &'static str {
+        match self.0 {
+            Reference::Node(_) => "node",
+            Reference::Events(_) => "events",
+            Reference::Series(_) => "series",
+            Reference::Grid => "grid",
+        }
+    }
+
+    /// The node or entry named; empty for the grid.
+    #[getter]
+    fn name(&self) -> &str {
+        match &self.0 {
+            Reference::Node(name) | Reference::Events(name) | Reference::Series(name) => name,
+            Reference::Grid => "",
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Reference({:?})", self.0.to_string())
     }
 }
 
@@ -169,12 +266,40 @@ fn refused(py: Python<'_>, error: PatchError) -> PyErr {
     let message = error.to_string();
     match error {
         PatchError::Toml { .. } => format_error_saying(py, message, &[]),
-        PatchError::Invalid { problems, .. } => format_error_saying(py, message, &problems),
+        PatchError::Invalid { problems, .. } | PatchError::Unsaved { problems, .. } => {
+            format_error_saying(py, message, &problems)
+        }
         PatchError::Bundle { problem } => format_error_saying(py, message, &[problem]),
         PatchError::UnknownNode { .. } => unknown_name(py, message),
         PatchError::Node { node, source } => at_node(py, &node, raised(py, source)),
         _ => PyValueError::new_err(message),
     }
+}
+
+/// The signals of `items`: pairs of a node name and a signal, in the order given.
+fn signals(items: &Bound<'_, PyAny>) -> PyResult<Vec<(String, Signal)>> {
+    let refused = |what: String| PyTypeError::new_err(format!("items are pairs of a node name and a signal ({what})"));
+    let items = items
+        .try_iter()
+        .map_err(|_| refused(format!("items is {}, not an iterable", type_name(items))))?;
+    items
+        .map(|item| {
+            let item = item?;
+            let pair = item
+                .extract::<(Bound<'_, PyAny>, Bound<'_, PyAny>)>()
+                .map_err(|_| refused(format!("got {}, not a pair", type_name(&item))))?;
+            let name = pair
+                .0
+                .extract::<String>()
+                .map_err(|_| refused(format!("got {} as a name", type_name(&pair.0))))?;
+            let signal = pair
+                .1
+                .cast::<SignalBase>()
+                .map(signal::signal)
+                .map_err(|_| refused(format!("got {} as the signal of {name:?}", type_name(&pair.1))))?;
+            Ok((name, signal))
+        })
+        .collect()
 }
 
 /// The names `only` gives: an iterable of text (not text itself).

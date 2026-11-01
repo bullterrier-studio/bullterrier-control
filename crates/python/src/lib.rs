@@ -34,7 +34,7 @@ mod _core {
     #[pymodule_export]
     use super::params::{PyParamTable, builtins, parameters, parse_parameters};
     #[pymodule_export]
-    use super::patch::{PyNode, PyPatch, patch_schema};
+    use super::patch::{PyNode, PyPatch, PyReference, patch_schema};
     #[pymodule_export]
     use super::primitives::{Counter, PyEase, at_least, between, counter, ease, more_than, uniform};
     #[pymodule_export]
