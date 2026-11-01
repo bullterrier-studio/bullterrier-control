@@ -34,6 +34,14 @@ ALLOWED: dict[tuple[str, str], str] = {
         "the boundary the package's inputs are read through: Python objects of every kind, hostile ones too, read "
         "as the core's data"
     ),
+    ("_native/test__core_registry.py", "bullterrier_control._native"): (
+        "the boundary the package's registry will be built on: the calling rules, Python bodies called from Rust, "
+        "hostile bodies and threads are the extension's to get right, before the package wraps it"
+    ),
+    ("_native/test__core_patch.py", "bullterrier_control._native"): (
+        "the boundary the package's patches will be built on: a Python mapping read in order, Python things inside a "
+        "patch the core builds, and the GIL while it builds"
+    ),
 }
 
 _PATCHERS = ("monkeypatch.setattr", "monkeypatch.delattr", "monkeypatch.setitem", "monkeypatch.delitem")
