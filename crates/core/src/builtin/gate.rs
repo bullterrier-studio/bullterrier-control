@@ -5,10 +5,8 @@
 //! `close`. Between the two it keeps its state. At time 0 it is open if the input is at or above `open`. The change
 //! happens in the internal sample where the input crosses, so a jump exactly on a sample is seen at that time.
 
-use std::convert::Infallible;
-
 use crate::formats::Problem;
-use crate::{Error, Rendering, Shaper, Signal};
+use crate::{Error, Shaper, Signal, recurrence};
 
 /// The two levels the gate opens and closes at.
 #[derive(Clone, Copy, Debug, PartialEq, crate::Params)]
@@ -56,12 +54,7 @@ impl Shaper for Params {
 
     /// Its causal recurrence over `input` sampled at `rate`, rendered as far as the reads need.
     fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
-        let rendering = Rendering {
-            rate: self.rate,
-            ..Rendering::default()
-        };
-        let params = *self;
-        Signal::rendered(input, rendering, move |inputs| Ok::<_, Infallible>(run(inputs, &params)))
+        recurrence::over(input, self.rate, *self, run)
     }
 }
 

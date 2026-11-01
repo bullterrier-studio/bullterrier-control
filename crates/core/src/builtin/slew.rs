@@ -3,9 +3,7 @@
 //! It starts at the input's value at time 0. A limit is a time per unit of change: rise = 2 means at most 0.5 per
 //! second.
 
-use std::convert::Infallible;
-
-use crate::{Error, Rendering, Shaper, Signal};
+use crate::{Error, Shaper, Signal, recurrence};
 
 /// How fast the output may climb and fall.
 #[derive(Clone, Copy, Debug, PartialEq, crate::Params)]
@@ -51,12 +49,7 @@ impl Shaper for Params {
 
     /// Its causal recurrence over `input` sampled at `rate`, rendered as far as the reads need.
     fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
-        let rendering = Rendering {
-            rate: self.rate,
-            ..Rendering::default()
-        };
-        let params = *self;
-        Signal::rendered(input, rendering, move |inputs| Ok::<_, Infallible>(run(inputs, &params)))
+        recurrence::over(input, self.rate, *self, run)
     }
 }
 

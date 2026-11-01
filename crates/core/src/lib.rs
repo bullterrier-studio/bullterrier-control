@@ -26,6 +26,7 @@ pub mod hashing;
 pub mod inputs;
 pub mod params;
 pub mod patch;
+mod recurrence;
 pub mod registry;
 pub mod rounding;
 pub mod scaling;

@@ -7,9 +7,7 @@
 //! `slew` differs: it moves at a fixed speed, however far the input is, and arrives. The output stays between the
 //! lowest and highest value the input has had, to within float rounding.
 
-use std::convert::Infallible;
-
-use crate::{Error, Rendering, Shaper, Signal};
+use crate::{Error, Shaper, Signal, recurrence};
 
 /// How quickly the output chases its input upward and downward.
 #[derive(Clone, Copy, Debug, PartialEq, crate::Params)]
@@ -63,12 +61,7 @@ impl Shaper for Params {
 
     /// Its causal recurrence over `input` sampled at `rate`, rendered as far as the reads need.
     fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
-        let rendering = Rendering {
-            rate: self.rate,
-            ..Rendering::default()
-        };
-        let params = *self;
-        Signal::rendered(input, rendering, move |inputs| Ok::<_, Infallible>(run(inputs, &params)))
+        recurrence::over(input, self.rate, *self, run)
     }
 }
 
