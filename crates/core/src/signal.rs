@@ -26,6 +26,7 @@ mod rendered;
 mod series;
 #[cfg(test)]
 mod tests;
+mod walk;
 
 use std::borrow::Cow;
 use std::fmt;
@@ -122,6 +123,13 @@ pub struct FromValues {
 /// ```
 #[derive(Clone)]
 pub struct Signal(Arc<dyn Node + Send + Sync>);
+
+impl Drop for Signal {
+    // the last handle drops the node, which drops its inputs' handles: a walk as deep as the graph, run as a loop
+    fn drop(&mut self) {
+        walk::release(&mut self.0);
+    }
+}
 
 impl fmt::Debug for Signal {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -391,7 +399,7 @@ impl Signal {
         } else {
             Cow::Borrowed(times)
         };
-        self.0.read(&from_zero, values).map_err(|error| *error)
+        walk::read(self, &from_zero, values).map_err(|error| *error)
     }
 
     /// The value at `time` (seconds).

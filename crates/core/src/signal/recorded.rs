@@ -2,8 +2,9 @@
 
 use std::fmt;
 
-use super::node::{Node, Read};
+use super::node::{Next, Node};
 use super::{Origin, Signal};
+use crate::Error;
 use crate::registry::Recipe;
 
 /// A signal as it is, with how the registry made it: it reads as `inner`. A read recurses through it into `inner`,
@@ -42,8 +43,8 @@ impl fmt::Debug for Recorded {
 }
 
 impl Node for Recorded {
-    fn read(&self, times: &[f64], out: &mut [f64]) -> Read {
-        self.inner.0.read(times, out)
+    fn start<'g>(&'g self, _times: &[f64], _out: &mut [f64]) -> Result<Next<'g>, Box<Error>> {
+        Ok(Next::As(&self.inner))
     }
 
     fn depth(&self) -> usize {

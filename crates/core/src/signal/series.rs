@@ -2,8 +2,9 @@
 
 use std::fmt;
 
-use super::node::{Node, Read};
+use super::node::{Next, Node};
 use super::{Interpolation, Origin};
+use crate::Error;
 
 /// A share of a sample within which a position is the sample it rounds to: `(time - start) * rate` of a time that is
 /// a sample's time in decimals can land a float rounding below it (`0.29 * 100` is 28.999999999999996), and a held
@@ -32,7 +33,11 @@ impl fmt::Debug for SeriesNode {
 }
 
 impl Node for SeriesNode {
-    fn read(&self, times: &[f64], out: &mut [f64]) -> Read {
+    fn holds_signals(&self) -> bool {
+        false
+    }
+
+    fn start<'g>(&'g self, times: &[f64], out: &mut [f64]) -> Result<Next<'g>, Box<Error>> {
         for (value, time) in out.iter_mut().zip(times) {
             // finite times and a finite start: never NaN, at most an infinity past either end
             let position = (time - self.start) * self.rate;
@@ -41,7 +46,7 @@ impl Node for SeriesNode {
                 Interpolation::Hold => self.held(position),
             };
         }
-        Ok(())
+        Ok(Next::Done)
     }
 
     fn depth(&self) -> usize {

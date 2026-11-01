@@ -796,3 +796,92 @@ fn every_way_of_making_a_signal_says_how_it_was_made() -> Result<(), Error> {
     );
     Ok(())
 }
+
+/// What `walk` gives, run on a thread of its own with a stack of `bytes`.
+fn on_a_stack_of<T: Send + 'static>(bytes: usize, walk: impl FnOnce() -> T + Send + 'static) -> std::thread::Result<T> {
+    std::thread::Builder::new()
+        .stack_size(bytes)
+        .spawn(walk)
+        .map_err(|error| -> Box<dyn std::any::Any + Send> { Box::new(error.to_string()) })?
+        .join()
+}
+
+/// A constant 0.5 through `links` links, each made by `link` from the one before and keeping its value.
+fn kept(links: usize, link: impl Fn(Signal) -> Result<Signal, Error>) -> Result<Signal, Error> {
+    let mut signal = Signal::constant(0.5)?;
+    for _ in 0..links {
+        signal = link(signal)?;
+    }
+    Ok(signal)
+}
+
+/// Its input as it is, read by a callback: a node the depth does not count, so a chain of them is not capped by it.
+fn read_through(input: Signal) -> Signal {
+    Signal::from_fn(move |times, out| input.read_into(times, out))
+}
+
+/// One sample a render, enough for a read at time 0.
+const ONCE: crate::Rendering = crate::Rendering { rate: 10.0, limit: 1 };
+
+#[test]
+fn the_deepest_graph_of_each_kind_is_read_and_dropped_on_a_small_thread_stack() {
+    use crate::builtin::slew;
+
+    // (the kind of link, how many links: the deepest the library accepts over a constant)
+    type Link = fn(Signal) -> Result<Signal, Error>;
+    let kinds: [(&str, Link); 4] = [
+        ("a sum with a number", |signal| Ok(signal + 0.0)),
+        ("a sum of two signals", |signal| Ok(signal + Signal::constant(0.0)?)),
+        // one sample a render (limit 1), read at time 0: a deep chain of them renders little
+        ("a recurrence", |signal| {
+            Signal::rendered(&signal, ONCE, |inputs| Ok::<_, Unreachable>(inputs.to_vec()))
+        }),
+        ("a shaper of the registry", |signal| {
+            signal.slew(slew::Params::default())
+        }),
+    ];
+    for (kind, link) in kinds {
+        let walked = on_a_stack_of(64 * 1024, move || -> Result<Vec<f64>, Error> {
+            let signal = kept(MAX_DEPTH - 1, link)?;
+            let values = signal.sample(&[0.0])?;
+            drop(signal);
+            Ok(values)
+        });
+        assert!(
+            matches!(walked, Ok(Ok(ref values)) if values == &[0.5]),
+            "{kind}: {walked:?}"
+        );
+    }
+}
+
+// a callback's read is a walk on the thread's stack (3.7 KiB a level in a debug build, 0.8 KiB in a release one): a
+// chain of them is refused once they nest too deep, on the smallest stack the library supports, 256 KiB
+#[test]
+fn a_hundred_thousand_callbacks_each_reading_the_one_before_are_refused_and_dropped_on_a_small_thread_stack() {
+    let walked = on_a_stack_of(256 * 1024, || {
+        let signal = kept(100_000, |signal| Ok(read_through(signal)))?;
+        let refused = signal.at(0.0).map_err(|error| error.to_string());
+        drop(signal);
+        Ok::<_, Error>(refused)
+    });
+    assert!(
+        matches!(walked, Ok(Ok(Err(ref message))) if message.contains("nest")),
+        "{walked:?}"
+    );
+}
+
+#[test]
+fn an_error_at_the_bottom_of_the_deepest_graph_reaches_the_reader_on_a_small_thread_stack() {
+    let walked = on_a_stack_of(64 * 1024, || {
+        let mut signal = Signal::from_fn(|_, _| Err(std::fmt::Error));
+        for _ in 1..MAX_DEPTH {
+            signal = signal + 0.0;
+        }
+        signal.at(0.0).map_err(|error| error.source().map(ToString::to_string))
+    });
+    let expected = Some("an error occurred when formatting an argument".to_owned());
+    assert!(
+        matches!(walked, Ok(Err(ref source)) if source == &expected),
+        "{walked:?}"
+    );
+}

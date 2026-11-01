@@ -4,8 +4,9 @@
 use std::fmt;
 use std::ops::{Add, Mul, Neg, Sub};
 
-use super::node::{Node, Read, Refused};
+use super::node::{Next, Node, Read, Refused};
 use super::{Origin, Signal, finite};
+use crate::Error;
 
 /// What a [`Combined`] node does with the two values at a time.
 #[derive(Clone, Copy, Debug)]
@@ -96,24 +97,18 @@ impl fmt::Debug for Combined {
 }
 
 impl Node for Combined {
-    // the loops are functions of their own, out of this frame: a read recurses through it as deep as the graph, so
-    // the stack it takes bounds `MAX_DEPTH`
-    fn read(&self, times: &[f64], out: &mut [f64]) -> Read {
+    fn start<'g>(&'g self, _times: &[f64], _out: &mut [f64]) -> Result<Next<'g>, Box<Error>> {
+        Ok(match &self.operands {
+            Operands::Signals(first, second) => Next::Both(first, second),
+            Operands::NumberAfter(signal, _) | Operands::NumberFirst(_, signal) => Next::InPlace(signal),
+        })
+    }
+
+    fn finish(&self, _times: &[f64], inputs: &[f64], out: &mut [f64]) -> Read {
         match &self.operands {
-            Operands::Signals(first, second) => {
-                first.0.read(times, out)?;
-                let mut seconds = vec![0.0; times.len()];
-                second.0.read(times, &mut seconds)?;
-                self.operation.signals(out, &seconds);
-            }
-            Operands::NumberAfter(first, number) => {
-                first.0.read(times, out)?;
-                self.operation.number_after(out, *number);
-            }
-            Operands::NumberFirst(number, second) => {
-                second.0.read(times, out)?;
-                self.operation.number_first(*number, out);
-            }
+            Operands::Signals(..) => self.operation.signals(out, inputs),
+            Operands::NumberAfter(_, number) => self.operation.number_after(out, *number),
+            Operands::NumberFirst(number, _) => self.operation.number_first(*number, out),
         }
         Ok(())
     }

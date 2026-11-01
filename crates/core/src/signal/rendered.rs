@@ -4,8 +4,9 @@
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use super::node::{Node, Read};
+use super::node::{Next, Node, Read};
 use super::series::SAMPLE_ROUNDING;
+use super::walk::callback;
 use super::{Origin, Signal};
 use crate::Error;
 
@@ -107,43 +108,33 @@ impl Rendered {
         (time * self.rate + SAMPLE_ROUNDING).floor()
     }
 
-    /// The history, at least `needed` samples long (`needed` at most the limit): the one kept if it is, else a longer
-    /// one rendered without the lock and kept unless another read kept a longer one meanwhile.
-    fn history(&self, needed: usize) -> Result<Arc<Vec<f64>>, Box<Error>> {
-        let kept = Arc::clone(&self.locked());
-        if kept.len() >= needed {
-            return Ok(kept);
-        }
-        let count = needed
-            .max(kept.len().saturating_mul(2))
-            .max(FIRST_RENDER)
-            .min(self.limit);
-        drop(kept);
-        let rendered = self.render(count)?;
-        let mut history = self.locked();
-        if rendered.len() > history.len() {
-            *history = Arc::new(rendered);
-        }
-        Ok(Arc::clone(&history))
-    }
-
-    /// `run` over the first `count` samples of the input.
-    fn render(&self, count: usize) -> Result<Vec<f64>, Box<Error>> {
-        #[expect(clippy::cast_precision_loss, reason = "a count of samples is far below 2^53: exact")]
-        let times: Vec<f64> = (0..count).map(|index| index as f64 / self.rate).collect();
-        let mut inputs = vec![0.0; count];
-        self.input.0.read(&times, &mut inputs)?;
-        drop(times);
-        let outputs = (self.run)(&inputs)?;
-        if outputs.len() != count {
+    /// `run` over `inputs`, the input's values at the first `inputs.len()` samples: the new history, checked to be
+    /// as long.
+    fn render(&self, inputs: &[f64]) -> Result<Vec<f64>, Box<Error>> {
+        let outputs = callback(|| (self.run)(inputs))?;
+        if outputs.len() != inputs.len() {
             return Err(Box::new(Error::Signal {
                 message: format!(
-                    "the recurrence returned {} values for {count} inputs: it must return one for each",
-                    outputs.len()
+                    "the recurrence returned {} values for {} inputs: it must return one for each",
+                    outputs.len(),
+                    inputs.len()
                 ),
             }));
         }
         Ok(outputs)
+    }
+
+    /// The value at each of `times` into `out`, by holding the latest sample of `history`, which holds them all.
+    fn held(&self, history: &[f64], times: &[f64], out: &mut [f64]) {
+        for (value, time) in out.iter_mut().zip(times) {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "0 <= the sample <= last, which the history holds: the sample index grows with the time"
+            )]
+            let sample = self.sample_at(*time) as usize;
+            *value = history[sample];
+        }
     }
 
     /// The lock on the history; one a panic poisoned is as good (the history is replaced whole, never half written).
@@ -153,9 +144,12 @@ impl Rendered {
 }
 
 impl Node for Rendered {
-    fn read(&self, times: &[f64], out: &mut [f64]) -> Read {
+    // the history kept if it holds the latest time read, else the input's values on the grid as far as a longer
+    // history needs (read by the walk, no lock held), then `finish` renders and keeps it unless another read kept a
+    // longer one meanwhile
+    fn start<'g>(&'g self, times: &[f64], out: &mut [f64]) -> Result<Next<'g>, Box<Error>> {
         let Some(largest) = times.iter().copied().reduce(f64::max) else {
-            return Ok(());
+            return Ok(Next::Done);
         };
         let last = self.sample_at(largest);
         #[expect(clippy::cast_precision_loss, reason = "a limit is far below 2^53: exact")]
@@ -173,16 +167,32 @@ impl Node for Rendered {
             clippy::cast_sign_loss,
             reason = "0 <= last < the limit: a whole count of samples"
         )]
-        let history = self.history(last as usize + 1)?;
-        for (value, time) in out.iter_mut().zip(times) {
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss,
-                reason = "0 <= the sample <= last, which the history holds: the sample index grows with the time"
-            )]
-            let sample = self.sample_at(*time) as usize;
-            *value = history[sample];
+        let needed = last as usize + 1;
+        let kept = Arc::clone(&self.locked());
+        if kept.len() >= needed {
+            self.held(&kept, times, out);
+            return Ok(Next::Done);
         }
+        let count = needed
+            .max(kept.len().saturating_mul(2))
+            .max(FIRST_RENDER)
+            .min(self.limit);
+        drop(kept);
+        #[expect(clippy::cast_precision_loss, reason = "a count of samples is far below 2^53: exact")]
+        let grid = (0..count).map(|index| index as f64 / self.rate).collect();
+        Ok(Next::At(&self.input, grid))
+    }
+
+    fn finish(&self, times: &[f64], inputs: &[f64], out: &mut [f64]) -> Read {
+        let rendered = self.render(inputs)?;
+        let history = {
+            let mut history = self.locked();
+            if rendered.len() > history.len() {
+                *history = Arc::new(rendered);
+            }
+            Arc::clone(&history)
+        };
+        self.held(&history, times, out);
         Ok(())
     }
 
