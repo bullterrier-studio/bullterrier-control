@@ -761,7 +761,7 @@ def test_an_isolated_registry_starts_empty_and_gives_back_what_it_took(throwaway
 
 
 def test_an_isolated_block_entered_before_any_query_gives_back_the_built_ins():
-    """In a fresh process: the built-ins register when first imported, which must not happen inside the block."""
+    """In a fresh process: the packages load on the first query, which must not happen inside the block."""
     code = (
         "from bullterrier_control import registry\n"
         "with registry.isolated():\n"
