@@ -285,14 +285,14 @@ def test_the_schema_of_a_patch_states_its_header_and_its_node_names():
 
 def test_a_long_build_of_rust_things_lets_another_python_thread_run():
     text = "format = 'bullterrier-control/patch'\nversion = 1\n" + "".join(
-        f"[n{index}]\nuse = 'constant'\nvalue = 0.5\n" for index in range(100_000)
+        f"[n{index}]\nuse = 'constant'\nvalue = 0.5\n" for index in range(30_000)
     )
     patch = _core.Patch.from_toml(text, registry=_core.Registry(builtin=True))
     entered, seen = threading.Event(), {}
 
     def long_build() -> None:
         entered.set()
-        seen["built"] = patch.build(only=[f"n{index}" for index in range(0, 100_000, 1000)])
+        seen["built"] = patch.build(only=[f"n{index}" for index in range(0, 30_000, 100)])
 
     interval = sys.getswitchinterval()
     # no thread gives up the GIL on a timer: the main thread runs while the builder builds only if it lets go of it
@@ -306,7 +306,7 @@ def test_a_long_build_of_rust_things_lets_another_python_thread_run():
     finally:
         sys.setswitchinterval(interval)
     assert ran_during_the_build
-    assert len(seen["built"]) == 100
+    assert len(seen["built"]) == 300
 
 
 def test_sixteen_threads_building_one_patch_with_python_inside_get_equal_values(registry):
