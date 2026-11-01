@@ -107,6 +107,7 @@ mod tests {
                 ("follow", Kind::Shaper),
                 ("gate", Kind::Shaper),
                 ("hold", Kind::Shaper),
+                ("keyframes", Kind::Source),
                 ("latch", Kind::Source),
                 ("noise", Kind::Source),
                 ("normalise", Kind::Operation),
