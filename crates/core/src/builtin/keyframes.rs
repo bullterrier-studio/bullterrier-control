@@ -6,7 +6,7 @@
 
 use std::convert::Infallible;
 
-use crate::inputs::Keyframe;
+use crate::inputs::{Keyframe, NO_POINTS, empty};
 use crate::{Error, Signal, Source};
 
 /// Keyframes have no parameters: the points, with their eases, say everything.
@@ -31,26 +31,29 @@ impl Source for Params {
     /// ```
     ///
     /// # Errors
-    /// None: every list of points the door accepts makes a signal, and every read of it is a value.
+    /// [`Error::Input`] if there are no `points` (the door's refusal of them, here too when called directly). Every
+    /// read of the signal is a value.
     fn source(&self, points: Vec<Keyframe>) -> Result<Signal, Error> {
+        let Some(&first) = points.first() else {
+            return Err(empty(NO_POINTS));
+        };
         Ok(Signal::from_fn(move |times, out| {
             for (value, time) in out.iter_mut().zip(times) {
-                *value = value_at(&points, *time);
+                *value = value_at(first, &points, *time);
             }
             Ok::<(), Infallible>(())
         }))
     }
 }
 
-/// The value of `points` (at least one, `t` strictly increasing) at `time`.
+/// The value at `time` of `points` (`t` strictly increasing), whose first is `first`.
 #[expect(clippy::float_cmp, reason = "a held value is two values that are equal, not near")]
-fn value_at(points: &[Keyframe], time: f64) -> f64 {
+fn value_at(first: Keyframe, points: &[Keyframe], time: f64) -> f64 {
     // a read exactly at a point belongs to the segment that starts there, so it gives that point's value
     let segment = points.partition_point(|point| point.t <= time);
-    if segment == 0 {
-        return points[0].value;
-    }
-    let start = points[segment - 1];
+    let Some(start) = segment.checked_sub(1).and_then(|before| points.get(before)) else {
+        return first.value;
+    };
     let Some(end) = points.get(segment) else {
         return start.value;
     };
@@ -72,6 +75,7 @@ mod tests {
 
     use super::*;
     use crate::easing::Ease;
+    use crate::formats::Problem;
     use crate::inputs::Input;
     use crate::registry::{Call, Kind, Output};
     use crate::{Registry, lib};
@@ -195,6 +199,19 @@ mod tests {
             assert_eq!(signal.sample(&[0.0, 1.0, 2.0])?, [low, 0.0, high]);
         }
         Ok(())
+    }
+
+    #[test]
+    fn no_points_are_refused_when_made_as_the_door_refuses_them_even_called_directly() {
+        let problems = |made: Result<Signal, Error>| match made {
+            Err(Error::Input { problems, .. }) => Ok(problems),
+            other => Err(format!("{other:?}")),
+        };
+        let rule = Problem { path: "points".to_owned(), rule: "needs at least one keyframe".to_owned() };
+        assert_eq!(
+            (problems(Params.source(vec![])), problems(lib::keyframes(&[]))),
+            (Ok(vec![rule.clone()]), Ok(vec![rule]))
+        );
     }
 
     #[test]

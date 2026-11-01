@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 use crate::cadence::{self, positions};
 use crate::formats::Grid;
-use crate::inputs::{Input, InputKind};
+use crate::inputs::{Input, InputKind, NO_VALUES, empty};
 use crate::registry;
 use crate::{Choice, Error, Signal, Source};
 
@@ -73,9 +73,13 @@ impl Source for Params {
     /// ```
     ///
     /// # Errors
+    /// [`Error::Input`] if there are no `values` (the door's refusal of them, here too when called directly);
     /// [`Error::Params`] naming `per` if `per` is 'beat' and there is no `grid`; a read is an [`Error::Signal`] at a
     /// time too far for its position to be a number.
     fn source(&self, Inputs { values, grid }: Inputs) -> Result<Signal, Error> {
+        if values.is_empty() {
+            return Err(empty(NO_VALUES));
+        }
         let rate = self.rate;
         let per = match self.per {
             Per::Second => cadence::Per::Second,
@@ -85,6 +89,7 @@ impl Source for Params {
         positions(rate, per, grid.as_ref(), &[])?;
         Ok(Signal::from_fn(move |times, out| {
             for (value, position) in out.iter_mut().zip(positions(rate, per, grid.as_ref(), times)?) {
+                // in range: values is not empty, and a finite position's step lies below its length
                 *value = values[step(position, values.len())];
             }
             Ok::<(), Error>(())
@@ -112,6 +117,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::formats::Problem;
     use crate::registry::{Call, Kind, Output};
     use crate::{Registry, builtin::steps, lib};
 
@@ -248,6 +254,22 @@ mod tests {
         Ok(())
     }
 
+    /// The problems of a refusal of inputs, or what came instead.
+    fn input_problems<T: std::fmt::Debug>(made: Result<T, Error>) -> Result<Vec<Problem>, String> {
+        match made {
+            Err(Error::Input { problems, .. }) => Ok(problems),
+            other => Err(format!("{other:?}")),
+        }
+    }
+
+    #[test]
+    fn no_values_are_refused_when_made_as_the_door_refuses_them_even_called_directly() {
+        let direct = input_problems(Params::default().source(Inputs { values: vec![], grid: None }));
+        let door = input_problems(lib::steps(&[], per_second(1.0), None));
+        let rule = Problem { path: "values".to_owned(), rule: "needs at least one value".to_owned() };
+        assert_eq!((direct, door), (Ok(vec![rule.clone()]), Ok(vec![rule])));
+    }
+
     #[test]
     fn per_beat_without_a_grid_is_refused_naming_per_when_made() {
         let refused = lib::steps(&[1.0, 2.0], per_beat(1.0), None).map(|_| ());
@@ -281,7 +303,10 @@ mod tests {
             .unwrap_or_default();
         assert_eq!(recorded, ["values", "grid"]);
         // the grid may be left out per second; values may not
-        assert!(thing.call(&call(json!({}), vec![("values", values.clone())])).is_ok());
+        let Output::Signal(free) = thing.call(&call(json!({}), vec![("values", values.clone())]))? else {
+            return Err(Error::Call { message: "not a signal".into() });
+        };
+        assert_eq!(free.sample(&[0.1, 0.3, 0.6, 0.8])?, [1.0, 2.0, 3.0, 1.0]); // the defaults: 4 a second
         let without_values = thing.call(&call(json!({}), vec![("grid", Input::Grid(slowing()?))]));
         assert!(matches!(&without_values, Err(Error::Call { message }) if message.contains("values")), "{without_values:?}");
         let too_fast = thing.call(&call(json!({"rate": 1000.5}), vec![("values", values)]));

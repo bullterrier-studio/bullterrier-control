@@ -423,7 +423,7 @@ impl Points {
     /// The keyframes, if no rule is broken.
     fn end(self, problems: &mut Problems) -> Option<Vec<Keyframe>> {
         if self.given == 0 {
-            push(problems, "", "points", "needs at least one keyframe");
+            push(problems, "", NO_POINTS.0, NO_POINTS.1);
             return None;
         }
         (problems.len() == self.before).then_some(self.kept)
@@ -505,11 +505,25 @@ impl Values {
     /// The values, if no rule is broken.
     fn end(self, problems: &mut Problems) -> Option<Vec<f64>> {
         if self.given == 0 {
-            push(problems, "", "values", "needs at least one value");
+            push(problems, "", NO_VALUES.0, NO_VALUES.1);
             return None;
         }
         (problems.len() == self.before).then_some(self.kept)
     }
+}
+
+/// The rule an empty `values` breaks, as (field, rule): the door's, and [`empty`]'s for a body called directly.
+pub(crate) const NO_VALUES: (&str, &str) = ("values", "needs at least one value");
+
+/// The rule an empty `points` breaks, as [`NO_VALUES`].
+pub(crate) const NO_POINTS: (&str, &str) = ("points", "needs at least one keyframe");
+
+/// The refusal of an empty list that breaks `(field, rule)` ([`NO_VALUES`] or [`NO_POINTS`]) and nothing else: what
+/// the door gives for it, for a source's body called directly with none.
+pub(crate) fn empty((field, rule): (&str, &str)) -> Error {
+    let mut problems = Problems::new();
+    push(&mut problems, "", field, rule);
+    refused(problems)
 }
 
 /// The error for the problems recorded, at least one.
