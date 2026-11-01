@@ -609,10 +609,16 @@ impl PyThing {
     }
 
     /// It as plain data, for a tool that checks a pipeline before it runs (`bt-control list --json`): `kind`,
-    /// `summary`, `returns`, `inputs` (each `{required, doc}`) and `parameters`, the JSON Schema of its parameters,
-    /// their properties in the order `help()` lists them.
+    /// `summary`, `returns`, `inputs` (each `{required, doc}`, in the order it declares them) and `parameters`, the JSON
+    /// Schema of its parameters, their properties in the order `help()` lists them.
     fn description<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let described = params::python(py, &self.thing.description())?;
+        let sorted = described.get_item("inputs")?;
+        let inputs = PyDict::new(py);
+        for (kind, _) in self.thing.inputs() {
+            inputs.set_item(kind.name(), sorted.get_item(kind.name())?)?;
+        }
+        described.set_item("inputs", inputs)?;
         let schema = described.get_item("parameters")?;
         let sorted = schema.get_item("properties")?;
         let properties = PyDict::new(py);

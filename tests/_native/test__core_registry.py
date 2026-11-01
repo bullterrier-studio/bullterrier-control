@@ -243,6 +243,14 @@ def test_the_description_lists_parameters_as_a_reader_sees_them_basic_first():
     assert (slew.function, slew.params_model) == (None, None)
 
 
+def test_the_description_lists_the_inputs_in_the_order_the_function_declares_them(mine):
+    def late(params: Nothing, *, values: object, grid: object = None) -> Signal:
+        return Constant(0.0)
+
+    register(mine, late, params=Nothing, inputs={"values": True, "grid": False})
+    assert list(mine.get("late").description()["inputs"]) == ["values", "grid"]
+
+
 # ---- calling: the rules, good and bad rows ----
 
 
