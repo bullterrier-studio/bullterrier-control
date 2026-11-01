@@ -6,7 +6,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::mem::ManuallyDrop;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use super::Signal;
 use super::node::{Constant, Next, Node, Read};
@@ -205,8 +205,12 @@ fn out_of<'a>(reader: &'a mut [f64], buffers: &'a mut [Vec<f64>], into: Out) -> 
     }
 }
 
-/// A node no signal reads: what a dropped handle holds while its node drops.
-static VACANT: LazyLock<Arc<dyn Node + Send + Sync>> = LazyLock::new(|| Arc::new(Constant(0.0)));
+thread_local! {
+    /// A node no signal reads: what a dropped handle holds while its node drops. One a thread: one for all would be
+    /// one count every thread's drops write, and drops on many threads at once would queue on it (7 times slower on 8
+    /// threads).
+    static VACANT: Arc<dyn Node + Send + Sync> = Arc::new(Constant(0.0));
+}
 
 /// The drop loop of a thread: whether one runs, and the nodes waiting for it.
 struct Dropping {
@@ -250,7 +254,9 @@ pub(super) fn release(node: &mut Arc<dyn Node + Send + Sync>) {
     if Arc::strong_count(node) != 1 {
         return;
     }
-    let last = std::mem::replace(node, Arc::clone(&VACANT));
+    // once the thread's own is gone (a signal dropped by a thread local's destructor after it), one for this drop
+    let vacant = VACANT.try_with(Arc::clone).unwrap_or_else(|_| Arc::new(Constant(0.0)));
+    let last = std::mem::replace(node, vacant);
     DROPPING.with(|dropping| {
         if dropping.running.replace(true) {
             dropping.waiting.borrow_mut().push(last);
