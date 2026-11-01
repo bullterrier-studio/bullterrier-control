@@ -103,6 +103,7 @@ mod tests {
                 ("clip", Kind::Shaper),
                 ("constant", Kind::Source),
                 ("delay", Kind::Shaper),
+                ("envelope", Kind::Source),
                 ("every", Kind::Operation),
                 ("follow", Kind::Shaper),
                 ("gate", Kind::Shaper),
