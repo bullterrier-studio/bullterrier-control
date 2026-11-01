@@ -93,6 +93,8 @@ pub(crate) fn table(files: &[File<'_>]) -> Result<Generated, String> {
     builtin.push_str(&checks);
     builtin.push_str("/// Registers every built-in the core runs, under its name, with its doc.\n");
     builtin
+        .push_str("#[allow(clippy::too_many_lines, reason = \"generated: five lines per built-in the core runs\")]\n");
+    builtin
         .push_str("pub(crate) fn register(registry: &mut crate::registry::Registry) -> Result<(), crate::Error> {\n");
     builtin.push_str(&registered);
     builtin.push_str("    let _ = registry;\n    Ok(())\n}\n");

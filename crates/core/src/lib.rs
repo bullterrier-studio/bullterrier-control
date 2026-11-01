@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn a_name_the_core_runs_no_shaper_of_is_refused_as_the_registry_refuses_it() {
-        let unknown = "unknown source, shaper or operation 'no_such_shaper'; available: beats, clip, constant, delay, every, follow, gate, hold, keyframes, latch, noise, normalise, quantize, remap, select, shift, slew, steps, thin";
+        let unknown = "unknown source, shaper or operation 'no_such_shaper'; available: beats, clip, constant, delay, every, follow, gate, hold, keyframes, latch, lfo, noise, normalise, quantize, remap, select, shift, slew, steps, thin";
         for refused in [
             render("no_such_shaper", &slew_params()).map(|_| ()),
             crate::Registry::builtin().get("no_such_shaper").map(|_| ()),

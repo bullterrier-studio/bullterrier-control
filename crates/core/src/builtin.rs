@@ -109,6 +109,7 @@ mod tests {
                 ("hold", Kind::Shaper),
                 ("keyframes", Kind::Source),
                 ("latch", Kind::Source),
+                ("lfo", Kind::Source),
                 ("noise", Kind::Source),
                 ("normalise", Kind::Operation),
                 ("quantize", Kind::Operation),
