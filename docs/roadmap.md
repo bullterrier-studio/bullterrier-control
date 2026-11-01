@@ -24,7 +24,7 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | R2 | Rust core: parameters | M | done |
 | R3 | Rust core: the signal graph | L | done |
 | R4a | Rust core: the inputs; pydantic leaves | S | done |
-| R4b | Rust core: registry, `lib`, patches | M | |
+| R4b | Rust core: registry, `lib`, patches | M | done |
 | R5 | Rust core: the built-in sources, shapers and operations | L | |
 | R6 | Rust core: cleanup, the public crate | S | |
 | C5 | First release (after R6: it ships the Rust core) | S | |
@@ -179,11 +179,20 @@ The Python suite runs unchanged against the Rust core throughout.
   at most 100 problems); `Keyframe` is a Rust class; pydantic, `validated` and the duplicate `Finite`/`Whole`/`Switch`/`Text`
   aliases are gone, and numpy is the one Python dependency. Decisions and accepted differences:
   [design-decisions.md](design-decisions.md), "Inputs in Rust".
-- **R4b Registry and patches.** Registry, `lib` and the patch in Rust: a patch is loaded and sampled with no Python.
-  `gen_api`'s own range text goes with `lib`.
-- **R5 Built-ins.** Every other source, shaper and operation ported. Then `Params.__getattr__` and the `PARAMS`/`SHAPERS`
-  split of `build.rs` go (no Python body is left to read a field or to need the difference).
-- **R6 Cleanup.** No Python duplicate left, crate documentation, final speed and memory measured against R0's baseline.
+- **R4b Registry and patches (done).** The core's `Registry` holds every source, shaper and operation (Rust things register
+  themselves through the `Source`, `Shaper` and `Operation` traits, Python ones as callbacks); every way of making a signal
+  from a thing is one checked door that records a recipe; `constant` and `select` run in Rust as the pilots; a patch is
+  read, built and sampled with no Python (the `toml` crate), and a graph made through the registry saves as a patch
+  (`Patch.from_signals`, `to_toml`, `save`). `gen_api` reads ranges from the core's table. Decisions and accepted
+  differences: [design-decisions.md](design-decisions.md), "The registry and patches in Rust".
+- **R5 Built-ins.** Every other source, shaper and operation ported (17). R4 leaves it: `Source` and `Shaper` with input
+  data (`type Inputs`, and the `lib::` signature of a source with inputs: api.md rule 2) for `envelope`, `lfo`, `keyframes`,
+  `latch`, `steps` and `hold`; the `PARAMS` list beside the registration (all 21 declared, four run) and the
+  hand-kept pins in `builtin.rs`, to derive; then `Params.__getattr__` goes (no Python body is left to read a field);
+  bundle-built graphs (`series.<name>`) cannot be saved, which a source that reads a series would fix.
+- **R6 Cleanup.** No Python duplicate left, crate documentation, final speed and memory measured against R0's baseline
+  (R4b's ten slews through the registry took about twice R3's time on a first measure), the debug-build stack depth of a
+  1000-node chain read.
 
 ## R0.5 Code-first API (done)
 

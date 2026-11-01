@@ -128,7 +128,16 @@ as a **reference** where it takes one (`events`, `series`, `grid` and `signal`; 
 | a node name | a node above this one | what the node gives: events (an operation on events) for `events`, a series (`normalise`) for `series`, a signal (a source or shaper) for `signal` |
 
 A series where a signal is wanted is read linearly between its samples and holds its first and last value.
-Every problem of a patch is reported together as `<node>.<key>: rule`. What a JSON Schema cannot state, and `Patch.parse`
+
+**Saving.** A graph made through the registry (`lib.slew(...)`, a chain method, a built patch) is saved as a patch with
+`Patch.from_signals`; `to_toml` and `save` write it, and `load_patch` reads it back as an equal patch that builds the same
+signals. The nodes are in the order given, each thing a signal is made of is a node above it (named `<name>_<n>` when it is
+unnamed), every parameter is written, each decimal exactly, and an operation's result is written inline. A signal made with
+an operator, `from_values`, `from_series`, `Constant(...)` or a callback, or built by a patch from `series.<name>`, is refused,
+naming its path (`glow.signal`) and why.
+
+Every problem of a patch is reported together as `<node>.<key>: rule` (the first 100, then `... and N more`). A file that is not
+TOML is refused as `not TOML (line L, column C: why)`, after the file's path when read from a file. What a JSON Schema cannot state, and `Patch.parse`
 and `bt-control validate` enforce: that `use` names a registered thing and each key an input or parameter of it, every
 value's range and type, that a reference fits and names a node above, and (when the patch is built) that the bundle holds
 the entries it names. `schemas/patch-1.schema.json` states the header, the shape of a node and a node's name

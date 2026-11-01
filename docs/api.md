@@ -3,12 +3,13 @@
 The programmatic API is the product. A patch file is a serialisation of the same graph, built only through this API
 (task 10, last, as the extra it is). Each task below is shown in Python, which exists today, and in Rust, the language
 of the core. The Python blocks run as tests (`tests/test_api_doc.py`); a `# array([...])` comment is the result of the
-`.sample(...)` call above it. The Rust blocks marked **implemented** exist and are the real signatures; the others are the target API that R4 and R5 build
+`.sample(...)` call above it. The Rust blocks marked **implemented** exist and are the real signatures; the others are the target API that R5 builds
 to. Implemented: the formats (`Event::new`, `Series::new`, `Grid::new`, `Bundle::from_json`), the parameters
 (`#[derive(Params)]` structs, `ParamTable`, `ParamUnit`, `parameters(name)`, `builtins()`) and the signal graph (R3):
 `Signal` (`constant`, `from_series`, `from_values`, `sample`, `sample_into`, `at`, `+ - *` and negation, `maximum`,
 `minimum`, `from_fn`, `rendered`), the inputs (R4a: `InputKind::check`, `Input::from_*`, `Keyframe`, `matching`), the registry and its traits (R4b:
-`Registry`, `Thing`, `Source`, `Shaper`, `Operation`, `Signal::pipe`, `Signal::recipe`), the `slew` and `follow` shapers and the primitives (`Ease`, `hashing::uniform`,
+`Registry`, `Thing`, `Source`, `Shaper`, `Operation`, `Signal::pipe`, `Signal::recipe`), patches (R4b: `Patch::from_toml`,
+`build`, `from_signals`, `to_toml`), the `constant` source, the `select` operation, the `slew` and `follow` shapers and the primitives (`Ease`, `hashing::uniform`,
 `scaling::between`, `rounding`, `cadence::positions`). Their rustdoc examples (`crates/core/src/`) run with
 `cargo test --doc -p bullterrier-control`.
 
@@ -384,7 +385,8 @@ Rename the path in the source instead (`use bullterrier_control as btc;`), which
 
 A patch names sources, shapers and operations and their values, one table per node (`docs/formats.md`, "Patch"). It
 builds the same signals, against a bundle of measured data. A graph built in code through the registry saves as a
-patch whose data is inline; an operator, values given as they are or a callback in it is refused, naming the signal.
+patch whose data is inline (`Patch.save(path)` writes the file); an operator, values given as they are or a callback in it
+is refused, naming the signal. A graph a patch built from a bundle's `series.<name>` is refused too: keep that patch.
 
 ```python
 import bullterrier_control as btc
@@ -398,6 +400,7 @@ glow.sample([0.5, 0.75, 1.0, 1.5])  # a flare on each strong kick; the kick at 1
 ```
 
 ```rust
+// implemented (doctests of `Patch::from_toml` and `Patch::from_signals`)
 let signals = btc::Patch::from_toml(&text)?.build(&bundle)?;
 let saved = btc::Patch::from_signals(&[("glow", &glow)])?.to_toml(); // a graph built in code, as a patch
 ```

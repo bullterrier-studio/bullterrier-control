@@ -718,3 +718,97 @@ Accepted differences from the Python inputs (a break, accepted before the first 
 - A raising user mapping in `events` reaches the caller unchanged (it was wrapped as `ParameterError: events[0]: ...`;
   `points` already behaved so).
 - `Event.parse(Event)` and `Bundle.parse` with `Event` objects are accepted.
+
+## The registry and patches in Rust (batch R4b)
+
+Owner decisions (2026-10-31):
+- **R4 is two batches**: R4a the inputs (above), R4b the registry, `lib` and patches. *Reason:* the inputs are the first thing
+  a registered source or a patch node holds, and each half is reviewable on its own.
+- **Rust is the registry's authority.** One Rust `Registry` holds `Thing`s. Rust built-ins register themselves; Python
+  built-ins and plugins register as callback things when their package is imported. The package's registry is a
+  `_core.Registry` that starts from what Rust runs. *Reason:* a patch must be read, built and saved with no Python
+  (`Patch::from_toml(text)?.build(&bundle)?`), and the name, clash, taken-name and call rules must have one definition that
+  Rust, the web app and Python share, as the formats, parameters and inputs have. Python keeps the entry-point loading with
+  its lock and the checks of a Python function's shape (its signature, its inputs, an operation's return annotation).
+- **Two pilots**: `constant` (a source) and `select` (an operation with an `events` input) run in Rust. Their Python bodies
+  are deleted. *Reason:* they prove the source and operation conventions and the inputs end to end; the other 17 are R5.
+- **Save-as-patch covers graphs made through the registry.** `Patch::from_signals` (Python `Patch.from_signals`) saves
+  signals made by a registered thing, each recording how it was made (below), and `to_toml` / `save` write them. A graph
+  with an operator (`+ - *`, negation, `minimum`, `maximum`), `from_values`, `from_series`, a `Constant` made in Python, a
+  `compute` of its own or a `Rendered(run=...)` is refused, naming the path (`glow.signal`) and why, up to 100 listed and
+  a count. An operation's result is plain data, so a saved patch writes it inline where a later node uses it (its recipe
+  is not kept). A graph built from a bundle's `series.<name>` by a patch cannot be saved: keep the patch that read it.
+  *Reason:* "a signal is what its things made" is exact and has no operator nodes, which would be a patch-format change
+  (R5 territory). A bundle series has no source that reads it, so the refusal says to keep the patch.
+
+Rulings:
+- **The registry is a value, not a global.** `Registry::builtin()` is an immutable `&'static Registry` of what Rust runs;
+  `Registry::new()` and `Clone` give one to register in. The package owns one (`registry.table()`) and `isolated()` swaps
+  an empty one in. *Reason:* no global mutable state, safe on wasm32, tests need no teardown. The binding's registry
+  changes by copy and swap under a short lock; no lock is held while a callback runs.
+- **One door, and `const NAME`.** Every way of making a signal from a thing (`Thing::call`, `shape`, `Signal::pipe`, a typed
+  method such as `Signal::slew`, a `lib::` function) goes through one private call that checks the call, reads the values
+  through the table, runs the body, checks the kind of the output, names errors with the thing's name and records the
+  recipe. A Rust thing has one name, `const NAME` of its trait; a built-in's file name is proven equal to it at compile
+  time. *Reason:* before, the same slew through each door gave a different recipe and a different name in its error, and a
+  graph built with `pipe` or a typed method could not be saved.
+- **The recipe lives in a wrapper node.** `Recorded { recipe, inner }` passes depth and values through; `Signal::recipe()`
+  reads it. *Reason:* a field on every node would touch every constructor. Its depth counts through the signals a call
+  holds (a body that gives its input back, or ignores it, adds no node of its own), so a chain of calls is bounded by
+  `MAX_DEPTH`; unbounded, a 100k chain overflowed the stack on read and on drop. Its `Debug` shows the name, values and depth,
+  not the signals, which doubled per level. Cost: about 3 ns a read per level, within noise on a batch read.
+- **Traits make the params struct the thing.** `Source`, `Shaper` and `Operation` are implemented for `Params`, so
+  `glow.pipe(Fold { depth: 0.5 })?` is the call. `Thing::source::<T>`, `shaper::<T>`, `operation::<T>` and `Thing::custom`
+  (a callback) make a `Thing`; `Registry::register(Thing)` takes it. *Reason:* Rust cannot bound `T` by "one of three
+  traits" for a `register::<T>(name)`, and a thing's doc and parameter title are not on the trait. `Source` and `Shaper` take
+  no input data (an operation has `type Inputs`): the `lib::` signature of a source with inputs (`envelope(&kicks, ..)`) is
+  R5's choice (api.md rule 2), and the door is already generic over the inputs.
+- **`build.rs` finds the impl in the code, not the text.** A file with `impl Source|Shaper|Operation for Params` is registered
+  (a source is also a `lib::` function); a token scan skips comments, docs, strings, characters and `macro_rules!` bodies
+  and accepts the trait by any path. *Reason:* a plain text search registered a marker in a comment and missed
+  `impl crate::Shaper`. This replaces R3's `pub(crate) fn shape` convention and its `SHAPERS` list: `PARAMS` still lists all
+  21 and `register` the ones the core runs, until R5.
+- **Patches are read in Rust, in order.** `Patch::parse` takes the entries as an ordered slice, not a `serde_json::Value`
+  (the core's serde_json sorts keys, and "a node above" depends on the order); `from_toml` is `parse` after the TOML
+  reader. The thing a node names is looked up once, when the patch is read, so there is no `build_with`: a second registry at
+  build would be a second source of truth. A node is where the text first names it, even in a sub-table header
+  (`[b.x]` above `[a]` names `b` first, as Python's `tomllib` ordered it).
+- **`toml` is the TOML dependency**, `parse` feature only (no serde, no writer, no indexmap). *Reason:* a patch is TOML, the
+  parser is pure Rust and builds for `wasm32-unknown-unknown`, `cargo deny` and `shear` pass, its errors carry line and
+  column, and its key spans keep the file order. The writer is ours (`patch/text.rs`), so the output is stable and each
+  decimal is written as the same bits.
+- **A TOML syntax error's detail is the Rust parser's**: `not TOML (line 1, column 10: string values must be quoted, ...)`;
+  Python's reader added the path (`{path}: not TOML (...)`). Other patch messages keep their words (`<node>.<key>: rule`),
+  except that a value, reference or list of nodes above longer than 80 characters is cut with `...`, and the "N more" count survives:
+  a patch that breaks more than 100 rules says how many were cut, including those an input or a parameter table cut
+  (R4a left this lost).
+- **Events a call gives are in time order, checked by the core's door.** An unsorted result from any thing, Rust or Python, is
+  `Error::Output` (a `ValueError`, naming the thing and the event); it is refused, not sorted. *Reason:* `Output::Events`
+  promises time order, and a patch built on a body that broke it gave the wrong events silently.
+- **`register` and `from_signals` take each fact once.** The binding's `register(function, *, kind, params, inputs,
+  returns)` reads the table from the `Params` class (a non-`Params` class is a `TypeError`); `from_signals(items, *, registry)`
+  requires its registry, and Python's `Patch.from_signals(signals)` passes the package's. *Reason:* a `params` and a `table`
+  that disagree registered silently, and a default registry names the wrong one for every plugin.
+- **The privacy rule.** The `patch` module names only public items of the other modules, checked by a scan of its source
+  (`patch/privacy.rs`, with known-bad rows), and Python's `patch` imports only `registry`, `formats`, `errors` and `_native`
+  (an import contract). *Reason:* API first: a patch that needed an internal would show the public API is not enough. Cost:
+  two small helpers are repeated in the patch module (quoting a value, writing the problems), and the scan sees paths, not
+  methods.
+
+Accepted differences from the Python registry and patch (a break, accepted before the first release):
+- `Registered` is the core's `Thing`: not generic (`Registered[P, R]` is gone), and a Rust built-in has `function` and
+  `params_model` `None`. `registry.NAME_PATTERN` and `registry.NODE_KEYS` are gone (the core has them); `registry.table()`
+  is new. `description()["inputs"]` stays in declared order.
+- A call returns the core's recorded `Signal`, never the body's own object: `isinstance(level(), Constant)` is false for a
+  registry result. A Python body gets a new handle over the caller's signal (the same values, not the caller's subclass or
+  object), and an operation's events arrive as new `Event`s. A body that gives the wrong kind of result is a `TypeError`;
+  Python passed anything through. An exception a body raises reaches the caller unchanged.
+- A `Signal` subclass that defines a built-in shaper's name (`slew`, `clip`, ...) is a `TypeError` at class creation.
+- A patch key that is not text is read as its `str`; a NaN or infinity reads `must be finite (got nan)`; problems within a
+  node are in key-name order.
+- `bt-control list --json` is byte-identical to before. `gen_api` takes each range from the core's table (the noise seed now
+  reads `0 to 4294967295`, not `4.29497e+09`).
+- The shaper scaffold writes no Python module: the Rust file registers itself.
+
+Cost: ten independent slews through the registry took about twice R3's time on a first measure (0.023 to 0.049 s against
+0.012 to 0.020 s); not yet explained (the call door, the recorded node or noise).
