@@ -1,7 +1,5 @@
 //! What a [`Signal`](super::Signal) holds: a [`Node`] of the graph, and the nodes without inputs.
 
-use std::sync::Arc;
-
 use super::walk::callback;
 use super::{Origin, Signal};
 use crate::Error;
@@ -76,23 +74,19 @@ impl Node for Constant {
     }
 }
 
-/// The callback a [`FromFn`] node calls, its own error already wrapped as [`Error::Node`].
+/// The callback a [`FromFn`] node calls, its own error already made an [`Error`] by `Error::from_callback`.
 type Callback = dyn Fn(&[f64], &mut [f64]) -> Result<(), Error> + Send + Sync;
 
 /// Values a callback writes: `out` arrives filled with 0.0, so what the callback leaves is the same on every read.
 pub(crate) struct FromFn(pub(crate) Box<Callback>);
 
 impl FromFn {
-    /// The node calling `f`, keeping its error as the source of an [`Error::Node`].
+    /// The node calling `f`, its error a core [`Error`] as it is, any other the source of an [`Error::Node`].
     pub(crate) fn new<E>(f: impl Fn(&[f64], &mut [f64]) -> Result<(), E> + Send + Sync + 'static) -> Self
     where
         E: std::error::Error + Send + Sync + 'static,
     {
-        Self(Box::new(move |times, out| {
-            f(times, out).map_err(|source| Error::Node {
-                source: Arc::new(source),
-            })
-        }))
+        Self(Box::new(move |times, out| f(times, out).map_err(Error::from_callback)))
     }
 }
 

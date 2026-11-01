@@ -38,7 +38,7 @@ impl Default for Rendering {
     }
 }
 
-/// A recurrence, its own error already wrapped as [`Error::Node`].
+/// A recurrence, its own error already made an [`Error`] by `Error::from_callback`.
 type Recurrence = dyn Fn(&[f64]) -> Result<Vec<f64>, Error> + Send + Sync;
 
 /// The values of `run` over `input` sampled at `rate` from time 0, as far as the reads so far needed.
@@ -91,11 +91,7 @@ impl Rendered {
             input: input.clone(),
             rate,
             limit,
-            run: Box::new(move |inputs| {
-                run(inputs).map_err(|source| Error::Node {
-                    source: Arc::new(source),
-                })
-            }),
+            run: Box::new(move |inputs| run(inputs).map_err(Error::from_callback)),
             history: Mutex::new(Arc::new(Vec::new())),
             depth: input.0.depth() + 1,
         })

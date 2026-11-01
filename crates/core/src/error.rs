@@ -47,8 +47,8 @@ pub enum Error {
         /// The rules broken, each naming its field.
         source: FormatError,
     },
-    /// A callback of a signal (`Signal::from_fn`) failed: its error is the [`source`](std::error::Error::source), and
-    /// the message is its message.
+    /// A callback of a signal (`Signal::from_fn`) failed with an error that is not a core [`Error`] (that one is
+    /// returned as it is): its error is the [`source`](std::error::Error::source), and the message is its message.
     Node {
         /// The callback's own error.
         source: Arc<dyn std::error::Error + Send + Sync>,
@@ -90,6 +90,19 @@ pub enum Error {
 }
 
 impl Error {
+    /// The error a callback (`Signal::from_fn`, `retimed`, `rendered`) failed with, as its reader gets it: a core
+    /// `Error` as it is, so a callback can refuse with the kind it means; any other error as the source of an
+    /// [`Error::Node`].
+    pub(crate) fn from_callback<E: std::error::Error + Send + Sync + 'static>(failure: E) -> Self {
+        let boxed: Box<dyn std::error::Error + Send + Sync> = Box::new(failure);
+        match boxed.downcast::<Self>() {
+            Ok(core) => *core,
+            Err(other) => Self::Node {
+                source: Arc::from(other),
+            },
+        }
+    }
+
     /// The error for `shaper` whose parameters broke the rules `error` lists.
     pub(crate) fn params(shaper: &str, error: ParamError) -> Self {
         let omitted = error.omitted();

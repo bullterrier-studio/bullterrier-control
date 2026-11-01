@@ -168,7 +168,8 @@ impl Signal {
 
     /// The signal whose values `f` writes: called with times that are finite and from 0 up, and `out` as long, filled
     /// with 0.0. Its values are checked like any other's (a value that is not finite is an [`Error::Signal`]); an error
-    /// it returns is the [`Error::Node`] of the read, with `f`'s error as its [`source`](std::error::Error::source).
+    /// it returns is the error of the read: a core [`Error`] as it is (a callback can refuse with [`Error::Signal`]), any
+    /// other the [`Error::Node`] of the read, with `f`'s error as its [`source`](std::error::Error::source).
     /// It must give the same values for the same times, whatever it was called with before: a signal's promise.
     /// A node counts as depth 1 for [`MAX_DEPTH`] whatever `f` samples inside; a read inside `f` is a read of its own
     /// on the thread's stack, so callbacks that read signals whose callbacks read others are refused (an
@@ -231,8 +232,8 @@ impl Signal {
     /// [`Error::Signal`] if `rendering.rate` is not positive and finite or `rendering.limit` is 0, [`Error::Depth`] if
     /// the graph would be deeper than [`MAX_DEPTH`]. A read is refused as by any signal, and also with
     /// [`Error::Signal`] when it needs more samples than the limit or `run` returns another number of outputs than it
-    /// got inputs; an error `run` returns is the [`Error::Node`] of the read, `run`'s error its
-    /// [`source`](std::error::Error::source).
+    /// got inputs; an error `run` returns is the error of the read: a core [`Error`] as it is, any
+    /// other the [`Error::Node`] of the read, `run`'s error its [`source`](std::error::Error::source).
     pub fn rendered<E>(
         input: &Signal,
         rendering: Rendering,
@@ -247,8 +248,8 @@ impl Signal {
     /// This signal read at other times: the value at t is this signal's at `map(t)`. `map` gets times that are finite
     /// and from 0 up and returns as many, each finite and from 0 up; it must give the same times for the same times,
     /// whatever it was called with before. A delay is `max(t - lag, 0)`; a sample and hold, the latest event at or
-    /// before t. An error `map` returns is the [`Error::Node`] of the read, `map`'s error its
-    /// [`source`](std::error::Error::source).
+    /// before t. An error `map` returns is the error of the read: a core [`Error`] as it is, any
+    /// other the [`Error::Node`] of the read, `map`'s error its [`source`](std::error::Error::source).
     ///
     /// ```
     /// use std::convert::Infallible;
@@ -480,8 +481,8 @@ impl Signal {
     ///
     /// # Errors
     /// [`Error::Signal`] if `values` is not as long as `times`, a time is not finite (naming it), or a value is not
-    /// finite (naming the first time that gave one); whatever error a node of the graph gives (an [`Error::Node`] from
-    /// a callback).
+    /// finite (naming the first time that gave one); whatever error a node of the graph gives (a callback's core
+    /// [`Error`] as it is, any other the [`Error::Node`]).
     pub fn sample_into(&self, times: &[f64], values: &mut [f64]) -> Result<(), Error> {
         self.read_into(times, values)?;
         match values.iter().zip(times).find(|(value, _)| !value.is_finite()) {
@@ -509,7 +510,7 @@ impl Signal {
     ///
     /// # Errors
     /// [`Error::Signal`] if `values` is not as long as `times` or a time is not finite (naming it); whatever error a
-    /// node of the graph gives (an [`Error::Node`] from a callback).
+    /// node of the graph gives (a callback's core [`Error`] as it is, any other the [`Error::Node`]).
     pub fn read_into(&self, times: &[f64], values: &mut [f64]) -> Result<(), Error> {
         if times.len() != values.len() {
             return Err(Error::Signal {

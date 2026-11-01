@@ -258,6 +258,21 @@ fn a_recurrence_that_changes_the_length_is_refused_naming_both_lengths() -> Resu
 }
 
 #[test]
+fn a_core_error_of_the_recurrence_reaches_the_reader_as_it_is() -> Result<(), Error> {
+    let refusing = Signal::rendered(&constant(1.0)?, at_rate(10.0), |_| {
+        Err::<Vec<f64>, _>(Error::Signal {
+            message: "diverged".into(),
+        })
+    })?;
+    let error = refusing.at(0.5);
+    assert!(
+        matches!(&error, Err(Error::Signal { message }) if message == "diverged"),
+        "{error:?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn an_error_of_the_recurrence_or_of_the_input_comes_through_as_its_own() -> Result<(), Error> {
     let failing = Signal::rendered(&constant(1.0)?, at_rate(10.0), |_| {
         Err::<Vec<f64>, _>(Failed("diverged"))

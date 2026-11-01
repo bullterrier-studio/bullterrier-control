@@ -69,8 +69,7 @@ fn named(py: Python<'_>, node: &str, error: &PyErr) -> PyResult<Option<PyErr>> {
 
 /// The Python exception for `error`: a signal that cannot be read, or is too deep, is a `SignalError`, a text naming no
 /// easing curve an `InvalidError`, data breaking a format's rules a `FormatError`, parameters or an input breaking theirs
-/// a `ParameterError`; a callback's error is the exception the Python callback raised, unchanged (a Rust callback's, the exception
-/// of the core error it failed with). Anything else is a
+/// a `ParameterError`; a callback's error is the exception the Python callback raised, unchanged. Anything else is a
 /// bug of the caller: a `ValueError`.
 pub(crate) fn raised(py: Python<'_>, error: Error) -> PyErr {
     match error {
@@ -83,12 +82,10 @@ pub(crate) fn raised(py: Python<'_>, error: Error) -> PyErr {
             omitted,
         } => parameter_error(py, &shaper, &problems, omitted),
         Error::Input { problems, omitted } => parameter_error(py, "", &problems, omitted),
-        // every callback the bindings give the core fails with the Python exception it raised; a Rust callback that
-        // fails with a core error (a source refusing a time) keeps that error's kind
-        Error::Node { source } => match (source.downcast_ref::<PyErr>(), source.downcast_ref::<Error>()) {
-            (Some(raised), _) => raised.clone_ref(py),
-            (None, Some(core)) => self::raised(py, core.clone()),
-            (None, None) => PyValueError::new_err(source.to_string()),
+        // every callback the bindings give the core fails with the Python exception it raised
+        Error::Node { source } => match source.downcast_ref::<PyErr>() {
+            Some(raised) => raised.clone_ref(py),
+            None => PyValueError::new_err(source.to_string()),
         },
         other => PyValueError::new_err(other.to_string()),
     }

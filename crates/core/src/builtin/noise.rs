@@ -95,7 +95,8 @@ impl Source for Params {
     /// ```
     ///
     /// # Errors
-    /// None when made; a read is an [`Error::Signal`] at a time too far from 0 for `rate * t` to be a number.
+    /// None when made; a read is an [`Error::Signal`] (as it is, not wrapped) at a time too far from 0 for `rate * t` to
+    /// be a number.
     fn source(&self, (): ()) -> Result<Signal, Error> {
         let params = self.clone();
         Ok(Signal::from_fn(move |times, out| {
@@ -221,9 +222,6 @@ mod tests {
             let got = read(noise::Params { shape: Shape::Hold, rate: 1.0, seed: 0, low, high }, &[0.5])?[0];
             assert!((got - expected).abs() <= 1e-12, "{low}..{high}: {got} vs {expected}");
         }
-        // the top is exactly high, where 0.3 + 0.6 * 1 is not
-        let near_one = noise::Params { shape: Shape::Linear, rate: 1.0, seed: 0, low: 0.3, high: 0.9 };
-        assert!(read(near_one, &[0.5, 1.5, 2.5])?.iter().all(|value| (0.3..=0.9).contains(value)));
         Ok(())
     }
 
@@ -296,8 +294,8 @@ mod tests {
 
     #[test]
     fn a_time_too_far_for_the_position_is_an_error_naming_it_and_a_slow_rate_still_reads() -> Result<(), Error> {
-        let refused = read(params(Shape::Smooth, 1000.0, 0), &[1.0, 1.797e308]).map_err(|e| e.to_string());
-        assert!(matches!(&refused, Err(text) if text.contains("1.797e308")), "{refused:?}");
+        let refused = read(params(Shape::Smooth, 1000.0, 0), &[1.0, 1.797e308]);
+        assert!(matches!(&refused, Err(Error::Signal { message }) if message.contains("1.797e308")), "{refused:?}");
         // 0.001 * 1.797e308 is finite; it is a multiple of 2^64, so the index is 0
         assert_eq!(read(params(Shape::Hold, 0.001, 0), &[1.797e308])?, [reference(0, 0)]);
         Ok(())

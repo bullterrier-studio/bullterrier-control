@@ -1,13 +1,11 @@
 //! The node of [`Signal::retimed`](super::Signal::retimed): its input read at other times than its own.
 
-use std::sync::Arc;
-
 use super::node::{Next, Node, Read};
 use super::walk::callback;
 use super::{Origin, Signal};
 use crate::Error;
 
-/// A map, its own error already wrapped as [`Error::Node`].
+/// A map, its own error already made an [`Error`] by `Error::from_callback`.
 type Map = dyn Fn(&[f64]) -> Result<Vec<f64>, Error> + Send + Sync;
 
 /// The input's value at `map(t)` at each time t.
@@ -19,18 +17,14 @@ pub(crate) struct Retimed {
 }
 
 impl Retimed {
-    /// The node reading `input` at `map`'s times, `map`'s error kept as the source of an [`Error::Node`].
+    /// The node reading `input` at `map`'s times, `map`'s error a core [`Error`] as it is, any other the source of an [`Error::Node`].
     pub(crate) fn new<E>(input: &Signal, map: impl Fn(&[f64]) -> Result<Vec<f64>, E> + Send + Sync + 'static) -> Self
     where
         E: std::error::Error + Send + Sync + 'static,
     {
         Self {
             input: input.clone(),
-            map: Box::new(move |times| {
-                map(times).map_err(|source| Error::Node {
-                    source: Arc::new(source),
-                })
-            }),
+            map: Box::new(move |times| map(times).map_err(Error::from_callback)),
             depth: input.0.depth() + 1,
         }
     }

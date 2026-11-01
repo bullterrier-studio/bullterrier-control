@@ -882,10 +882,11 @@ door and back); the 17 that remain in Python are ported in R5.
   once when the shaper is made. *Reason:* the walk reads the input in place and `f` runs over it, so a chain of 999
   reads on a small stack. `f` is still counted as a callback (once a read): it may read a signal it holds, a walk of
   its own; uncounted, 100 000 such nested reads overflowed a 256 KiB stack.
-- **A Rust callback's core error keeps its kind in Python.** `noise` fails a read at a time too far for its position
-  with the core's `Error::Signal` from inside `Signal::from_fn`, which wraps it as `Error::Node`; the bindings raise a
-  node whose source is a core `Error` as that error would be (`SignalError`), as they raise a Python callback's own
-  exception. *Reason:* the Python `noise` raised `SignalError` there; a `ValueError` would be a changed contract.
+- **A callback's core error reaches the reader as it is.** `Signal::from_fn`, `retimed` and `rendered` return a core
+  `Error` a callback fails with unwrapped (`Error::from_callback`); any other error is the source of an `Error::Node`.
+  *Reason:* the kind is decided where the error is made. `noise` refuses a time too far for its position with
+  `Error::Signal`, which the Python `noise` raised as `SignalError`; wrapped as a `Node` it reached Python as a
+  `ValueError`, and the bindings would have had to look inside every `Node` to put it right.
 - **libm for exp.** `follow` calls `libm::exp` (the `libm` crate, MIT, pure Rust, pinned exact), not std's. *Reason:*
   std's `exp` calls the platform's math library, so the same signal could differ by an ulp between targets (rule 6
   allows float tolerance across platforms, but the core's easing and hashing already give the same bits everywhere, and a

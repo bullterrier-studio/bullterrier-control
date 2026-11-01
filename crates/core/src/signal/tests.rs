@@ -218,6 +218,29 @@ fn a_callbacks_error_is_kept_as_the_source_of_the_error() {
 }
 
 #[test]
+fn a_callbacks_core_error_reaches_the_reader_as_it_is_and_any_other_error_is_wrapped() -> Result<(), Error> {
+    fn refusal() -> Error {
+        Error::Signal {
+            message: "too far".into(),
+        }
+    }
+    let from_fn = Signal::from_fn(|_, _| Err(refusal()));
+    let retimed = Signal::constant(1.0)?.retimed(|_| Err::<Vec<f64>, _>(refusal()))?;
+    for (id, signal) in [("from_fn", from_fn), ("retimed", retimed)] {
+        let error = signal.sample(&[0.0]);
+        assert!(
+            matches!(&error, Err(Error::Signal { message }) if message == "too far"),
+            "{id}: {error:?}"
+        );
+    }
+    let foreign = Signal::constant(1.0)?
+        .retimed(|_| Err::<Vec<f64>, _>(OutOfTune("E2")))?
+        .sample(&[0.0]);
+    assert!(matches!(&foreign, Err(Error::Node { .. })), "{foreign:?}");
+    Ok(())
+}
+
+#[test]
 fn a_callback_sees_finite_times_from_zero_and_a_zeroed_buffer() -> Result<(), Error> {
     let lazy = Signal::from_fn(|times, out| {
         // writes only the first value, adds the times it saw to what it was given
