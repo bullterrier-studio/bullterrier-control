@@ -8,6 +8,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::scan::{code, rust_files};
+
 /// The public items the patch may name, each with its module's path (a path below one, such as an enum's variant,
 /// is allowed with it).
 const ALLOWED: &[&str] = &[
@@ -56,82 +58,6 @@ const ALLOWED: &[&str] = &[
     "crate::registry::is_name",
 ];
 
-/// `text` without its comments and the insides of its string and character literals (each left as `""` or `''`),
-/// so only code is searched.
-fn code(text: &str) -> String {
-    let characters: Vec<char> = text.chars().collect();
-    let mut kept = String::with_capacity(text.len());
-    let mut index = 0;
-    let at = |index: usize| characters.get(index).copied().unwrap_or('\0');
-    while index < characters.len() {
-        let character = characters[index];
-        match (character, at(index + 1)) {
-            ('/', '/') => {
-                while index < characters.len() && characters[index] != '\n' {
-                    index += 1;
-                }
-            }
-            ('/', '*') => {
-                let mut depth = 0;
-                loop {
-                    match (at(index), at(index + 1)) {
-                        ('/', '*') => (depth, index) = (depth + 1, index + 2),
-                        ('*', '/') => (depth, index) = (depth - 1, index + 2),
-                        ('\0', _) => break,
-                        _ => index += 1,
-                    }
-                    if depth == 0 {
-                        break;
-                    }
-                }
-            }
-            ('r', '#' | '"') if !at(index.wrapping_sub(1)).is_alphanumeric() => {
-                // a raw string: r"..", r#".."#, ..
-                let mut hashes = 0;
-                index += 1;
-                while at(index) == '#' {
-                    hashes += 1;
-                    index += 1;
-                }
-                if at(index) != '"' {
-                    kept.push('r');
-                    continue;
-                }
-                index += 1;
-                while index < characters.len()
-                    && !(characters[index] == '"' && (1..=hashes).all(|ahead| at(index + ahead) == '#'))
-                {
-                    index += 1;
-                }
-                index += 1 + hashes;
-                kept.push_str("\"\"");
-            }
-            ('"', _) => {
-                index += 1;
-                while index < characters.len() && characters[index] != '"' {
-                    index += if characters[index] == '\\' { 2 } else { 1 };
-                }
-                index += 1;
-                kept.push_str("\"\"");
-            }
-            ('\'', next) if next == '\\' || at(index + 2) == '\'' => {
-                // a character literal ('x', '\n', '\''); a lifetime ('a) is code
-                index += 2;
-                while index < characters.len() && characters[index] != '\'' {
-                    index += 1;
-                }
-                index += 1;
-                kept.push_str("''");
-            }
-            _ => {
-                kept.push(character);
-                index += 1;
-            }
-        }
-    }
-    kept
-}
-
 /// The paths into the crate that the code of `text` names, each as written (the crate by its own name read as
 /// `crate`); a grouped import as its path and `::{`; a path out of the patch from `super::super`.
 fn named(text: &str) -> Vec<String> {
@@ -167,21 +93,16 @@ fn refused(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// The patch's source files: `src/patch.rs` and every file under `src/patch/`.
+/// The patch's source files: `src/patch.rs` and every file under `src/patch/` but this scan (a test, which reads
+/// the source through the crate's own test helpers).
 fn sources() -> std::io::Result<Vec<PathBuf>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut files = vec![root.join("patch.rs")];
-    let mut folders = vec![root.join("patch")];
-    while let Some(folder) = folders.pop() {
-        for entry in fs::read_dir(folder)? {
-            let path = entry?.path();
-            if path.is_dir() {
-                folders.push(path);
-            } else if path.extension().is_some_and(|extension| extension == "rs") {
-                files.push(path);
-            }
-        }
-    }
+    files.extend(
+        rust_files(&root.join("patch"))?
+            .into_iter()
+            .filter(|path| !path.ends_with("privacy.rs")),
+    );
     Ok(files)
 }
 

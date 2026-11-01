@@ -27,6 +27,8 @@ mod series;
 #[cfg(test)]
 mod tests;
 mod walk;
+#[cfg(test)]
+mod walked;
 
 use std::borrow::Cow;
 use std::fmt;

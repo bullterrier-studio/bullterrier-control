@@ -104,6 +104,8 @@ pub fn builtins() -> Vec<&'static str> {
 
 #[cfg(test)]
 mod builtin_table;
+#[cfg(test)]
+mod scan;
 
 #[cfg(test)]
 mod tests {
