@@ -5,6 +5,7 @@ An installed distribution is a dist-info folder beside the package's files (`imp
 artifact is a folder of wheels and an sdist. Both are written here, as an installer and a build would leave them.
 """
 
+import contextlib
 import importlib.util
 import json
 import subprocess
@@ -122,3 +123,19 @@ def test_the_command_fails_visibly_for_this_environments_editable_install(artifa
     )
     assert done.returncode == 1
     assert "not installed from" in done.stderr
+
+
+CHAIN = "Python computes, each reading the one before"  # the walk needing the most stack a level
+WALKS = {  # the thread stack it is walked on -> what the check does
+    "passes on the smallest stack supported": (check_installed.STACK, contextlib.nullcontext()),
+    "fails naming it on 32 KiB, Python's smallest": (
+        32 * 1024,
+        pytest.raises(check_installed.WalkError, match=f"^{CHAIN}: .* on a 32 KiB thread"),
+    ),
+}
+
+
+@pytest.mark.parametrize(("stack", "expectation"), WALKS.values(), ids=WALKS.keys())
+def test_the_deepest_chain_fails_the_check_where_it_overflows_its_thread(stack, expectation):
+    with expectation:
+        check_installed.walk_deepest(CHAIN, stack)

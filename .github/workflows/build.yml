@@ -155,8 +155,9 @@ jobs:
       # no release from PyPI; `--only-binary`: no sdist built on the fly), the platform's wheel chosen by uv, then its
       # dependencies from the index. The sdist is installed from its file and built here, with the toolchain its own
       # rust-toolchain.toml pins (installed in the step before). check_installed.py then names the artifact's file it came
-      # from, or fails. `slew` is a shaper written in the Rust extension: sampling the gallery patch that uses it runs the
-      # installed build, and the patch is read from the sparse checkout beside it, not from the environment.
+      # from and walks the deepest chain of each kind on a 256 KiB thread, or fails. `slew` is a shaper written in the
+      # Rust extension: sampling the gallery patch that uses it runs the installed build, and the patch is read from the
+      # sparse checkout beside it, not from the environment.
       - name: Install the ${{ matrix.from }} in a fresh environment and sample a patch that runs the extension
         shell: bash
         env:
