@@ -34,8 +34,9 @@ def run(checkout: Path, *argv: str) -> subprocess.CompletedProcess:
     )
 
 
-def check_python(checkout: Path) -> None:
-    """The new thing's tests and the contract tests over it pass, and the linter is content with its files."""
+def check_python(checkout: Path, *files: str) -> None:
+    """The new thing's tests and the contract tests over it pass, and the linter is content with its Python `files`
+    (its test's too)."""
     tests = run(
         checkout,
         "-m",
@@ -63,7 +64,7 @@ def check_python(checkout: Path) -> None:
         "ruff",
         "check",
         "--no-cache",
-        "src/bullterrier_control/builtin/fresh_one.py",
+        *files,
         "tests/builtin/test_fresh_one.py",
     )
     assert lint.returncode == 0, lint.stdout + lint.stderr
@@ -75,7 +76,7 @@ def test_a_new_source_or_operation_passes_its_tests_the_contract_and_the_linter_
     assert made.returncode == 0, made.stderr
     assert "src/bullterrier_control/builtin/fresh_one.py" in made.stdout
     assert "uv run poe api" in made.stdout  # lib.pyi is generated
-    check_python(checkout)
+    check_python(checkout, "src/bullterrier_control/builtin/fresh_one.py")
 
 
 def cargo(checkout: Path, *argv: str) -> subprocess.CompletedProcess:
@@ -110,9 +111,8 @@ def test_a_new_shaper_is_found_by_the_build_and_its_rust_and_python_tests_pass_a
     assert sorted(line.removeprefix("wrote ") for line in made.stdout.splitlines() if line.startswith("wrote ")) == [
         "crates/core/src/builtin/fresh_one.rs",
         "examples/gallery/fresh_one.toml",
-        "src/bullterrier_control/builtin/fresh_one.py",
         "tests/builtin/test_fresh_one.py",
-    ]
+    ]  # no Python module: the core registers what it runs
     # the one edit the author still makes by hand, said before they run into it
     assert "crates/core/src/builtin.rs" in made.stdout
     assert "uv run poe api" in made.stdout  # lib.pyi and _chain.py are generated

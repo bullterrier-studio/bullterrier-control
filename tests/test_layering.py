@@ -46,7 +46,8 @@ LAYERS = (
 )
 SOURCES_APART = "Built-in sources never import each other"
 SOURCES_DOOR = "Built-in sources use only the author API"
-CONTRACTS = [LAYERS, SOURCES_APART, SOURCES_DOOR]
+PATCH_DOOR = "Patch imports only registry, formats, errors and _native"
+CONTRACTS = [LAYERS, SOURCES_APART, SOURCES_DOOR, PATCH_DOOR]
 
 
 def lint(cwd: Path, pythonpath: Path | None = None) -> subprocess.CompletedProcess:
@@ -159,9 +160,9 @@ FORBIDDEN = {
         SOURCES_DOOR,
     ),
     "a source to the rendered module": (
-        "builtin/slew.py",
+        "builtin/hold.py",
         "import bullterrier_control.rendered",
-        "bullterrier_control.builtin.slew",
+        "bullterrier_control.builtin.hold",
         SOURCES_DOOR,
     ),
     "a source to the formats": (
@@ -172,7 +173,7 @@ FORBIDDEN = {
     ),
     "a source to another source": (
         "builtin/clip.py",
-        "import bullterrier_control.builtin.slew",
+        "import bullterrier_control.builtin.gate",
         "bullterrier_control.builtin.clip",
         SOURCES_APART,
     ),
@@ -205,6 +206,15 @@ FORBIDDEN = {
         "bullterrier_control._native",
         LAYERS,
     ),
+    "patch to signal": ("patch.py", "import bullterrier_control.signal", "bullterrier_control.patch", PATCH_DOOR),
+    "patch to inputs": ("patch.py", "import bullterrier_control.inputs", "bullterrier_control.patch", PATCH_DOOR),
+    "patch to params": ("patch.py", "import bullterrier_control.params", "bullterrier_control.patch", PATCH_DOOR),
+    "patch to the author API": (
+        "patch.py",
+        "import bullterrier_control.plugin",
+        "bullterrier_control.patch",
+        PATCH_DOOR,
+    ),
     "errors to the Rust extension's home": (
         "errors.py",
         "from bullterrier_control._native import _core",
@@ -236,6 +246,10 @@ ALLOWED = {
     "cli to plugin": ("cli.py", "import bullterrier_control.plugin"),
     "cli to sources": ("cli.py", "import bullterrier_control.builtin"),
     "a source to the plugin api": ("builtin/clip.py", "import bullterrier_control.plugin"),
+    "patch to registry": ("patch.py", "import bullterrier_control.registry"),
+    "patch to formats": ("patch.py", "import bullterrier_control.formats"),
+    "patch to errors": ("patch.py", "import bullterrier_control.errors"),
+    "patch to the Rust extension": ("patch.py", "from bullterrier_control._native import _core"),
     "registry to inputs": ("registry.py", "import bullterrier_control.inputs"),
     "inputs to formats": ("inputs.py", "import bullterrier_control.formats"),
     "inputs to the Rust extension": ("inputs.py", "from bullterrier_control._native import _core"),

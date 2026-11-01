@@ -456,7 +456,7 @@ def test_a_save_names_the_registry_it_is_for_by_keyword(registry):
     with pytest.raises(TypeError, match="registry"):
         _core.Patch.from_signals({"smooth": smooth}.items())  # type: ignore[call-arg]  # left out: the case
     with pytest.raises(TypeError):
-        _core.Patch.from_signals({"smooth": smooth}.items(), registry)  # type: ignore[misc]  # positional: the case
+        _core.Patch.from_signals({"smooth": smooth}.items(), registry)  # type: ignore[call-arg]  # positional: the case
 
 
 def test_a_python_thing_is_saved_and_read_back_in_the_registry_that_holds_it(registry):

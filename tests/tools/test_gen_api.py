@@ -129,6 +129,22 @@ def test_a_chain_method_documents_the_summary_and_each_parameter_with_unit_range
     assert "            mode: default 'up'. Which way: 'up' or 'down'.\n" in small[CHAIN]
 
 
+class SeededParams(Params):
+    """Which noise."""
+
+    seed: Whole = param(0, doc="Which one.", unit="count", min=0, max=4294967295)
+
+
+def test_a_range_is_written_as_the_core_words_it_not_rounded(empty_registry):
+    def seeded(signal: Signal, params: SeededParams) -> Signal:
+        """A seeded signal."""
+        return signal
+
+    shaper(params=SeededParams)(built_in(seeded))
+    files = gen_api.render(registry.all_registered())
+    assert "            seed: count, 0 to 4294967295, default 0. Which one.\n" in files[Path(CHAIN)]
+
+
 @pytest.mark.parametrize(
     "line",
     [
@@ -137,7 +153,7 @@ def test_a_chain_method_documents_the_summary_and_each_parameter_with_unit_range
         "def pick(\n    *,\n    events: Sequence[Event | Mapping[str, object]],\n    depth: float = 1.0,\n",
         '    tag: str = "",\n) -> Signal:\n',
         '    tag: str = "",\n) -> tuple[Event, ...]:\n',
-        "def __getattr__(name: str) -> Registered[Any, Any]: ...\n",
+        "def __getattr__(name: str) -> Registered: ...\n",
     ],
     ids=[
         "a shaper takes its signal first",

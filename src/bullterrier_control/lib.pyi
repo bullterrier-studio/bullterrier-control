@@ -3,7 +3,7 @@
 package's) is the registry entry."""
 
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal
+from typing import Literal
 
 from .formats import Event, Grid, Series
 from .inputs import Keyframe
@@ -194,7 +194,7 @@ def noise(
             (straight lines, with corners) or 'smooth' (eased, no corners).
         rate: hertz, 0.001 to 1000, default 4.0. Random values per second: a new one every 1 / rate seconds. Raising it
             makes the noise busier.
-        seed: count, 0 to 4.29497e+09, default 0. Which noise, 0 to 4294967295: the same seed gives the same values on
+        seed: count, 0 to 4294967295, default 0. Which noise, 0 to 4294967295: the same seed gives the same values on
             every machine, read in any order; another seed gives other values.
         low: ratio, -1e+06 to 1e+06, default 0.0. The bottom of the range the values fall in; set above `high` to flip
             the noise.
@@ -305,4 +305,4 @@ def thin(*, events: Sequence[Event | Mapping[str, object]], gap: float = 0.1) ->
             kept when it comes at least this long after the last kept one. Raising it keeps fewer events; 0 keeps all.
     """
 
-def __getattr__(name: str) -> Registered[Any, Any]: ...
+def __getattr__(name: str) -> Registered: ...

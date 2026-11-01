@@ -95,7 +95,7 @@ def test_the_installed_package_provides_its_sources_shapers_and_operations():
 def test_every_one_documents_itself(name):
     thing = registry.get(name)
     assert thing.summary
-    assert thing.params_model.__doc__
+    assert thing.description()["parameters"]["description"]
 
 
 @pytest.mark.parametrize("name", SIGNALS)
@@ -186,7 +186,7 @@ class Field(NamedTuple):
 
 
 def numeric_fields(name):
-    described = registry.get(name).params_model.describe()
+    described = registry.get(name).description()["parameters"]["properties"]
     return [
         Field(field, one["minimum"], one["maximum"], one["type"] == "integer", one["cyclic"])
         for field, one in described.items()
@@ -302,7 +302,7 @@ def test_every_description_is_a_json_schema_that_accepts_the_defaults(name):
     """A consumer checks a pipeline against `description()["parameters"]` before running it."""
     schema = registry.get(name).description()["parameters"]
     jsonschema.Draft202012Validator.check_schema(schema)
-    defaults = {field: one["default"] for field, one in registry.get(name).params_model.describe().items()}
+    defaults = {field: one["default"] for field, one in schema["properties"].items()}
     jsonschema.validate(defaults, schema)
 
 

@@ -331,7 +331,8 @@ GALLERY = Path(__file__).resolve().parents[1] / "examples" / "gallery"
 BUILT_IN_SHAPERS = sorted(
     name
     for name, thing in registry.shapers().items()
-    if thing.function.__module__.startswith("bullterrier_control.builtin.")
+    # one the Rust core runs has no Python function; the others are defined in the package's own modules
+    if thing.function is None or thing.function.__module__.startswith("bullterrier_control.builtin.")
 )
 
 

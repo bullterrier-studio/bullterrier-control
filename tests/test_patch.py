@@ -8,6 +8,7 @@ import json
 import tomllib
 
 import jsonschema
+import numpy as np
 import pytest
 
 from bullterrier_control import (
@@ -17,11 +18,13 @@ from bullterrier_control import (
     Patch,
     Signal,
     UnknownNameError,
+    from_values,
+    lib,
     load_patch,
     registry,
 )
 from bullterrier_control.patch import patch_schema
-from bullterrier_control.plugin import Params, source
+from bullterrier_control.plugin import Constant, Finite, Params, param, source
 
 HEADER = {"format": "bullterrier-control/patch", "version": 1}
 KICKS = [
@@ -458,6 +461,110 @@ def test_a_file_the_toml_parser_cannot_follow_is_a_format_error_naming_the_file(
 def test_a_file_that_is_missing_is_the_error_the_system_gave(tmp_path):
     with pytest.raises(FileNotFoundError):
         load_patch(tmp_path / "absent.toml")
+
+
+# ---------------------------------------------------------------- saving: a graph made in code, as a patch
+
+
+# the chain below, by the rules of a save: each unnamed thing upstream is a node `<name>_<n>` above the one it feeds,
+# every parameter written with its value (a default too: slew's and follow's `rate` is 1000), floats as Python writes
+# them
+LEVEL_CHAIN = """\
+format = "bullterrier-control/patch"
+version = 1
+
+[level_1]
+use = "constant"
+value = 0.25
+
+[level_2]
+use = "slew"
+signal = "level_1"
+rise = 0.5
+fall = 2.0
+rate = 1000.0
+
+[level]
+use = "follow"
+signal = "level_2"
+attack = 0.1
+release = 0.3
+rate = 1000.0
+"""
+TIMES = [-1.0, 0.0, 0.001, 0.25, 0.5, 1.0, 7.5, 1e4]
+
+
+def level_chain() -> Signal:
+    return lib.follow(lib.slew(lib.constant(value=0.25), rise=0.5, fall=2.0), attack=0.1, release=0.3)
+
+
+def test_a_chain_made_through_lib_is_saved_as_the_hand_written_patch():
+    assert Patch.from_signals({"level": level_chain()}).to_toml() == LEVEL_CHAIN
+
+
+def test_a_saved_file_loads_back_as_an_equal_patch_that_builds_the_same_samples(tmp_path):
+    level = level_chain()
+    saved = Patch.from_signals({"level": level})
+    path = tmp_path / "level.toml"
+    saved.save(path)
+    assert path.read_text(encoding="utf-8") == LEVEL_CHAIN
+    loaded = load_patch(path)
+    assert loaded == saved
+    assert loaded.build()["level"].sample(TIMES).tolist() == level.sample(TIMES).tolist()
+
+
+def test_a_built_patch_saves_as_what_it_was_read_from():
+    bundle = Bundle.parse(SECTION_BUNDLE)
+    built = Patch.parse(tomllib.loads(GLOW)).build(bundle)
+    again = Patch.from_signals({"glow": built["glow"]})
+    # the bundle's events were selected when built: the save holds them inline, so it needs no bundle
+    assert list(again.nodes) == ["glow"]
+    assert again.build()["glow"].sample(TIMES).tolist() == built["glow"].sample(TIMES).tolist()
+
+
+class Height(Params):
+    """A height."""
+
+    value: Finite = param(0.5, doc="The height, as a share of the range.", unit="fraction", min=0, max=1)
+
+
+def test_a_signal_of_a_python_plugin_is_saved_and_read_back_in_the_same_registry(throwaway_registry):
+    @source(params=Height)
+    def height(params: Height) -> Signal:
+        """A height that holds."""
+        return Constant(params.value)
+
+    raised = lib.slew(height(value=0.75), rise=0.5)
+    text = Patch.from_signals({"raised": raised}).to_toml()
+    assert '[raised_1]\nuse = "height"\nvalue = 0.75\n' in text
+    rebuilt = Patch.parse(tomllib.loads(text)).build()["raised"]
+    # from 0.75 at time 0, slewed from where it starts: the same signal
+    assert rebuilt.sample(TIMES).tolist() == raised.sample(TIMES).tolist() == [0.75] * len(TIMES)
+
+
+class Doubled(Signal):
+    """A signal a Python `compute` makes."""
+
+    def compute(self, times):
+        return np.asarray(times) * 2.0
+
+
+UNSAVED = {
+    "a Constant of Python": ({"level": Constant(0.5)}, "level", "values given as they are"),
+    "values given": ({"level": from_values([0.0, 1.0], rate=2.0)}, "level", "values given as they are"),
+    "a signal of its own compute": ({"level": Doubled()}, "level", "callback"),
+    "a sum": ({"mix": lib.constant(value=0.5) + lib.constant(value=0.25)}, "mix", "operator"),
+    "a shaper over a sum": ({"glow": lib.slew(lib.constant() * 2.0)}, "glow.signal", "operator"),
+    "a name no node may have": ({"Glow": lib.constant()}, "Glow", "node name"),
+}
+
+
+@pytest.mark.parametrize(("signals", "path", "reason"), UNSAVED.values(), ids=UNSAVED.keys())
+def test_a_signal_a_patch_cannot_hold_is_refused_naming_its_path_and_why(signals, path, reason):
+    with pytest.raises(FormatError, match="cannot save as a patch") as refused:
+        Patch.from_signals(signals)
+    assert [where for where, _ in refused.value.problems] == [path]
+    assert reason in refused.value.problems[0][1]
 
 
 # ---------------------------------------------------------------- the schema

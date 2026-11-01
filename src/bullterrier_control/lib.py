@@ -12,13 +12,11 @@ Built-in and installed packages' sources, shapers and operations alike (`bullter
 first use).
 """
 
-from typing import Any
-
 from .errors import UnknownNameError
 from .registry import Registered, all_registered, get
 
 
-def __getattr__(name: str) -> Registered[Any, Any]:
+def __getattr__(name: str) -> Registered:
     """The source, shaper or operation called `name`; `AttributeError` listing the available ones if there is none."""
     if name.startswith("_"):
         raise AttributeError(name)

@@ -5,10 +5,11 @@
 writes `src/bullterrier_control/builtin/NAME.py` and `tests/builtin/test_NAME.py` from `tools/templates/`: a working
 source (or shaper, or operation) with one example parameter and one example test, which pass the gate as written.
 A source or shaper also gets `examples/gallery/NAME.toml`, the patch its gallery picture is drawn from. A shaper is
-written in Rust: its `crates/core/src/builtin/NAME.rs` declares the parameters and defines `shape` (the build script
-finds the file; nothing else registers it), and its Python module is one line that calls the core. Replace the
-parameter, the body, the test and the patch with the real ones (CLAUDE.md, "Adding a source or shaper"), then run
-`uv run poe api`, which writes its typed function in `lib.pyi` (and a shaper's method in `_chain.py`).
+written in Rust and has no Python module: its `crates/core/src/builtin/NAME.rs` declares the parameters and defines
+`shape` (the build script finds the file and registers it in the core's table, which the package's registry starts
+from). Replace the parameter, the body, the test and the patch with the real ones (CLAUDE.md, "Adding a source or
+shaper"), then run `uv run poe api`, which writes its typed function in `lib.pyi` (and a shaper's method in
+`_chain.py`).
 
 Interface: main(argv) -> exit code: 0 written, 1 refused (the reason on stderr), 2 wrong usage (argparse explains).
 """
@@ -25,17 +26,19 @@ NAME = re.compile(r"[a-z][a-z0-9_]*")
 
 
 def new_source(name: str, kind: str, root: Path) -> list[Path]:
-    """Write the module, the test file and, for a source or shaper, the gallery patch of a new thing (and a shaper's
-    Rust file); return the paths.
+    """Write the module (a shaper's is its Rust file), the test file and, for a source or shaper, the gallery patch of
+    a new thing; return the paths.
 
     `ValueError` if refused: a name that is malformed, or a file that exists already (nothing is written then)."""
     if not NAME.fullmatch(name):
         raise ValueError(f"{name!r}: a name is lower case letters, digits and _, starting with a letter")
     module = root / "src" / "bullterrier_control" / "builtin" / f"{name}.py"
     test = root / "tests" / "builtin" / f"test_{name}.py"
-    made = [(f"{kind}.py.tmpl", module), (f"test_{kind}.py.tmpl", test)]
-    if kind == "shaper":  # the parameters and the work are in Rust; the Python module only calls the core
+    made = [(f"test_{kind}.py.tmpl", test)]
+    if kind == "shaper":  # the parameters and the work are in Rust, which registers it: there is no Python module
         made.append(("shaper.rs.tmpl", root / "crates" / "core" / "src" / "builtin" / f"{name}.rs"))
+    else:
+        made.append((f"{kind}.py.tmpl", module))
     if kind != "operation":  # an operation gives events or a series: there is no signal to draw
         made.append((f"gallery_{kind}.toml.tmpl", root / "examples" / "gallery" / f"{name}.toml"))
     for _, path in made:

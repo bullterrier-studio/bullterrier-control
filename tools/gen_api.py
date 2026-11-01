@@ -7,8 +7,9 @@
 `__getattr__` for the rest (an installed package's: the registry entry, untyped). `src/bullterrier_control/_chain.py`
 has `Chain`, which `Signal` inherits: a typed method for every built-in shaper, which applies the shaper registered
 under its name. Both are made from what each one publishes (`Registered.description()`: parameter types, choices,
-defaults, units, ranges, docs, and its inputs), never from its code, and are written as `ruff format` lays them out. A
-plugin's are left out: it is reached as `lib.<name>` and through `signal.pipe`.
+defaults, units, docs, and its inputs; each range as the core's parameter table words it), never from its code, and are
+written as `ruff format` lays them out. A plugin's are left out: it is reached as `lib.<name>` and through
+`signal.pipe`.
 
 `render` refuses (`ValueError` naming the built-in or file) any text that does not compile: summaries and parameter
 docs go into docstrings as they are, so a stray triple quote or a bad escape would otherwise write an invalid file.
@@ -30,6 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from bullterrier_control._native import _core  # noqa: PLC2701  (a built-in the core runs has only the core's table)
 from bullterrier_control.inputs import INPUTS
 from bullterrier_control.registry import Registered, all_registered
 from bullterrier_control.signal import Signal
@@ -72,14 +74,12 @@ class Argument:
         return f"{self.name}: {self.annotation}" + ("" if self.default is None else f" = {self.default}")
 
 
-def render(registered: Mapping[str, Registered[Any, Any]]) -> dict[Path, str]:
+def render(registered: Mapping[str, Registered]) -> dict[Path, str]:
     """The text of `lib.pyi` and `_chain.py` for the built-ins among `registered`, by path from the root.
 
     `ValueError` for a built-in shaper named like an attribute `Signal` has already, or a parameter whose schema has no
     Python type here."""
-    built_ins = {
-        name: one for name, one in sorted(registered.items()) if (one.function.__module__ or "").startswith(BUILT_IN)
-    }
+    built_ins = {name: one for name, one in sorted(registered.items()) if _built_in(one)}
     taken = {name for kind in Signal.__mro__ if kind.__module__ != "bullterrier_control._chain" for name in vars(kind)}
     shapers = {name: one for name, one in built_ins.items() if one.kind == "shaper"}
     for name in shapers:
@@ -93,6 +93,12 @@ def render(registered: Mapping[str, Registered[Any, Any]]) -> dict[Path, str]:
     return files
 
 
+def _built_in(one: Registered) -> bool:
+    """Whether `one` is bullterrier-control's own: one the Rust core runs (no Python function) or one defined in the
+    package's built-in modules."""
+    return one.function is None or (one.function.__module__ or "").startswith(BUILT_IN)
+
+
 def _check_compiles(label: str, text: str) -> None:
     """`ValueError` naming `label` if `text` is not valid Python."""
     try:
@@ -104,9 +110,12 @@ def _check_compiles(label: str, text: str) -> None:
         ) from error
 
 
-def _arguments(one: Registered[Any, Any]) -> list[Argument]:
-    """The inputs, then the parameters, of `one`, from its description."""
+def _arguments(one: Registered) -> list[Argument]:
+    """The inputs, then the parameters, of `one`, from its description (and each range from the core's table)."""
     described = one.description()
+    # the core's table words each range: a Python body's through its Params class, a Rust one's by its name
+    table = one.params_model if one.params_model is not None else _core.ParamTable.builtin(one.name)
+    ranges = {name: field.get("range") for name, field in table.describe().items()}
     arguments = []
     for name, given in described["inputs"].items():
         required = given["required"]
@@ -114,13 +123,13 @@ def _arguments(one: Registered[Any, Any]) -> list[Argument]:
         doc = f"{'required' if required else 'optional'}. {given['doc']}"
         arguments.append(Argument(name, annotation, None if required else "None", f"{name}: {doc}"))
     for name, schema in described["parameters"]["properties"].items():
-        arguments.append(_parameter(name, schema))
+        arguments.append(_parameter(name, schema, ranges[name]))
     return arguments
 
 
-def _parameter(name: str, schema: Mapping[str, Any]) -> Argument:
-    """A parameter from its JSON Schema. A choice is `enum`, or `const` for one choice; limits are numbers, shown as
-    `:g`."""
+def _parameter(name: str, schema: Mapping[str, Any], range_text: str | None) -> Argument:
+    """A parameter from its JSON Schema and, for a number, its range as the core's table words it (`0 to 3600`). A
+    choice is `enum`, or `const` for one choice."""
     choices = schema["enum"] if "enum" in schema else [schema["const"]] if "const" in schema else None
     if choices is not None:
         annotation = f"Literal[{', '.join(json.dumps(choice) for choice in choices)}]"
@@ -130,7 +139,7 @@ def _parameter(name: str, schema: Mapping[str, Any]) -> Argument:
         raise ValueError(f"parameter {name!r}: no Python type for the schema {dict(schema)!r}")
     default = float(schema["default"]) if annotation == "float" else schema["default"]
     written = json.dumps(default, ensure_ascii=False) if isinstance(default, str) else repr(default)
-    measure = f"{schema['unit']}, {schema['minimum']:g} to {schema['maximum']:g}, " if "minimum" in schema else ""
+    measure = f"{schema['unit']}, {range_text}, " if range_text is not None else ""
     flags = "".join(f", {flag}" for flag in ("advanced", "cyclic") if schema.get(flag))
     doc = f"{name}: {measure}default {default!r}{flags}. {schema['description']}"
     return Argument(name, annotation, written, doc)
@@ -202,9 +211,9 @@ def _imports(annotations: list[str]) -> list[str]:
     return lines
 
 
-def _lib(built_ins: Mapping[str, Registered[Any, Any]]) -> str:
+def _lib(built_ins: Mapping[str, Registered]) -> str:
     functions: list[list[str]] = []
-    annotations = ["Registered[Any, Any]"]
+    annotations = ["Registered"]
     for name, one in built_ins.items():
         arguments = _arguments(one)
         signal = ["signal: Signal", "/"] if one.kind == "shaper" else []
@@ -223,11 +232,11 @@ def _lib(built_ins: Mapping[str, Registered[Any, Any]]) -> str:
     ]
     for function in functions:  # a stub separates them by one blank line, as `ruff format` does
         lines += ["", *function]
-    lines += ["", "def __getattr__(name: str) -> Registered[Any, Any]: ..."]
+    lines += ["", "def __getattr__(name: str) -> Registered: ..."]
     return "\n".join(lines) + "\n"
 
 
-def _chain(shapers: Mapping[str, Registered[Any, Any]]) -> str:
+def _chain(shapers: Mapping[str, Registered]) -> str:
     methods: list[list[str]] = []
     annotations = ["abstractmethod"]  # the one name the fixed part of the file needs
     for name, one in shapers.items():
