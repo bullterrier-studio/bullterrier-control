@@ -149,6 +149,18 @@ impl Event {
     pub const fn pitch(&self) -> Option<f64> {
         self.pitch
     }
+
+    /// This event at `t` seconds with `duration`, its strength, label and pitch kept; refused by [`Event::new`]'s
+    /// rules.
+    pub(crate) fn moved(&self, t: f64, duration: Option<f64>) -> Result<Self, FormatError> {
+        let options = EventOptions {
+            strength: self.strength,
+            duration,
+            label: self.label.clone(),
+            pitch: self.pitch,
+        };
+        Self::new(t, options)
+    }
 }
 
 // The fields as a file spells them, before any rule is checked; an absent field and a `null` one are both `None`.

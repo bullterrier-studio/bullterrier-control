@@ -5,7 +5,7 @@
 //! holds to within float rounding (a nanosecond): 0.1 + 0.2 - 0.3 is 0, not a span of 3e-17 s. Every other field is
 //! unchanged, and so is the order.
 
-use crate::formats::{Event, EventOptions};
+use crate::formats::Event;
 use crate::registry::{Output, Returns};
 use crate::rounding::{at_least, more_than};
 use crate::{Error, Operation};
@@ -49,24 +49,14 @@ impl Operation for Params {
             let start = event.t() + self.offset;
             if at_least(start, 0.0) {
                 // not `max`: as Python's `max(start, 0.0)`, a start of -0.0 stays -0.0
-                moved.push(rebuilt(event, if 0.0 > start { 0.0 } else { start }, event.duration())?);
+                let at = if 0.0 > start { 0.0 } else { start };
+                moved.push(event.moved(at, event.duration()).map_err(|source| Error::Format { source })?);
             } else if let Some(duration) = event.duration().filter(|duration| more_than(start + duration, 0.0)) {
-                moved.push(rebuilt(event, 0.0, Some(start + duration))?);
+                moved.push(event.moved(0.0, Some(start + duration)).map_err(|source| Error::Format { source })?);
             }
         }
         Ok(Output::Events(moved))
     }
-}
-
-/// `event` at `t` with `duration`, every other field as it was.
-fn rebuilt(event: &Event, t: f64, duration: Option<f64>) -> Result<Event, Error> {
-    let options = EventOptions {
-        strength: event.strength(),
-        duration,
-        label: event.label().map(str::to_owned),
-        pitch: event.pitch(),
-    };
-    Event::new(t, options).map_err(|source| Error::Format { source })
 }
 
 #[cfg(test)]

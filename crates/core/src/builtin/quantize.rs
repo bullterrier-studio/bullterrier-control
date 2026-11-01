@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::formats::{Event, EventOptions, FormatError, Grid, Problem};
+use crate::formats::{Event, FormatError, Grid, Problem};
 use crate::inputs::{Input, InputKind};
 use crate::registry::{self, Output, Returns};
 use crate::rounding::at_least;
@@ -93,21 +93,11 @@ impl Operation for Params {
             .iter()
             .zip(snapped)
             // a position at 0 to within rounding is 0; not `max`: as numpy's `maximum`, -0.0 stays -0.0
-            .map(|(event, t)| moved(event, if 0.0 > t { 0.0 } else { t }))
+            .map(|(event, t)| event.moved(if 0.0 > t { 0.0 } else { t }, event.duration()))
             .collect::<Result<_, _>>()
             .map(Output::Events)
+            .map_err(|source| Error::Format { source })
     }
-}
-
-/// `event` at `t`, every other field as it was.
-fn moved(event: &Event, t: f64) -> Result<Event, Error> {
-    let options = EventOptions {
-        strength: event.strength(),
-        duration: event.duration(),
-        label: event.label().map(str::to_owned),
-        pitch: event.pitch(),
-    };
-    Event::new(t, options).map_err(|source| Error::Format { source })
 }
 
 /// The refusal of a time `error` says the grid cannot snap, naming `events`.
