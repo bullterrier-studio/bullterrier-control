@@ -19,10 +19,6 @@ from bullterrier_control.errors import FormatError, ParameterError
 # ---- parameter tables ----
 
 CORE = _core.Registry(builtin=True)  # the things the Rust core runs
-BUILT_INS = [
-    "beats", "clip", "constant", "delay", "envelope", "every", "follow", "gate", "hold", "keyframes", "latch", "lfo",
-    "noise", "normalise", "quantize", "remap", "select", "shift", "slew", "steps", "thin",
-]  # fmt: skip
 RISE = "Seconds the output takes to climb by 1; larger is slower. 0 follows a rise at once."
 FALL = "Seconds the output takes to fall by 1; larger is slower. 0 follows a fall at once."
 RATE = "Internal samples per second; the output is exact to one sample. Raising it is more exact and slower."
@@ -74,7 +70,7 @@ def assert_lists(refused, expected):
         assert part in rule, (path, rule, part)
 
 
-@pytest.mark.parametrize("name", BUILT_INS)
+@pytest.mark.parametrize("name", list(CORE.things()))
 def test_the_core_has_a_table_for_every_registered_built_in(name):
     assert name in registry.all_registered()
     thing = CORE.get(name)

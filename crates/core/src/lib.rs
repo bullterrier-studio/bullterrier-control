@@ -5,11 +5,11 @@
 //! they follow.
 //!
 //! Pure Rust, no Python: the `bullterrier-control-python` crate binds it to the package. Every built-in source, shaper
-//! and operation declares its parameters in Rust ([`builtin`]); [`parameters`] gives a built-in's table, and [`shape`]
-//! shapes a signal with a shaper the core implements and values it reads through that table, so a value is checked the
-//! same way wherever it comes from. A shaper is also a method of [`Signal`] taking its typed parameters
+//! and operation is defined in Rust ([`builtin`]); its thing gives its table ([`Thing::table`](registry::Thing::table)),
+//! and [`shape`] shapes a signal with a shaper the core implements and values it reads through that table, so a value
+//! is checked the same way wherever it comes from. A shaper is also a method of [`Signal`] taking its typed parameters
 //! ([`Signal::slew`]), and any [`Shaper`] goes into a chain by [`Signal::pipe`]. The [`registry`] holds every source,
-//! shaper and operation by name ([`Registry::builtin`]: those the core runs), with the rules for getting in and the
+//! shaper and operation by name ([`Registry::builtin`]: the built-ins), with the rules for getting in and the
 //! one checked door through which each is called.
 
 #![forbid(unsafe_code)]
@@ -74,35 +74,6 @@ pub mod lib {
     include!(concat!(env!("OUT_DIR"), "/lib.rs"));
 }
 
-/// The parameter table of the built-in called `name`: a source, shaper or operation, whether or not the core runs it.
-///
-/// ```
-/// let table = bullterrier_control::parameters("slew")?;
-/// let names: Vec<&str> = table.params().iter().map(|param| param.name.as_str()).collect();
-/// assert_eq!(names, ["rise", "fall", "rate"]);
-/// # Ok::<(), bullterrier_control::Error>(())
-/// ```
-///
-/// # Errors
-/// [`Error::UnknownName`] listing the built-ins if there is none of that name, and [`Error::Params`] if its
-/// declaration breaks a rule (a bug in the core, which its tests rule out).
-pub fn parameters(name: &str) -> Result<&'static params::ParamTable, Error> {
-    let (_, table) = builtin::PARAMS
-        .iter()
-        .find(|(built_in, _)| *built_in == name)
-        .ok_or_else(|| Error::UnknownName {
-            name: name.to_owned(),
-            available: builtins().into_iter().map(str::to_owned).collect(),
-        })?;
-    table().map_err(|error| Error::params(name, error))
-}
-
-/// The names of the built-in sources, shapers and operations, sorted: each has a table ([`parameters`]).
-#[must_use]
-pub fn builtins() -> Vec<&'static str> {
-    builtin::PARAMS.iter().map(|(name, _)| *name).collect()
-}
-
 #[cfg(test)]
 mod builtin_table;
 #[cfg(test)]
@@ -150,22 +121,21 @@ mod tests {
 
     #[test]
     fn a_name_the_core_runs_no_shaper_of_is_refused_as_the_registry_refuses_it() {
-        let unknown = "unknown source, shaper or operation 'no_such_shaper'; available: beats, clip, constant, delay, envelope, every, follow, gate, hold, keyframes, latch, lfo, noise, normalise, quantize, remap, select, shift, slew, steps, thin";
+        let names: Vec<&str> = crate::Registry::builtin()
+            .things()
+            .map(crate::registry::Thing::name)
+            .collect();
+        assert!(names.contains(&"slew"), "{names:?}");
+        let unknown = format!(
+            "unknown source, shaper or operation 'no_such_shaper'; available: {}",
+            names.join(", ")
+        );
         for refused in [
             render("no_such_shaper", &slew_params()).map(|_| ()),
             crate::Registry::builtin().get("no_such_shaper").map(|_| ()),
         ] {
-            assert_eq!(refused.map_err(|error| error.to_string()), Err(unknown.to_owned()));
+            assert_eq!(refused.map_err(|error| error.to_string()), Err(unknown.clone()));
         }
-        // a built-in's table asked for by a name with none
-        let table = super::parameters("no_such_thing")
-            .map(|_| ())
-            .map_err(|error| error.to_string());
-        assert!(
-            table.as_ref().is_err_and(|text| text
-                .starts_with("unknown source, shaper or operation 'no_such_thing'; available: beats, clip, constant,")),
-            "{table:?}"
-        );
     }
 
     #[test]

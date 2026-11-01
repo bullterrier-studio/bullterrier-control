@@ -6,6 +6,7 @@ tests, clippy and the extension) with cargo, into the target folder the project'
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -124,6 +125,11 @@ def test_a_new_thing_is_found_by_the_build_and_its_rust_and_python_tests_pass_as
         rust = cargo(checkout, "test", "-p", "bullterrier-control", part, "--locked", "--quiet", "fresh_one")
         assert rust.returncode == 0, rust.stdout + rust.stderr
         assert passed in rust.stdout, rust.stdout
+    # what lists the built-ins finds the new one with no edit: the core's checks over all of them, its doc
+    for part, filters in (("--lib", ["builtin::tests::", "a_name_the_core_runs"]), ("--doc", ["Registry::builtin"])):
+        listed = cargo(checkout, "test", "-p", "bullterrier-control", part, "--locked", "--", *filters)
+        assert listed.returncode == 0, listed.stdout + listed.stderr
+        assert re.search(r"ok\. [1-9][0-9]* passed", listed.stdout), listed.stdout  # a filter that matched
     linted = cargo(
         checkout, "clippy", "-p", "bullterrier-control", "--all-targets", "--locked", "--quiet", "--", "-D", "warnings"
     )
@@ -131,6 +137,22 @@ def test_a_new_thing_is_found_by_the_build_and_its_rust_and_python_tests_pass_as
 
     install_extension(checkout)
     check_python(checkout)
+    registered = run(
+        checkout,
+        "-m",
+        "pytest",
+        "-q",
+        "-n",
+        "0",
+        "-p",
+        "no:cacheprovider",
+        f"--basetemp={checkout / 'basetemp'}",
+        "tests/_native/test__core_registry.py",
+        "-k",
+        "holds_what_the_core_runs",  # the package's check: a thing for every built-in file
+    )
+    assert registered.returncode == 0, registered.stdout + registered.stderr
+    assert "1 passed" in registered.stdout, registered.stdout
     if nodes:
         built = run(checkout, "-c", CHECK_GALLERY_PATCH)
         assert built.returncode == 0, built.stderr

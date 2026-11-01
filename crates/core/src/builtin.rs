@@ -6,21 +6,16 @@
 //! checks all come from it. A rule between fields (`high` is not below `low`) is a `fn rule(&Params) -> Vec<Problem>`
 //! named by `#[param(rule = rule)]` on the struct; the table runs it once every field is valid.
 //!
-//! A file that also implements one of [`Source`](crate::Source), [`Shaper`](crate::Shaper) and
+//! The file also implements one of [`Source`](crate::Source), [`Shaper`](crate::Shaper) and
 //! [`Operation`](crate::Operation) for its `Params` (`impl Shaper for Params`, its `NAME` the file's name, which the
-//! build checks) is a thing the core runs: it is in [`Registry::builtin`](crate::Registry::builtin) under that name,
-//! with the file's leading `//!` lines as its doc (what `help()` shows) and the doc of `Params` as its parameters'; a
-//! source is also a function of [`lib`](crate::lib). A file without one only declares (its source, shaper or
-//! operation still runs in Python). A shaper may also be a method of [`Signal`](crate::Signal) taking its typed
+//! build checks; a file without one does not build): it is in [`Registry::builtin`](crate::Registry::builtin) under
+//! that name, with the file's leading `//!` lines as its doc (what `help()` shows) and the doc of `Params` as its
+//! parameters'; a source is also a function of [`lib`](crate::lib). A shaper may also be a method of
+//! [`Signal`](crate::Signal) taking its typed
 //! `Params`: [`Signal::pipe`](crate::Signal::pipe) of them, so it is checked, named and recorded as every door makes
 //! it. A shaper that needs history builds its signal as a [`Signal::rendered`](crate::Signal::rendered) over its
 //! private causal recurrence `run` (`slew` is the model).
 //! Built-ins never refer to one another: what two of them share goes in a module of the crate named for its concept.
-
-use crate::params::{ParamError, ParamTable};
-
-/// The function that gives one built-in's parameter table.
-pub(crate) type Table = fn() -> Result<&'static ParamTable, ParamError>;
 
 include!(concat!(env!("OUT_DIR"), "/builtin.rs"));
 
@@ -44,85 +39,89 @@ const fn named(name: &str, file: &str) -> bool {
 mod tests {
     use serde_json::json;
 
-    use super::{PARAMS, lfo};
+    use super::lfo;
     use crate::Params as _;
+    use crate::Registry;
     use crate::params::{Kind as ParamKind, ParamUnit};
-    use crate::registry::Kind;
-
-    /// The names the Python package registers, sorted: sources, shapers and operations.
-    const NAMES: [&str; 21] = [
-        "beats",
-        "clip",
-        "constant",
-        "delay",
-        "envelope",
-        "every",
-        "follow",
-        "gate",
-        "hold",
-        "keyframes",
-        "latch",
-        "lfo",
-        "noise",
-        "normalise",
-        "quantize",
-        "remap",
-        "select",
-        "shift",
-        "slew",
-        "steps",
-        "thin",
-    ];
 
     fn described(name: &str) -> Result<serde_json::Value, String> {
-        let (_, table) = PARAMS
-            .iter()
-            .find(|(built_in, _)| *built_in == name)
-            .ok_or_else(|| format!("no built-in called {name}"))?;
-        Ok(table().map_err(|error| error.to_string())?.describe())
+        let thing = Registry::builtin().get(name).map_err(|error| error.to_string())?;
+        Ok(thing.table().describe())
     }
 
-    #[test]
-    fn every_built_in_declares_a_table_that_builds() {
-        let names: Vec<&str> = PARAMS.iter().map(|(name, _)| *name).collect();
-        assert_eq!(names, NAMES);
-        for (name, table) in PARAMS {
-            assert!(table().is_ok(), "{name}: {:?}", table().err());
+    /// The names of the built-in files.
+    fn files() -> Result<Vec<String>, std::io::Error> {
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("builtin");
+        let mut names = Vec::new();
+        for entry in std::fs::read_dir(folder)? {
+            let path = entry?.path();
+            if path.extension().is_some_and(|extension| extension == "rs")
+                && let Some(name) = path.file_stem().and_then(|stem| stem.to_str())
+            {
+                names.push(name.to_owned());
+            }
         }
+        Ok(names)
+    }
+
+    /// What does not match between the built-in `files` and the things `registered`: a file no thing is registered
+    /// for, and a thing with no file.
+    fn unmatched(files: &[String], registered: &[&str]) -> Vec<String> {
+        let unregistered = files
+            .iter()
+            .filter(|file| !registered.contains(&file.as_str()))
+            .map(|file| format!("the file {file}.rs is not registered"));
+        let fileless = registered
+            .iter()
+            .filter(|name| !files.iter().any(|file| file == *name))
+            .map(|name| format!("{name} is registered without a file"));
+        unregistered.chain(fileless).collect()
     }
 
     #[test]
-    fn only_the_built_ins_the_core_runs_are_registered() -> Result<(), crate::Error> {
-        let mut registry = crate::Registry::new();
+    fn a_thing_is_registered_for_each_built_in_file_and_for_nothing_else() -> Result<(), Box<dyn std::error::Error>> {
+        let mut registry = Registry::new();
         super::register(&mut registry)?;
-        let things: Vec<(&str, Kind)> = registry.things().map(|thing| (thing.name(), thing.kind())).collect();
-        assert_eq!(
-            things,
-            [
-                ("beats", Kind::Operation),
-                ("clip", Kind::Shaper),
-                ("constant", Kind::Source),
-                ("delay", Kind::Shaper),
-                ("envelope", Kind::Source),
-                ("every", Kind::Operation),
-                ("follow", Kind::Shaper),
-                ("gate", Kind::Shaper),
-                ("hold", Kind::Shaper),
-                ("keyframes", Kind::Source),
-                ("latch", Kind::Source),
-                ("lfo", Kind::Source),
-                ("noise", Kind::Source),
-                ("normalise", Kind::Operation),
-                ("quantize", Kind::Operation),
-                ("remap", Kind::Shaper),
-                ("select", Kind::Operation),
-                ("shift", Kind::Operation),
-                ("slew", Kind::Shaper),
-                ("steps", Kind::Source),
-                ("thin", Kind::Operation)
-            ]
-        );
+        let registered: Vec<&str> = registry.things().map(crate::registry::Thing::name).collect();
+        let files = files()?;
+        assert!(files.iter().any(|file| file == "constant"), "{files:?}");
+        assert_eq!(unmatched(&files, &registered), Vec::<String>::new());
+        // the core's registry is that one
+        let builtin: Vec<&str> = Registry::builtin().things().map(crate::registry::Thing::name).collect();
+        assert_eq!(builtin, registered);
         Ok(())
+    }
+
+    #[test]
+    fn the_match_of_files_and_things_names_a_file_not_registered_and_a_thing_without_a_file() {
+        let files = ["clip".to_owned(), "slew".to_owned()];
+        // (row, the things registered, what does not match)
+        let rows: [(&str, &[&str], &[&str]); 4] = [
+            ("the same", &["clip", "slew"], &[]),
+            (
+                "a file not registered",
+                &["clip"],
+                &["the file slew.rs is not registered"],
+            ),
+            (
+                "a thing without a file",
+                &["clip", "drift", "slew"],
+                &["drift is registered without a file"],
+            ),
+            (
+                "both",
+                &["clip", "drift"],
+                &[
+                    "the file slew.rs is not registered",
+                    "drift is registered without a file",
+                ],
+            ),
+        ];
+        for (row, registered, expected) in rows {
+            assert_eq!(unmatched(&files, registered), expected, "{row}");
+        }
     }
 
     #[test]
@@ -381,10 +380,22 @@ mod tests {
     }
 
     #[test]
-    fn every_field_of_every_built_in_is_declared_as_the_python_models_did() -> Result<(), String> {
+    fn every_field_of_every_built_in_is_declared_as_the_python_models_did() {
+        let expected: Vec<_> = declared_fields()
+            .into_iter()
+            .map(|row| {
+                (
+                    (row.built_in, row.field, row.kind, row.default),
+                    (row.unit, row.range, row.flags, row.choices.to_vec()),
+                )
+            })
+            .collect();
+        // the built-ins ported from Python, each with all its fields; a later one is not written out here
+        let ported = |name: &str| expected.iter().any(|((built_in, ..), _)| *built_in == name);
         let mut declared = Vec::new();
-        for (name, table) in PARAMS {
-            for param in table().map_err(|error| error.to_string())?.params() {
+        for thing in Registry::builtin().things().filter(|thing| ported(thing.name())) {
+            let name = thing.name();
+            for param in thing.table().params() {
                 let (kind, choices) = match &param.kind {
                     ParamKind::Float => ("float", Vec::new()),
                     ParamKind::Whole => ("whole", Vec::new()),
@@ -399,7 +410,7 @@ mod tests {
                     (true, true) => "advanced cyclic",
                 };
                 declared.push((
-                    (*name, param.name.as_str(), kind, param.default.clone()),
+                    (name, param.name.as_str(), kind, param.default.clone()),
                     (
                         param.unit.map(ParamUnit::as_str),
                         param.min.zip(param.max),
@@ -409,16 +420,6 @@ mod tests {
                 ));
             }
         }
-        let expected: Vec<_> = declared_fields()
-            .into_iter()
-            .map(|row| {
-                (
-                    (row.built_in, row.field, row.kind, row.default),
-                    (row.unit, row.range, row.flags, row.choices.to_vec()),
-                )
-            })
-            .collect();
         assert_eq!(declared, expected);
-        Ok(())
     }
 }

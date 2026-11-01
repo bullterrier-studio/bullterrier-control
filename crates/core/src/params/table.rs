@@ -49,7 +49,7 @@ impl Param {
     /// digits and an exponent only when it is below `1e-4` or from `1e6` (`-1e+06 to 1e+06`).
     ///
     /// ```
-    /// let table = bullterrier_control::parameters("noise")?;
+    /// let table = bullterrier_control::Registry::builtin().get("noise")?.table();
     /// let ranges: Vec<Option<String>> = table.params().iter().map(|param| param.range_text()).collect();
     /// assert_eq!(ranges[0], None); // shape
     /// assert_eq!(ranges[1].as_deref(), Some("0.001 to 1000")); // rate

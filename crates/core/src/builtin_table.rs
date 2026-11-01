@@ -1,13 +1,13 @@
 //! The Rust source of the built-in table, as a function of the built-in files: the build script writes it, and the
 //! crate's tests (which include this file) check it on made-up files.
 //!
-//! The convention, read from the text on purpose (a build script cannot ask the compiler): a file whose code
-//! implements one of [`KINDS`]' traits for `Params` (`impl Shaper for Params`; the trait by any path,
-//! `crate::Shaper`, the struct as `Params` or `self::Params`, with or without generics) is a thing the core runs, of
-//! that kind; one without only declares its parameters (its thing still runs in Python). Comments, docs, string and
-//! character literals and `macro_rules!` bodies are not its code. Its name is the file's; its doc (what `help()` shows) is the
-//! file's leading `//!` lines; its parameters' doc is the `///` lines above `pub struct Params`, and their title the
-//! name in title case with `Params` (`every_n` is `EveryNParams`), as the Python classes are named.
+//! The convention, read from the text on purpose (a build script cannot ask the compiler): every file's code
+//! implements exactly one of [`KINDS`]' traits for `Params` (`impl Shaper for Params`; the trait by any path,
+//! `crate::Shaper`, the struct as `Params` or `self::Params`, with or without generics), and is a thing the core runs,
+//! of that kind; a file with none or two is refused. Comments, docs, string and character literals and `macro_rules!`
+//! bodies are not its code. Its name is the file's; its doc (what `help()` shows) is the file's leading `//!` lines;
+//! its parameters' doc is the `///` lines above `pub struct Params`, and their title the name in title case with
+//! `Params` (`every_n` is `EveryNParams`), as the Python classes are named.
 //!
 //! A source's `lib` function takes what `docs/api.md` rule 2 says, read from its `type Inputs` (one input's data, or
 //! `Inputs`, the file's `pub struct Inputs { pub <input>: <data>, .. }` of several): each required input borrowed
@@ -28,8 +28,7 @@ pub(crate) struct File<'a> {
 
 /// The generated Rust: [`builtin`](Self::builtin) for `src/builtin.rs`, [`lib`](Self::lib) for the `lib` module.
 pub(crate) struct Generated {
-    /// A public module for each file; `PARAMS`, every built-in's parameter table by name; and `register`, which
-    /// registers every thing the core runs.
+    /// A public module for each file, and `register`, which registers each as the thing the core runs.
     pub(crate) builtin: String,
     /// A free function for each source the core runs.
     pub(crate) lib: String,
@@ -48,8 +47,8 @@ const BORROWED: [(&str, &str, &str); 5] = [
     ("Series", "series", "crate::formats::Series"),
 ];
 
-/// The Rust of the table of `files` (sorted by name), or the error naming a file whose text marks it as more than one
-/// kind, or a source whose `type Inputs` no `lib` function is written for.
+/// The Rust of the table of `files` (sorted by name), or the error naming a file whose text marks it as no kind or
+/// more than one, or a source whose `type Inputs` no `lib` function is written for.
 pub(crate) fn table(files: &[File<'_>]) -> Result<Generated, String> {
     let mut builtin = String::new();
     let mut lib = String::new();
@@ -63,8 +62,14 @@ pub(crate) fn table(files: &[File<'_>]) -> Result<Generated, String> {
             .filter(|(_, named)| implemented.contains(named))
             .collect();
         let kind = match kinds.as_slice() {
-            [] => None,
-            [kind] => Some(*kind),
+            [kind] => *kind,
+            [] => {
+                return Err(format!(
+                    "{}: a built-in implements one of Source, Shaper and Operation for its Params \
+                     (`impl Shaper for Params`)",
+                    file.path
+                ));
+            }
             _ => {
                 let names: Vec<&str> = kinds.iter().map(|(kind, _)| *kind).collect();
                 return Err(format!("{}: a built-in is one of {}", file.path, names.join(", ")));
@@ -74,22 +79,11 @@ pub(crate) fn table(files: &[File<'_>]) -> Result<Generated, String> {
             &mut builtin,
             format_args!("#[path = {:?}]\npub mod {};\n", file.path, file.name),
         );
-        if let Some(kind) = kind {
-            registration(&mut checks, &mut registered, file, kind);
-        }
-        if kind.is_some_and(|(kind, _)| kind == "source") {
+        registration(&mut checks, &mut registered, file, kind);
+        if kind.0 == "source" {
             source_function(&mut lib, file, &code)?;
         }
     }
-    builtin.push_str("/// Every built-in by name, sorted, with the function that gives its parameter table.\n");
-    builtin.push_str("pub(crate) static PARAMS: &[(&str, Table)] = &[\n");
-    for File { name, .. } in files {
-        write(
-            &mut builtin,
-            format_args!("    ({name:?}, <{name}::Params as crate::Params>::table),\n"),
-        );
-    }
-    builtin.push_str("];\n");
     builtin.push_str(&checks);
     builtin.push_str("/// Registers every built-in the core runs, under its name, with its doc.\n");
     builtin
@@ -573,13 +567,8 @@ mod tests {
     }
 
     #[test]
-    fn a_file_marked_as_a_kind_is_registered_as_one_and_one_without_only_declares() {
+    fn a_file_is_registered_as_the_kind_it_implements() {
         let code = built(&[
-            file("plain", "pub struct Params {}\n"),
-            file(
-                "recurs",
-                "pub struct Params {}\npub(crate) fn shape(input: &Signal, params: &Params) {}\n",
-            ),
             file(
                 "rises",
                 "pub struct Params {\n    pub level: f64,\n}\nimpl Source for Params {\n    type Inputs = ();\n}\n",
@@ -595,25 +584,12 @@ mod tests {
                 code.builtin
             );
         }
-        for name in ["plain", "recurs"] {
-            assert!(!registered.contains(name), "{name}: {}", code.builtin);
-        }
-        // each registered one's trait `NAME` is checked to be its file's name when the core compiles
+        // each one's trait `NAME` is checked to be its file's name when the core compiles
         for (name, kind) in [("rises", "Source"), ("shapes", "Shaper"), ("picks", "Operation")] {
             let check = format!("named(<{name}::Params as crate::{kind}>::NAME, {name:?})");
             assert!(code.builtin.contains(&check), "{name}: {}", code.builtin);
         }
-        assert!(!code.builtin.contains("named(<plain::Params"), "{}", code.builtin);
-        // every file declares its parameters; only a source is a `lib` function
-        let params = code.builtin.split("static PARAMS").nth(1).unwrap_or_default();
-        for name in ["plain", "recurs", "rises", "shapes", "picks"] {
-            assert!(
-                params.contains(&format!("({name:?}, <{name}::Params")),
-                "{name}: {}",
-                code.builtin
-            );
-        }
-        // through the one door, as every way of making a signal is
+        // through the one door, as every way of making a signal is; only a source is a `lib` function
         assert!(
             code.lib.contains(
                 "pub fn rises(params: crate::builtin::rises::Params) -> Result<crate::Signal, crate::Error> {\n    \
@@ -622,8 +598,33 @@ mod tests {
             "{}",
             code.lib
         );
-        for name in ["plain", "recurs", "shapes", "picks"] {
+        for name in ["shapes", "picks"] {
             assert!(!code.lib.contains(&format!("fn {name}(")), "{name}: {}", code.lib);
+        }
+    }
+
+    #[test]
+    fn a_file_of_no_kind_or_of_two_is_refused_naming_it() {
+        let none =
+            "a built-in implements one of Source, Shaper and Operation for its Params (`impl Shaper for Params`)";
+        // (row, the file's text, the refusal after its name)
+        let rows = [
+            ("parameters only", "pub struct Params {}\n", none),
+            (
+                "a body but no trait",
+                "pub struct Params {}\npub(crate) fn shape(input: &Signal, params: &Params) {}\n",
+                none,
+            ),
+            (
+                "two kinds",
+                "impl Source for Params {}\nimpl Shaper for Params {}\n",
+                "a built-in is one of source, shaper",
+            ),
+        ];
+        for (row, source, refusal) in rows {
+            // among good files, the refused one is named
+            let files = [file("fine", "impl Shaper for Params {}"), file("it", source)];
+            assert_eq!(table(&files).err(), Some(format!("it: {refusal}")), "{row}");
         }
     }
 
@@ -707,12 +708,13 @@ mod tests {
             ("of another trait", "impl MyShaper for Params {}", None),
         ];
         for (row, source, kind) in rows {
-            let code = built(&[file("it", source)]);
-            let registered = code.builtin.split("fn register").nth(1).unwrap_or_default();
-            let found = ["source", "shaper", "operation"]
-                .into_iter()
-                .find(|kind| registered.contains(&format!("Thing::{kind}::<it::Params>")));
-            assert_eq!(found, kind, "{row}: {}", code.builtin);
+            // a file of no kind is refused
+            let found = table(&[file("it", source)]).ok().and_then(|code| {
+                ["source", "shaper", "operation"]
+                    .into_iter()
+                    .find(|kind| code.builtin.contains(&format!("Thing::{kind}::<it::Params>")))
+            });
+            assert_eq!(found, kind, "{row}");
         }
     }
 
@@ -963,12 +965,6 @@ mod tests {
             );
             assert!(doc.contains("whatever error the source gives."), "{row}: {doc}");
         }
-    }
-
-    #[test]
-    fn a_file_marked_as_two_kinds_is_refused_naming_it() {
-        let refused = table(&[file("both", "impl Source for Params {}\nimpl Shaper for Params {}\n")]).err();
-        assert_eq!(refused.as_deref(), Some("both: a built-in is one of source, shaper"));
     }
 
     #[test]

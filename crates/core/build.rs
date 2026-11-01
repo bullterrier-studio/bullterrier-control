@@ -1,6 +1,6 @@
 //! Writes the table of built-ins the core compiles in (see `src/builtin_table.rs`): one module per file in
-//! `src/builtin/`, every built-in by name with its parameters, the registration of every thing the core runs, and a
-//! `lib` function for each source. Adding a built-in adds its file and edits nothing else.
+//! `src/builtin/`, the registration of each as a thing the core runs, and a `lib` function for each source. Adding a
+//! built-in adds its file and edits nothing else.
 
 #[path = "src/builtin_table.rs"]
 mod table;

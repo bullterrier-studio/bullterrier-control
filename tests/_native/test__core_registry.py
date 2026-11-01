@@ -13,6 +13,7 @@ import threading
 import types
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -24,6 +25,7 @@ from bullterrier_control.errors import ParameterError, SignalError, UnknownNameE
 from bullterrier_control.plugin import Constant, Finite, Params, Signal, param
 
 TIMEOUT = 60.0  # seconds a thread test waits before it fails as a deadlock
+BUILT_IN_FILES = Path(__file__).resolve().parents[2] / "crates" / "core" / "src" / "builtin"  # a thing each
 
 
 class Level(Params):
@@ -72,29 +74,9 @@ def scale(signal: Signal, params: Level) -> Signal:
 
 
 def test_the_registry_of_the_core_holds_what_the_core_runs_and_an_empty_one_nothing():
-    assert list(_core.Registry(builtin=True).things()) == [
-        "beats",
-        "clip",
-        "constant",
-        "delay",
-        "envelope",
-        "every",
-        "follow",
-        "gate",
-        "hold",
-        "keyframes",
-        "latch",
-        "lfo",
-        "noise",
-        "normalise",
-        "quantize",
-        "remap",
-        "select",
-        "shift",
-        "slew",
-        "steps",
-        "thin",
-    ]
+    files = sorted(path.stem for path in BUILT_IN_FILES.glob("*.rs"))
+    assert "constant" in files
+    assert list(_core.Registry(builtin=True).things()) == files
     assert _core.Registry(builtin=False).things() == {}
 
 
