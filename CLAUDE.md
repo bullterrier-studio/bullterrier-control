@@ -187,7 +187,7 @@ a source has `fn source(&self, inputs: Self::Inputs) -> Result<Signal, Error>`, 
 compile time; `type Inputs` is its data, as for every kind: `()`, `Vec<Event>`, `Option<Grid>`, a struct for several,
 recorded in its recipe); a stateful shaper builds its signal with `Signal::rendered`
 over a private causal `run(inputs: &[f64], params: &Params) -> Vec<f64>` (output *i* depends on inputs 0 to *i*), and a
-stateless one combines signals (`input * self.depth`). The file's leading `//!` lines are its doc (`help()` in Rust). A typed
+stateless one combines signals (`input * self.depth`) or retimes one (`Signal::retimed`: `delay`, `hold`). The file's leading `//!` lines are its doc (`help()` in Rust). A typed
 `Signal::<name>(&self, Params)` method is `self.pipe(params)` (with inputs, `self.pipe_with(params, inputs)`, its arguments in
 `docs/api.md` rule 2's order): every door (`Thing::call`, `shape`, `pipe`, `pipe_with`, a typed method,
 a `lib::` function) checks, runs, names and records the recipe (`Signal::recipe`, kept by a wrapper node, which
@@ -197,8 +197,8 @@ source is also a `lib::` function, its arguments as `docs/api.md` rule 2 says). 
 sealed; code outside the crate adds nodes with `Signal::from_fn`, `Signal::rendered` and `Signal::retimed`; no Rust lock is held while a
 callback into Python runs. A node implements `start` and `finish` and never reads an input itself: the one loop in
 `signal/walk.rs` does (a scan test fails otherwise), and drops go through a per-thread queue, so a graph of any depth
-(`MAX_DEPTH`, 1000, a memory bound) is read and dropped on any stack. Callbacks (`from_fn`, `run`, a Python `compute`
-or body) are the one recursion and are capped at 48 nested per thread (`Error::Depth`); the smallest supported thread
+(`MAX_DEPTH`, 1000, a memory bound) is read and dropped on any stack. Callbacks (`from_fn`, `run`, a retiming's `map`, a Python
+`compute` or body) are the one recursion and are capped at 48 nested per thread (`Error::Depth`); the smallest supported thread
 stack is 256 KiB. `Signal`'s `Debug` prints a node label and the depth only (`Node::label`). No hidden tunables (rule 5): a number is a `Params`
 field, trivial, or a cited constant. No `unwrap`, `expect`, `panic!`, `todo!` or printing (clippy fails them): return an
 `Error`; an error in the core is a bug in the caller, mapped to `ValueError`. `pub` only for what the bindings use, else

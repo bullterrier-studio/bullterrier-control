@@ -26,10 +26,11 @@ pub(crate) const NESTED: usize = 48;
 
 /// The most samples one read may hold at once across its graph: the grids and buffers of every node waiting on the
 /// walk's stacks, 2^26 of them, 512 MiB of `f64`. A rendering is bounded by its own `limit`, but a chain of them each
-/// holds a grid and a buffer for the same long read, so `MAX_DEPTH` of them would hold 1000 times that; this is the
-/// bound on the read. A node's finished history is kept apart (never more than half of what its read held). A read
-/// needs about two samples per rendering for each sample of its longest time: 100 stacked renderings fit 5 minutes
-/// at 1000 Hz, 2 fit 4.6 hours. The read's own `times` and `out` belong to its caller and do not count.
+/// holds a grid and a buffer for the same long read, so `MAX_DEPTH` of them would hold 1000 times that; a chain of
+/// retimings each holds its mapped times and a buffer, two samples per time read. This is the bound on the read. A
+/// node's finished history is kept apart (never more than half of what its read held). A read needs about two samples
+/// per rendering for each sample of its longest time: 100 stacked renderings fit 5 minutes at 1000 Hz, 2 fit 4.6
+/// hours. The read's own `times` and `out` belong to its caller and do not count.
 pub(crate) const MOST_HELD: usize = 1 << 26;
 
 thread_local! {
@@ -198,8 +199,8 @@ fn hold(held: &mut usize, count: usize) -> Read {
     if *held > MOST_HELD {
         return Err(Box::new(Error::Signal {
             message: format!(
-                "the read would hold more than {MOST_HELD} samples at once across its graph (the grids and buffers \
-                 of its stacked renderings, for a time this far): read an earlier time or stack fewer shapers"
+                "the read would hold more than {MOST_HELD} samples at once across its stacked shapers: read fewer \
+                 or earlier times at once, or stack fewer shapers"
             ),
         }));
     }
