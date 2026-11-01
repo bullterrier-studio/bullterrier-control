@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use super::Interpolation;
+use super::{Interpolation, Origin};
 use super::node::{Node, Read};
 
 /// A share of a sample within which a position is the sample it rounds to: `(time - start) * rate` of a time that is
@@ -46,6 +46,10 @@ impl Node for SeriesNode {
 
     fn depth(&self) -> usize {
         1
+    }
+
+    fn origin(&self) -> Origin<'_> {
+        Origin::Values
     }
 }
 

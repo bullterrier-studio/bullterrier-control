@@ -4,7 +4,7 @@
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use super::Signal;
+use super::{Origin, Signal};
 use super::node::{Node, Read};
 use super::series::SAMPLE_ROUNDING;
 use crate::Error;
@@ -188,6 +188,10 @@ impl Node for Rendered {
 
     fn depth(&self) -> usize {
         self.depth
+    }
+
+    fn origin(&self) -> Origin<'_> {
+        Origin::Rendered
     }
 }
 

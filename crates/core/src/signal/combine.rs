@@ -5,7 +5,7 @@ use std::fmt;
 use std::ops::{Add, Mul, Neg, Sub};
 
 use super::node::{Node, Read, Refused};
-use super::{Signal, finite};
+use super::{Origin, Signal, finite};
 
 /// What a [`Combined`] node does with the two values at a time.
 #[derive(Clone, Copy, Debug)]
@@ -120,6 +120,10 @@ impl Node for Combined {
 
     fn depth(&self) -> usize {
         self.depth
+    }
+
+    fn origin(&self) -> Origin<'_> {
+        Origin::Operator
     }
 }
 

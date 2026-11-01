@@ -70,6 +70,23 @@ pub enum Interpolation {
     Hold,
 }
 
+/// How a signal was made ([`Signal::origin`]): by a thing of the [registry](crate::registry), which a patch can name,
+/// or by one of the means a patch has no node for.
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub enum Origin<'a> {
+    /// By a thing of the registry, through any of its doors: how is its recipe.
+    Thing(&'a Recipe),
+    /// By an operator: `+`, `-`, `*`, negation, [`maximum`] or [`minimum`].
+    Operator,
+    /// From values it holds: [`Signal::constant`], [`Signal::from_values`] or [`Signal::from_series`].
+    Values,
+    /// By a callback: [`Signal::from_fn`] (in Python, a `compute`).
+    Callback,
+    /// By a recurrence run over another signal: [`Signal::rendered`] (in Python, `Rendered(run=...)`).
+    Rendered,
+}
+
 /// The optional parts of [`Signal::from_values`]; end a literal with `..Default::default()`.
 ///
 /// ```
@@ -416,7 +433,27 @@ impl Signal {
     /// ```
     #[must_use]
     pub fn recipe(&self) -> Option<&Recipe> {
-        self.0.recipe()
+        match self.0.origin() {
+            Origin::Thing(recipe) => Some(recipe),
+            _ => None,
+        }
+    }
+
+    /// How this signal was made: by a thing of the [registry](crate::registry) (with its [`recipe`](Self::recipe)),
+    /// or by which other means. What saving a graph as a patch asks of each signal, to say why one it cannot save is
+    /// not a thing's.
+    ///
+    /// ```
+    /// use bullterrier_control::{Origin, Signal};
+    ///
+    /// let level = Signal::constant(0.5)?;
+    /// assert!(matches!(level.origin(), Origin::Values));
+    /// assert!(matches!((&level * 2.0).origin(), Origin::Operator));
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
+    #[must_use]
+    pub fn origin(&self) -> Origin<'_> {
+        self.0.origin()
     }
 
     /// `signal` with the recipe the registry made it by.

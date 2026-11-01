@@ -747,3 +747,49 @@ fn a_deep_graph_is_debugged_without_walking_it() -> Result<(), Error> {
     assert!(text.contains("Add") && text.contains("1000"), "{text}");
     Ok(())
 }
+
+#[test]
+fn every_way_of_making_a_signal_says_how_it_was_made() -> Result<(), Error> {
+    use crate::Origin;
+    use crate::builtin::slew;
+
+    let level = Signal::constant(0.5)?;
+    let steps = Signal::from_values(&[0.0, 1.0], 10.0, FromValues::default(), Interpolation::Hold)?;
+    let slewed = steps.slew(slew::Params::default())?;
+    let rendered = Signal::rendered(&level, crate::Rendering::default(), |inputs| {
+        Ok::<_, Unreachable>(inputs.to_vec())
+    })?;
+    // (how it was made, the signal, how it says it was made)
+    let rows: [(&str, Signal, &str); 13] = [
+        ("a constant", level.clone(), "values"),
+        ("from values", steps.clone(), "values"),
+        ("from a series", ramp()?, "values"),
+        ("a callback", echo(), "callback"),
+        ("a recurrence run over a signal", rendered, "rendered"),
+        ("a sum", &level + &steps, "operator"),
+        ("a difference with a number", 1.0 - &level, "operator"),
+        ("a product", &level * 2.0, "operator"),
+        ("a negation", -&level, "operator"),
+        ("the larger of two", maximum(&level, &steps), "operator"),
+        ("the smaller of two", minimum(&level, &steps), "operator"),
+        ("an operator that cannot be read", &level + f64::NAN, "operator"),
+        ("a thing of the registry", slewed.clone(), "thing"),
+    ];
+    for (row, signal, expected) in rows {
+        let made = match signal.origin() {
+            Origin::Thing(_) => "thing",
+            Origin::Operator => "operator",
+            Origin::Values => "values",
+            Origin::Callback => "callback",
+            Origin::Rendered => "rendered",
+        };
+        assert_eq!(made, expected, "{row}");
+    }
+    // a thing's origin holds its recipe, the one `recipe` gives
+    let recipe = match slewed.origin() {
+        Origin::Thing(recipe) => Some(recipe.name.as_str()),
+        _ => None,
+    };
+    assert_eq!((recipe, slewed.recipe().map(|recipe| recipe.name.as_str())), (Some("slew"), Some("slew")));
+    Ok(())
+}
