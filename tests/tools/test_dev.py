@@ -1,7 +1,7 @@
 """`poe new-source` writes a source, shaper or operation that passes the gate as written, in a copy of the project.
 
 An architecture test of the tooling: it runs the developer command and then the tests and the linter, as a contributor
-would, on a copy of the project, so the real one is untouched. A shaper is Rust: its copy is also built (the core's
+would, on a copy of the project, so the real one is untouched. Every kind is Rust: its copy is also built (the core's
 tests, clippy and the extension) with cargo, into the target folder the project's own builds use.
 """
 
@@ -70,15 +70,6 @@ def check_python(checkout: Path, *files: str) -> None:
     assert lint.returncode == 0, lint.stdout + lint.stderr
 
 
-@pytest.mark.parametrize("kind", ["source", "operation"])
-def test_a_new_source_or_operation_passes_its_tests_the_contract_and_the_linter_as_written(checkout, kind):
-    made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", kind)
-    assert made.returncode == 0, made.stderr
-    assert "src/bullterrier_control/builtin/fresh_one.py" in made.stdout
-    assert "uv run poe api" in made.stdout  # lib.pyi is generated
-    check_python(checkout, "src/bullterrier_control/builtin/fresh_one.py")
-
-
 def cargo(checkout: Path, *argv: str) -> subprocess.CompletedProcess:
     """cargo in the copy, building into the target folder of the project (or `CARGO_TARGET_DIR`): the dependencies
     are compiled there already."""
@@ -102,20 +93,30 @@ def install_extension(checkout: Path) -> None:
     shutil.copy(target / "debug" / library, checkout / "src" / "bullterrier_control" / "_native" / installed)
 
 
-@pytest.mark.skipif(
+WINDOWS = pytest.mark.skipif(
     sys.platform == "win32", reason="the build helper copies a unix library name (lib_core.so, _core.abi3.so)"
 )
-def test_a_new_shaper_is_found_by_the_build_and_its_rust_and_python_tests_pass_as_written(checkout):
-    made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "shaper")
+
+
+@WINDOWS
+@pytest.mark.parametrize(
+    ("kind", "gallery", "nodes"),
+    [("source", True, "['fresh_one']"), ("shaper", True, "['fresh_one', 'input']"), ("operation", False, None)],
+)
+def test_a_new_thing_is_found_by_the_build_and_its_rust_and_python_tests_pass_as_written(
+    checkout, kind, gallery, nodes
+):
+    made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", kind)
     assert made.returncode == 0, made.stderr
-    assert sorted(line.removeprefix("wrote ") for line in made.stdout.splitlines() if line.startswith("wrote ")) == [
+    written = sorted(line.removeprefix("wrote ") for line in made.stdout.splitlines() if line.startswith("wrote "))
+    assert written == [  # no Python module: the core registers what it runs
         "crates/core/src/builtin/fresh_one.rs",
-        "examples/gallery/fresh_one.toml",
+        *(["examples/gallery/fresh_one.toml"] if gallery else []),
         "tests/builtin/test_fresh_one.py",
-    ]  # no Python module: the core registers what it runs
+    ]
     # the one edit the author still makes by hand, said before they run into it
     assert "crates/core/src/builtin.rs" in made.stdout
-    assert "uv run poe api" in made.stdout  # lib.pyi and _chain.py are generated
+    assert "uv run poe api" in made.stdout  # lib.pyi (and a shaper's _chain.py) are generated
 
     formatted = cargo(checkout, "fmt", "--all", "--check")
     assert formatted.returncode == 0, formatted.stdout + formatted.stderr
@@ -130,14 +131,13 @@ def test_a_new_shaper_is_found_by_the_build_and_its_rust_and_python_tests_pass_a
 
     install_extension(checkout)
     check_python(checkout)
-    built = run(checkout, "-c", CHECK_GALLERY_PATCH)
-    assert built.returncode == 0, built.stderr
-    assert built.stdout.strip() == "['fresh_one', 'input'] True"
+    if nodes:
+        built = run(checkout, "-c", CHECK_GALLERY_PATCH)
+        assert built.returncode == 0, built.stderr
+        assert built.stdout.strip() == f"{nodes} True"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="the build helper copies a unix library name (lib_core.so, _core.abi3.so)"
-)
+@WINDOWS
 def test_a_new_shaper_scales_a_signal_by_its_depth_through_the_python_binding(checkout):
     run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "shaper")
     install_extension(checkout)
@@ -163,15 +163,6 @@ print(sorted(built), all(numpy.isfinite(signal.sample([0.0, 1.0, 2.5])).all() fo
 """
 
 
-def test_a_new_source_also_gets_a_gallery_patch_that_builds(checkout):
-    made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "source")
-    assert made.returncode == 0, made.stderr
-    assert "examples/gallery/fresh_one.toml" in made.stdout
-    built = run(checkout, "-c", CHECK_GALLERY_PATCH)
-    assert built.returncode == 0, built.stderr
-    assert built.stdout.strip() == "['fresh_one'] True"
-
-
 def test_a_new_operation_gets_no_gallery_patch_because_it_gives_no_signal_to_draw(checkout):
     made = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "operation")
     assert made.returncode == 0, made.stderr
@@ -184,26 +175,40 @@ def test_a_name_whose_gallery_patch_exists_is_refused_and_nothing_is_written(che
     refused = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "source")
     assert refused.returncode == 1
     assert "examples/gallery/fresh_one.toml exists already" in refused.stderr
-    assert not (checkout / "src" / "bullterrier_control" / "builtin" / "fresh_one.py").exists()
-
-
-def test_a_shaper_whose_rust_file_exists_is_refused_and_nothing_is_written(checkout):
-    taken = checkout / "crates" / "core" / "src" / "builtin" / "fresh_one.rs"
-    taken.write_text("// mine\n", encoding="utf-8")
-    refused = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "shaper")
-    assert refused.returncode == 1
-    assert "crates/core/src/builtin/fresh_one.rs exists already" in refused.stderr
-    assert taken.read_text(encoding="utf-8") == "// mine\n"
-    assert not (checkout / "src" / "bullterrier_control" / "builtin" / "fresh_one.py").exists()
-    assert not (checkout / "examples" / "gallery" / "fresh_one.toml").exists()
+    assert not (checkout / "crates" / "core" / "src" / "builtin" / "fresh_one.rs").exists()
 
 
 @pytest.mark.parametrize("kind", ["source", "shaper", "operation"])
-@pytest.mark.parametrize(("name", "said"), [("slew", "exists"), ("Bad-Name", "lower case")], ids=["taken", "malformed"])
-def test_a_name_that_is_taken_or_malformed_is_refused_and_nothing_is_written(checkout, kind, name, said):
-    folders = [checkout / "src/bullterrier_control/builtin", checkout / "crates/core/src/builtin", checkout / "tests"]
+def test_a_name_whose_rust_file_exists_is_refused_and_nothing_is_written(checkout, kind):
+    taken = checkout / "crates" / "core" / "src" / "builtin" / "fresh_one.rs"
+    taken.write_text("// mine\n", encoding="utf-8")
+    refused = run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", kind)
+    assert refused.returncode == 1
+    assert "crates/core/src/builtin/fresh_one.rs exists already" in refused.stderr
+    assert taken.read_text(encoding="utf-8") == "// mine\n"
+    assert not (checkout / "tests" / "builtin" / "test_fresh_one.py").exists()
+    assert not (checkout / "examples" / "gallery" / "fresh_one.toml").exists()
+
+
+RESERVED = ["format", "version", "events", "series", "grid", "use", "signal"]
+MALFORMED = ["Bad-Name", "Upper", "9lives", "_lead", "has space", ""]
+
+
+@pytest.mark.parametrize("kind", ["source", "shaper", "operation"])
+@pytest.mark.parametrize(
+    ("name", "said"),
+    [("slew", "exists"), *((name, "lower case") for name in MALFORMED), *((name, "reserved") for name in RESERVED)],
+    ids=["taken", *(f"malformed-{name or 'empty'}" for name in MALFORMED), *(f"reserved-{name}" for name in RESERVED)],
+)
+def test_a_name_that_is_taken_malformed_or_reserved_is_refused_and_nothing_is_written(checkout, kind, name, said):
+    folders = [
+        checkout / "crates/core/src/builtin",
+        checkout / "tests/builtin",
+        checkout / "src/bullterrier_control/builtin",
+    ]
     before = [sorted(path.name for path in folder.iterdir()) for folder in folders]
     refused = run(checkout, "tools/dev.py", "new-source", name, "--kind", kind)
     assert refused.returncode == 1
     assert said in refused.stderr
     assert [sorted(path.name for path in folder.iterdir()) for folder in folders] == before
+    assert not (checkout / "examples").exists()

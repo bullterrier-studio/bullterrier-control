@@ -2,14 +2,13 @@
 
     uv run poe new-source NAME --kind source     # or --kind shaper, or --kind operation
 
-writes `src/bullterrier_control/builtin/NAME.py` and `tests/builtin/test_NAME.py` from `tools/templates/`: a working
-source (or shaper, or operation) with one example parameter and one example test, which pass the gate as written.
-A source or shaper also gets `examples/gallery/NAME.toml`, the patch its gallery picture is drawn from. A shaper is
-written in Rust and has no Python module: its `crates/core/src/builtin/NAME.rs` declares the parameters and defines
-`shape` (the build script finds the file and registers it in the core's table, which the package's registry starts
-from). Replace the parameter, the body, the test and the patch with the real ones (CLAUDE.md, "Adding a source or
-shaper"), then run `uv run poe api`, which writes its typed function in `lib.pyi` (and a shaper's method in
-`_chain.py`).
+writes `crates/core/src/builtin/NAME.rs` and `tests/builtin/test_NAME.py` from `tools/templates/`: a working source (or
+shaper, or operation) with one example parameter and example tests, which pass the gate as written. A source or shaper
+also gets `examples/gallery/NAME.toml`, the patch its gallery picture is drawn from. There is no Python module: the Rust
+file declares the parameters and defines the body, and the build script finds it and registers it in the core's table,
+which the package's registry starts from. Replace the parameter, the body, the tests and the patch with the real ones
+(CLAUDE.md, "Adding a source or shaper"), then run `uv run poe api`, which writes its typed function in `lib.pyi` (and a
+shaper's method in `_chain.py`).
 
 Interface: main(argv) -> exit code: 0 written, 1 refused (the reason on stderr), 2 wrong usage (argparse explains).
 """
@@ -23,22 +22,25 @@ from string import Template
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 NAME = re.compile(r"[a-z][a-z0-9_]*")
+# What a patch node or a call cannot be called: the header (`format`, `version`), the data inputs (`events`, `series`,
+# `grid`) and the keys of a node (`use`, `signal`).
+RESERVED = ("format", "version", "events", "series", "grid", "use", "signal")
 
 
 def new_source(name: str, kind: str, root: Path) -> list[Path]:
-    """Write the module (a shaper's is its Rust file), the test file and, for a source or shaper, the gallery patch of
-    a new thing; return the paths.
+    """Write the Rust file, the test file and, for a source or shaper, the gallery patch of a new thing; return the
+    paths.
 
-    `ValueError` if refused: a name that is malformed, or a file that exists already (nothing is written then)."""
+    `ValueError` if refused: a name that is malformed or reserved, or a file that exists already (nothing is written
+    then)."""
     if not NAME.fullmatch(name):
         raise ValueError(f"{name!r}: a name is lower case letters, digits and _, starting with a letter")
-    module = root / "src" / "bullterrier_control" / "builtin" / f"{name}.py"
-    test = root / "tests" / "builtin" / f"test_{name}.py"
-    made = [(f"test_{kind}.py.tmpl", test)]
-    if kind == "shaper":  # the parameters and the work are in Rust, which registers it: there is no Python module
-        made.append(("shaper.rs.tmpl", root / "crates" / "core" / "src" / "builtin" / f"{name}.rs"))
-    else:
-        made.append((f"{kind}.py.tmpl", module))
+    if name in RESERVED:
+        raise ValueError(f"{name!r} is reserved (a patch uses it): not one of {', '.join(RESERVED)}")
+    made = [
+        (f"test_{kind}.py.tmpl", root / "tests" / "builtin" / f"test_{name}.py"),
+        (f"{kind}.rs.tmpl", root / "crates" / "core" / "src" / "builtin" / f"{name}.rs"),
+    ]
     if kind != "operation":  # an operation gives events or a series: there is no signal to draw
         made.append((f"gallery_{kind}.toml.tmpl", root / "examples" / "gallery" / f"{name}.toml"))
     for _, path in made:
@@ -69,13 +71,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     for path in written:
         print(f"wrote {path.relative_to(ROOT).as_posix()}")
-    if args.kind == "shaper":
-        print(
-            "next: add the name to the three pins in the tests of crates/core/src/builtin.rs (NAMES and its count,\n"
-            "      the shapers list, and a row for each parameter in declared_fields), fill the Rust file in,"
-        )
-    else:
-        print("next: fill it in,")
+    print(
+        "next: add the name to the pins in the tests of crates/core/src/builtin.rs (NAMES and its count, the things\n"
+        "      the core runs, and a row for each parameter in declared_fields), fill the Rust file in,"
+    )
     gallery = "" if args.kind == "operation" else "`uv run poe gallery` and "
     print(f"then run {gallery}`uv run poe api` (it types `lib`, and a shaper's method of Signal)")
     return 0

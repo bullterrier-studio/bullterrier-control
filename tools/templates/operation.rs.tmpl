@@ -1,0 +1,101 @@
+//! The events <what it keeps or makes of them, in one sentence: its summary>.
+//!
+//! <What it promises in more words: what `help()` shows after the summary.>
+
+use crate::formats::Event;
+use crate::registry::{Output, Returns};
+use crate::{Error, Operation};
+
+/// <What the parameters of $name set.>
+#[derive(Clone, Copy, Debug, PartialEq, crate::Params)]
+pub struct Params {
+    /// <What it does, its unit and range in words, and what raising it does.>
+    #[param(default = 0.5, unit = Fraction, min = 0, max = 1)]
+    pub level: f64,
+}
+
+impl Operation for Params {
+    const NAME: &'static str = "$name";
+    type Inputs = Vec<Event>;
+    const RETURNS: Returns = Returns::Events;
+
+    /// The events of `events` whose strength is at least `level`, each as it was. Replace the body (`select.rs` is
+    /// the model).
+    ///
+    /// ```
+    /// use bullterrier_control::builtin::$name;
+    /// use bullterrier_control::formats::{Event, EventOptions};
+    /// use bullterrier_control::registry::Output;
+    /// use bullterrier_control::Operation;
+    ///
+    /// let at = |t, strength| Event::new(t, EventOptions { strength, ..Default::default() });
+    /// let events = vec![at(0.5, 0.25)?, at(1.0, 0.5)?];
+    /// let kept = $name::Params { level: 0.5 };
+    /// // a strength equal to the level is kept
+    /// assert!(matches!(kept.run(events)?, Output::Events(kept) if kept == [at(1.0, 0.5)?]));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    ///
+    /// # Errors
+    /// None: every set of events can be kept from.
+    fn run(&self, mut events: Vec<Event>) -> Result<Output, Error> {
+        events.retain(|event| event.strength() >= self.level);
+        Ok(Output::Events(events))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::formats::EventOptions;
+    use crate::inputs::Input;
+    use crate::registry::Call;
+    use crate::Registry;
+
+    fn event(t: f64, strength: f64) -> Result<Event, Error> {
+        Event::new(t, EventOptions { strength, ..EventOptions::default() }).map_err(|source| Error::Format { source })
+    }
+
+    /// Strengths 0.25, 0.5 and 0.75 at 0.5, 1 and 1.5 seconds.
+    fn given() -> Result<Vec<Event>, Error> {
+        Ok(vec![event(0.5, 0.25)?, event(1.0, 0.5)?, event(1.5, 0.75)?])
+    }
+
+    fn times(output: Output) -> Result<Vec<f64>, Error> {
+        match output {
+            Output::Events(events) => Ok(events.iter().map(Event::t).collect()),
+            other => Err(Error::Call { message: format!("$name gave {other:?}") }),
+        }
+    }
+
+    #[test]
+    fn it_keeps_the_events_at_or_above_its_level() -> Result<(), Error> {
+        // Replace with what $name promises, each expected number worked out by hand.
+        // a level of 0.5 keeps 0.5 (equal) and 0.75, and drops 0.25
+        assert_eq!(times(Params { level: 0.5 }.run(given()?)?)?, [1.0, 1.5]);
+        Ok(())
+    }
+
+    #[test]
+    fn the_core_runs_it_by_name_on_events_with_its_parameters_checked() -> Result<(), Error> {
+        let thing = Registry::builtin().get("$name")?;
+        let events = given()?;
+        let call = |values| Call {
+            inputs: [("events".to_owned(), Input::from_events(events.clone()))].into(),
+            values,
+            ..Call::default()
+        };
+        assert_eq!(times(thing.call(&call(json!({"level": 0.75})))?)?, [1.5]);
+        let refused = thing.call(&call(json!({"level": 2.0})));
+        assert!(matches!(&refused, Err(Error::Params { shaper, .. }) if shaper == "$name"), "{refused:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn it_needs_its_events() {
+        let missing = Registry::builtin().get("$name").and_then(|thing| thing.call(&Call::default()));
+        assert!(matches!(&missing, Err(Error::Call { message }) if message.contains("'events'")), "{missing:?}");
+    }
+}
