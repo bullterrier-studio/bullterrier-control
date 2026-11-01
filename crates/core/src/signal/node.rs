@@ -1,6 +1,5 @@
 //! What a [`Signal`](super::Signal) holds: a [`Node`] of the graph, and the nodes without inputs.
 
-use std::fmt;
 use std::sync::Arc;
 
 use super::walk::callback;
@@ -32,7 +31,7 @@ pub(crate) enum Next<'g> {
 /// A read is two steps so that no node reads another: the walk does, in a loop over a stack on the heap, so a graph
 /// of any depth is read on any thread's stack. Every time is finite and from 0 up: the public `Signal::sample_into`
 /// checks the times and the values once, so a node reads its inputs unchecked. `out` is as long as `times`.
-pub(crate) trait Node: fmt::Debug {
+pub(crate) trait Node {
     /// The first step of a read of `times`: write the values into `out`, or name the inputs to read first.
     fn start<'g>(&'g self, times: &[f64], out: &mut [f64]) -> Result<Next<'g>, Box<Error>>;
 
@@ -48,10 +47,14 @@ pub(crate) trait Node: fmt::Debug {
 
     /// How this node's signal was made; only a recorded node was made by a thing (and holds its recipe).
     fn origin(&self) -> Origin<'_>;
+
+    /// What the node is, in a word: its kind, or the name of the thing that made it. Never its inputs: the one
+    /// `Debug` of a signal prints this and the depth alone, so a signal, and anything deriving `Debug` that holds one,
+    /// formats in a few bytes a level however deep or shared the graph upstream is.
+    fn label(&self) -> &str;
 }
 
 /// The same value at every time.
-#[derive(Debug)]
 pub(crate) struct Constant(pub(crate) f64);
 
 impl Node for Constant {
@@ -66,6 +69,10 @@ impl Node for Constant {
 
     fn origin(&self) -> Origin<'_> {
         Origin::Values
+    }
+
+    fn label(&self) -> &'static str {
+        "constant"
     }
 }
 
@@ -89,12 +96,6 @@ impl FromFn {
     }
 }
 
-impl fmt::Debug for FromFn {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("FromFn")
-    }
-}
-
 impl Node for FromFn {
     fn start<'g>(&'g self, times: &[f64], out: &mut [f64]) -> Result<Next<'g>, Box<Error>> {
         out.fill(0.0);
@@ -109,10 +110,13 @@ impl Node for FromFn {
     fn origin(&self) -> Origin<'_> {
         Origin::Callback
     }
+
+    fn label(&self) -> &'static str {
+        "from_fn"
+    }
 }
 
 /// A signal that cannot be read: every read is its error. What an operator gives where it cannot return an error.
-#[derive(Debug)]
 pub(crate) struct Refused(pub(crate) Error);
 
 impl Node for Refused {
@@ -126,5 +130,9 @@ impl Node for Refused {
 
     fn origin(&self) -> Origin<'_> {
         Origin::Operator // only an operator makes one
+    }
+
+    fn label(&self) -> &'static str {
+        "refused"
     }
 }

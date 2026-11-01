@@ -1,7 +1,5 @@
 //! [`Recorded`]: a signal with the recipe the registry made it by.
 
-use std::fmt;
-
 use super::node::{Next, Node};
 use super::{Origin, Signal};
 use crate::Error;
@@ -30,18 +28,6 @@ impl Recorded {
     }
 }
 
-impl fmt::Debug for Recorded {
-    // not the signals: formatting them would recurse through every recipe upstream, twice where a body gives its input
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("Recorded")
-            .field("name", &self.recipe.name)
-            .field("values", &self.recipe.values)
-            .field("depth", &self.depth)
-            .finish_non_exhaustive()
-    }
-}
-
 impl Node for Recorded {
     fn start<'g>(&'g self, _times: &[f64], _out: &mut [f64]) -> Result<Next<'g>, Box<Error>> {
         Ok(Next::As(&self.inner))
@@ -53,5 +39,9 @@ impl Node for Recorded {
 
     fn origin(&self) -> Origin<'_> {
         Origin::Thing(&self.recipe)
+    }
+
+    fn label(&self) -> &str {
+        &self.recipe.name
     }
 }

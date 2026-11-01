@@ -135,8 +135,13 @@ impl Drop for Signal {
 }
 
 impl fmt::Debug for Signal {
+    /// Its node's label and its depth, never the graph upstream: a few bytes, however deep or shared the graph is.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.debug_tuple("Signal").field(&self.0).finish()
+        formatter
+            .debug_struct("Signal")
+            .field("node", &self.0.label())
+            .field("depth", &self.0.depth())
+            .finish()
     }
 }
 

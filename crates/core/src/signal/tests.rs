@@ -742,13 +742,6 @@ fn a_sum_of_a_hundred_thousand_terms_is_refused_and_dropped_without_overflowing_
 }
 
 #[test]
-fn a_deep_graph_is_debugged_without_walking_it() -> Result<(), Error> {
-    let text = format!("{:?}", chain(MAX_DEPTH, false)?);
-    assert!(text.contains("Add") && text.contains("1000"), "{text}");
-    Ok(())
-}
-
-#[test]
 fn every_way_of_making_a_signal_says_how_it_was_made() -> Result<(), Error> {
     use crate::Origin;
     use crate::builtin::slew;

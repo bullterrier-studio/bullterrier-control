@@ -1,7 +1,6 @@
 //! The node of [`Signal::rendered`](super::Signal::rendered): a causal recurrence over its input sampled at a fixed
 //! rate, rendered as far as the reads need and kept.
 
-use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use super::node::{Next, Node, Read};
@@ -203,16 +202,9 @@ impl Node for Rendered {
     fn origin(&self) -> Origin<'_> {
         Origin::Rendered
     }
-}
 
-impl fmt::Debug for Rendered {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("Rendered")
-            .field("rate", &self.rate)
-            .field("limit", &self.limit)
-            .field("depth", &self.depth)
-            .finish_non_exhaustive()
+    fn label(&self) -> &'static str {
+        "rendered"
     }
 }
 

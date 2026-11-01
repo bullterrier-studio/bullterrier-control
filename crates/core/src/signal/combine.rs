@@ -1,7 +1,6 @@
 //! Signals combined point by point: `+`, `-`, `*` and negation of signals and numbers, and the larger or smaller of
 //! two.
 
-use std::fmt;
 use std::ops::{Add, Mul, Neg, Sub};
 
 use super::node::{Next, Node, Read, Refused};
@@ -9,7 +8,7 @@ use super::{Origin, Signal, finite};
 use crate::Error;
 
 /// What a [`Combined`] node does with the two values at a time.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub(crate) enum Operation {
     Add,
     Subtract,
@@ -85,17 +84,6 @@ impl Combined {
     }
 }
 
-impl fmt::Debug for Combined {
-    // not the operands: formatting them would recurse as deep as the graph is
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("Combined")
-            .field("operation", &self.operation)
-            .field("depth", &self.depth)
-            .finish_non_exhaustive()
-    }
-}
-
 impl Node for Combined {
     fn start<'g>(&'g self, _times: &[f64], _out: &mut [f64]) -> Result<Next<'g>, Box<Error>> {
         Ok(match &self.operands {
@@ -119,6 +107,16 @@ impl Node for Combined {
 
     fn origin(&self) -> Origin<'_> {
         Origin::Operator
+    }
+
+    fn label(&self) -> &'static str {
+        match self.operation {
+            Operation::Add => "add",
+            Operation::Subtract => "subtract",
+            Operation::Multiply => "multiply",
+            Operation::Maximum => "maximum",
+            Operation::Minimum => "minimum",
+        }
     }
 }
 

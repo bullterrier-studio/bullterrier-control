@@ -1,7 +1,5 @@
 //! The node reading a [`Series`](crate::formats::Series) at any time.
 
-use std::fmt;
-
 use super::node::{Next, Node};
 use super::{Interpolation, Origin};
 use crate::Error;
@@ -18,18 +16,6 @@ pub(crate) struct SeriesNode {
     /// Never empty: a `Series` holds at least one value.
     pub(crate) values: Vec<f64>,
     pub(crate) interpolation: Interpolation,
-}
-
-impl fmt::Debug for SeriesNode {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("Series")
-            .field("start", &self.start)
-            .field("rate", &self.rate)
-            .field("samples", &self.values.len())
-            .field("interpolation", &self.interpolation)
-            .finish()
-    }
 }
 
 impl Node for SeriesNode {
@@ -51,6 +37,10 @@ impl Node for SeriesNode {
 
     fn origin(&self) -> Origin<'_> {
         Origin::Values
+    }
+
+    fn label(&self) -> &'static str {
+        "series"
     }
 }
 

@@ -1500,29 +1500,71 @@ fn a_chain_of_calls_that_add_no_node_is_as_deep_as_one_that_does() -> Result<(),
     Ok(())
 }
 
+/// How one level of a chain is made from the level below.
+type Step = Box<dyn Fn(&Signal) -> Result<Signal, Error>>;
+
 #[test]
-fn a_recorded_signal_formats_as_its_thing_not_the_graph_upstream() -> Result<(), Error> {
-    // the recipe keeps the signal shaped, and a body that gives it back holds it again: printing both would double
-    // the text with every call
+fn a_signal_formats_as_its_own_node_however_deep_the_graph_upstream() -> Result<(), Error> {
+    // a recipe keeps the signal shaped, and a body that gives it back holds it again: a format that printed either
+    // would grow with every level, doubling where a body gives its input; so would a derive over anything holding one
+    use crate::builtin::slew;
+    use crate::{FromValues, Interpolation, MAX_DEPTH, Rendering, maximum, minimum};
+
     let identity = bare("identity", Kind::Shaper, |call| match call.signals.as_slice() {
         [input] => Ok(Output::Signal(input.clone())),
         _ => Err(Error::Signal {
             message: "one signal".to_owned(),
         }),
     })?;
-    let mut chain = Signal::constant(1.0)?;
-    for _ in 0..16 {
-        chain = signal(identity.call(&Call {
-            signals: vec![chain],
+    let call = |thing: &Thing, input: &Signal| {
+        signal(thing.call(&Call {
+            signals: vec![input.clone()],
             ..Call::default()
-        }))?;
+        }))
+    };
+    let follow = Registry::builtin().get("follow")?.clone();
+    let series = Signal::from_values(&[0.0, 1.0], 10.0, FromValues::default(), Interpolation::Linear)?;
+    let echo = Signal::from_fn(|times, out| {
+        out.copy_from_slice(times);
+        Ok::<(), std::fmt::Error>(())
+    });
+    let constant = Signal::constant(0.5)?;
+    // each step is one level deeper, so 999 of them over a constant make the deepest graph there is
+    let steps: Vec<(&str, Step)> = vec![
+        ("add", Box::new(|input| Ok(input + 0.5))),
+        ("maximum", Box::new(move |input| Ok(maximum(input, &series)))),
+        ("multiply", Box::new(move |input| Ok(input * &echo))),
+        ("minimum", Box::new(move |input| Ok(minimum(input, &constant)))),
+        ("multiply", Box::new(|input| Ok(-input))),
+        ("subtract", Box::new(|input| Ok(1.0 - input))),
+        ("slew", Box::new(|input| input.slew(slew::Params::default()))),
+        ("follow", Box::new(move |input| call(&follow, input))),
+        (
+            "rendered",
+            Box::new(|input| {
+                Signal::rendered(input, Rendering::default(), |values| {
+                    Ok::<_, std::fmt::Error>(values.to_vec())
+                })
+            }),
+        ),
+        ("identity", Box::new(move |input| call(&identity, input))),
+    ];
+    // a few bytes a level: the node's label, the depth's digits, a recipe's own values, never the graph upstream
+    let mut chain = Signal::constant(1.0)?;
+    for (level, (label, step)) in (2..=MAX_DEPTH).zip(steps.iter().cycle()) {
+        chain = step(&chain)?;
+        let text = format!("{chain:?}");
+        assert!(
+            text.contains(&format!("\"{label}\"")) && text.len() <= 48,
+            "{label} at {level}: {text}"
+        );
+        if let Some(recipe) = chain.recipe() {
+            let text = format!("{recipe:?}");
+            assert!(text.len() < 400, "{label} at {level}: {} bytes", text.len());
+        }
     }
-    let text = format!("{chain:?}");
-    assert!(
-        text.contains("\"identity\"") && text.len() < 200,
-        "{} characters",
-        text.len()
-    );
+    assert!(chain.at(0.0).is_ok() && matches!((&chain + 1.0).at(0.0), Err(Error::Depth { .. })));
+    assert!(format!("{:?}", chain + f64::NAN).contains("\"refused\""));
     Ok(())
 }
 
