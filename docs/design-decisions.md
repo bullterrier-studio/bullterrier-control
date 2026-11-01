@@ -926,10 +926,11 @@ door and back); the 17 that remain in Python are ported in R5.
 - **Ported against the Python bodies** (the harness of R5a): `clip` 371 cases, `gate` 387, `remap` 483, `noise` 518 and
   `keyframes` 435 bit-identical; `steps` 419 identical and 3 that differ in wording only; `lfo` 999: 872 identical, 3
   wording, 124 sine cases whose outputs differ by `libm::sin` alone (in the wave 0.5 + 0.5 sin at most 1.11e-16);
-  `envelope` 586: the 187 linear cases identical, 108 exponential ones differing by `libm::exp` alone (1 to 3 ulp, at
-  most 2.3e-13 on a sum of 20 000 events). Each explained difference was reproduced by the old formula with the libm
-  function swapped in, bit for bit. `follow` differs from its R4b body in 7 of 320 cases, by the R5a `libm::exp`.
-  `clip`'s cases fed by an envelope now differ by that `exp` too (10 of 371). No sign of zero differs.
+  `envelope` 586: the 187 linear cases identical, 108 exponential ones differing by `libm::exp` alone (each `exp` is 1 ulp apart; the
+  outputs 1 to 3 ulp in the harness, up to 5 in 8 000 random cases, at most 2.3e-13 on a sum of 20 000 events). Each
+  explained difference was reproduced by the old formula with the libm function swapped in, bit for bit. `follow`
+  differs from its R4b body in 8 of 320 cases (7 beyond one rounding), by the R5a `libm::exp`. `clip`'s cases fed by an
+  envelope now differ by that `exp` too (10 of 371; `clip` itself is unchanged). No sign of zero differs.
 - **Wording:** a `per = "beat"` without a grid now names the thing (`source 'lfo': lfo: per: 'beat' needs a grid`, was
   `cadence: per: ...`); the type (`ParameterError`) and the path (`per`) are unchanged.
 
