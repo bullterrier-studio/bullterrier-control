@@ -11,11 +11,11 @@ A push that changes only documentation (the top-level and `docs/*.md` pages, the
 gate too: no code is in it, and CI still runs everything on the pushed `main`. The pushed range comes from
 PRE_COMMIT_FROM_REF and PRE_COMMIT_TO_REF; when it cannot be read the gate runs.
 
-A gate that already passed on exactly the pushed tree is not repeated. `uv run poe check` begins with `python
-tools/pre_push.py start` and ends with `python tools/pre_push.py pass`: the second records the tree of `HEAD` in the
-git folder (never committed) only if the working tree was clean and `HEAD`'s tree was the same at both moments, so the
-record names contents that were checked in full. A push whose tip has that tree skips the gate; any other tree runs
-it. CI checks everything again.
+A gate that already passed on exactly the pushed tree is not repeated. `uv run poe check` begins with
+`uv run python tools/pre_push.py start` and ends with `uv run python tools/pre_push.py pass`: the second records the
+tree of `HEAD` in the git folder (never committed) only if the working tree was clean and `HEAD`'s tree was the same at
+both moments, so the record names contents that were checked in full. A push whose tip has that tree skips the gate;
+any other tree runs it. CI checks everything again.
 """
 
 import os
