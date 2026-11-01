@@ -31,7 +31,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from bullterrier_control._native import _core  # noqa: PLC2701  (a built-in the core runs has only the core's table)
 from bullterrier_control.inputs import INPUTS
 from bullterrier_control.registry import Registered, all_registered
 from bullterrier_control.signal import Signal
@@ -113,9 +112,7 @@ def _check_compiles(label: str, text: str) -> None:
 def _arguments(one: Registered) -> list[Argument]:
     """The inputs, then the parameters, of `one`, from its description (and each range from the core's table)."""
     described = one.description()
-    # the core's table words each range: a Python body's through its Params class, a Rust one's by its name
-    table = one.params_model if one.params_model is not None else _core.ParamTable.builtin(one.name)
-    ranges = {name: field.get("range") for name, field in table.describe().items()}
+    ranges = {name: field.get("range") for name, field in one.params.describe().items()}  # as the core's table words it
     arguments = []
     for name, given in described["inputs"].items():
         required = given["required"]

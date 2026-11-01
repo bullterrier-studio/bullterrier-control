@@ -637,14 +637,20 @@ def test_sixteen_threads_calling_a_python_thing_at_once_get_their_own_values(min
     assert results == pytest.approx([np.sin(1.0) * index / 16 for index in range(16)])
 
 
-# ---- a built-in's table ----
+# ---- a thing's table ----
 
 
 def test_the_table_of_a_built_in_reads_its_values_and_names_it_in_a_refusal():
-    table = _core.ParamTable.builtin("slew")
+    table = _core.Registry(builtin=True).get("slew").params
     assert table.parse({"rise": 0.5}) == {"rise": 0.5, "fall": 0.1, "rate": 1000.0}
     assert list(table.describe()) == ["rise", "fall", "rate"]
     with pytest.raises(ParameterError, match=r"^slew: rise: "):
         table.parse({"rise": -1})
-    with pytest.raises(ValueError, match="wobble"):
-        _core.ParamTable.builtin("wobble")
+
+
+def test_the_table_of_a_python_thing_is_its_params_class_and_names_it_in_a_refusal(mine):
+    table = register(mine, level).params
+    assert table.describe() == Level.describe()
+    assert table.parse({"value": 0.25}) == {"value": 0.25}
+    with pytest.raises(ParameterError, match=r"^Level: value: "):
+        table.parse({"value": 2})

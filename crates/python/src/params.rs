@@ -1,7 +1,7 @@
-//! The core's parameter tables for Python: a built-in's and a plugin's
-//! (`ParamTable`, from `ParamTable.builtin` or from a list of declarations). Every rule is the table's (`bullterrier_control::params`): the
-//! bindings read Python values as the JSON a table takes and refuse what JSON cannot hold (NaN, an infinity, an
-//! integer beyond 64 bits, a lone surrogate) as a problem of its field, listed with every other rule broken.
+//! The core's parameter tables for Python: a built-in's and a plugin's (`ParamTable`, from a list of declarations or
+//! a thing's `params`). Every rule is the table's (`bullterrier_control::params`): the bindings read Python values as
+//! the JSON a table takes and refuse what JSON cannot hold (NaN, an infinity, an integer beyond 64 bits, a lone
+//! surrogate) as a problem of its field, listed with every other rule broken.
 //!
 //! Concurrency: `ParamTable` is frozen and holds no lock; nothing here runs without the GIL (a table's work is small).
 
@@ -20,7 +20,6 @@ use bullterrier_control::params::{Kind, Param, ParamTable, ParamUnit};
 use crate::data::{Data, NOT_UTF8, beyond_64_bits, shown};
 use crate::error::parameter_error;
 use crate::formats::type_name;
-use crate::value_error;
 
 /// The kinds a declaration names, as `kind` spells them.
 const KINDS: &str = "float, whole, switch, text, choice";
@@ -386,11 +385,6 @@ fn declaration(index: usize, entry: &Bound<'_, PyAny>) -> Result<Param, Vec<Prob
     if problems.is_empty() { Ok(param) } else { Err(problems) }
 }
 
-/// The table of the built-in `name`, or a `ValueError` (the package asks only for the built-ins it has).
-fn builtin(name: &str) -> PyResult<&'static ParamTable> {
-    bullterrier_control::parameters(name).map_err(value_error)
-}
-
 /// The parameters of a source, shaper or operation: a table of fields, each declaration checked once, here.
 ///
 /// `spec` lists one mapping per field, in declaration order: `name`, `kind` (`"float"`, `"whole"`, `"switch"`,
@@ -407,6 +401,11 @@ pub(crate) struct PyParamTable {
 }
 
 impl PyParamTable {
+    /// `table`, its refusals' messages starting with `name`.
+    pub(crate) const fn of(table: ParamTable, name: String) -> Self {
+        Self { table, name }
+    }
+
     /// The table.
     pub(crate) const fn table(&self) -> &ParamTable {
         &self.table
@@ -427,18 +426,6 @@ impl PyParamTable {
         let table =
             ParamTable::new(params).map_err(|error| parameter_error(py, &name, &error.problems, error.omitted()))?;
         Ok(Self { table, name })
-    }
-
-    /// The table the core declares for the built-in `name` (a source, shaper or operation), its refusals' messages
-    /// starting with `name`.
-    ///
-    /// `ValueError` if there is no built-in of that name.
-    #[staticmethod]
-    fn builtin(name: &str) -> PyResult<Self> {
-        Ok(Self {
-            table: self::builtin(name)?.clone(),
-            name: name.to_owned(),
-        })
     }
 
     /// The values `values` (a mapping of values by field name) sets, as a dict of every field (a field left out

@@ -52,6 +52,7 @@ def test_the_registered_thing_knows_its_name_kind_and_parameters():
     assert (level.name, level.kind, level.params_model) == ("level", "source", Level)
     assert level.summary == "A constant level."
     assert list(level.params_model.describe()) == ["value"]
+    assert level.params.describe() == Level.describe()
 
 
 def test_a_call_with_the_wrong_number_of_signals_is_a_type_error():

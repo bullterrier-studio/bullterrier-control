@@ -3,7 +3,7 @@
 //! rounding) and its formats (`Unit`, `Event`, `Series`, `Grid`, `Bundle`) to Python as the package's classes.
 //! Generic: it names no shaper, so porting one never changes it.
 //!
-//! It also gives the core's parameter tables (`ParamTable`, a built-in's through `ParamTable.builtin`)
+//! It also gives the core's parameter tables (`ParamTable`, a thing's through `Thing.params`)
 //! and its inputs (`Keyframe`, `check_input`, `input_docs`). A format that breaks a rule raises the package's
 //! `bullterrier_control.errors.FormatError`, parameters or an input that do `ParameterError`, each imported when the
 //! first one is raised: importing the extension imports nothing of the package.

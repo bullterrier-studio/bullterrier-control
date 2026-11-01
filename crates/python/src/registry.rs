@@ -399,8 +399,8 @@ pub(crate) fn python(py: Python<'_>, output: Output) -> PyResult<Bound<'_, PyAny
 ///
 /// It says what it is: `name`, `kind`, `returns`, `summary` (the first paragraph of its doc), `inputs` (each input's
 /// name to whether it is required, in its order, read-only), `__doc__` (what `help()` shows), `__signature__`,
-/// `description()` (its data, for `bt-control list --json`), and for one whose body is Python its `function` and
-/// `params_model` (both `None` for a thing of the Rust core).
+/// `description()` (its data, for `bt-control list --json`), `params` (its parameter table), and for one whose body
+/// is Python its `function` and `params_model` (both `None` for a thing of the Rust core).
 #[pyclass(frozen, dict, module = "bullterrier_control._native._core", name = "Thing")]
 pub(crate) struct PyThing {
     thing: Thing,
@@ -575,6 +575,13 @@ impl PyThing {
     #[getter]
     fn params_model(&self, py: Python<'_>) -> Option<Py<PyAny>> {
         self.python.as_ref().map(|(_, params)| params.clone_ref(py))
+    }
+
+    /// Its parameter table (`ParamTable`), a Rust thing's and a Python one's alike: `describe()` lists each field as
+    /// `Params.describe()` does, `parse(values)` reads values as a call does, a refusal naming its table.
+    #[getter]
+    fn params(&self) -> PyParamTable {
+        PyParamTable::of(self.thing.table().clone(), self.table.clone())
     }
 
     /// How to call it, for `inspect.signature`: its signal (a shaper's) positional, then each input (`None` by default
