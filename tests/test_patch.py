@@ -5,6 +5,8 @@ Every expected number is worked out by hand (docs/examples.md, sections 4 and 7,
 
 import copy
 import json
+import subprocess
+import sys
 import tomllib
 
 import jsonschema
@@ -511,6 +513,22 @@ def test_a_saved_file_loads_back_as_an_equal_patch_that_builds_the_same_samples(
     loaded = load_patch(path)
     assert loaded == saved
     assert loaded.build()["level"].sample(TIMES).tolist() == level.sample(TIMES).tolist()
+
+
+def test_signals_are_saved_in_the_order_given_each_after_what_it_is_made_of():
+    saved = Patch.from_signals({"slow": lib.slew(lib.constant(), rise=1.0), "level": lib.constant(value=1.0)})
+    assert list(saved.nodes) == ["slow_1", "slow", "level"]
+
+
+def test_a_patch_read_first_thing_in_a_process_finds_the_installed_packages():
+    """In a fresh process: reading a patch is a query of the registry, so it loads the packages (lfo's is Python)."""
+    code = (
+        "from bullterrier_control import Patch\n"
+        "patch = Patch.parse({'format': 'bullterrier-control/patch', 'version': 1, 'wave': {'use': 'lfo'}})\n"
+        "print(patch.nodes['wave'].use)\n"
+    )
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", check=False)
+    assert (done.returncode, done.stdout.strip()) == (0, "lfo"), done.stderr
 
 
 def test_a_built_patch_saves_as_what_it_was_read_from():
