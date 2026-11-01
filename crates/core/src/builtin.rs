@@ -106,6 +106,7 @@ mod tests {
                 ("follow", Kind::Shaper),
                 ("hold", Kind::Shaper),
                 ("latch", Kind::Source),
+                ("quantize", Kind::Operation),
                 ("select", Kind::Operation),
                 ("shift", Kind::Operation),
                 ("slew", Kind::Shaper),
