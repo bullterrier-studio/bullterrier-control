@@ -810,5 +810,7 @@ Accepted differences from the Python registry and patch (a break, accepted befor
   reads `0 to 4294967295`, not `4.29497e+09`).
 - The shaper scaffold writes no Python module: the Rust file registers itself.
 
-Cost: ten independent slews through the registry took about twice R3's time on a first measure (0.023 to 0.049 s against
-0.012 to 0.020 s); not yet explained (the call door, the recorded node or noise).
+Cost: ten independent slews through the registry take the same time as before R4 within noise (about 20 ms a run, 24 ms
+the first run of a process); a `lib.slew` call costs 2.2 µs (it was 5.0 µs), a cached read 2.0 µs, parsing a 100-node
+patch 0.4 ms (it was 2.1 ms). A Python-bodied built-in call costs about 3 µs more than before (it goes through the Rust
+door and back); the 17 that remain in Python are ported in R5.

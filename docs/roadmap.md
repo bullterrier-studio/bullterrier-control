@@ -191,8 +191,8 @@ The Python suite runs unchanged against the Rust core throughout.
   hand-kept pins in `builtin.rs`, to derive; then `Params.__getattr__` goes (no Python body is left to read a field);
   bundle-built graphs (`series.<name>`) cannot be saved, which a source that reads a series would fix.
 - **R6 Cleanup.** No Python duplicate left, crate documentation, final speed and memory measured against R0's baseline
-  (R4b's ten slews through the registry took about twice R3's time on a first measure), the debug-build stack depth of a
-  1000-node chain read.
+  (R4b measured no slowdown of the slews; a Python-bodied built-in call is about 3 µs slower until R5), the debug-build
+  stack depth of a 1000-node chain read.
 
 ## R0.5 Code-first API (done)
 
