@@ -20,7 +20,7 @@ broken one fails when its module is imported, naming itself, instead of in some 
 rules are the Rust core's (`_native._core.Registry`); this module checks what is about a Python function's shape (its
 signature, its inputs, an operation's return annotation) and loads the packages.
 
-Where they come from: what the Rust core runs (`constant`, `select`, `slew`, `follow`) is in the table from the start;
+Where they come from: what the Rust core runs (`Registry::builtin()`) is in the table from the start;
 the first query (`get`, `sources`, `shapers`, `operations`, `all_registered`, `table`, `unregister` or `isolated`) loads
 every installed package of the entry-point group `bullterrier_control.sources`, once. A package is a module whose import
 registers sources, shapers and operations: bullterrier-control's own is one (declared in its `pyproject.toml`); a third

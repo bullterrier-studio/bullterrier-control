@@ -758,10 +758,8 @@ Rulings:
 - **Traits make the params struct the thing.** `Source`, `Shaper` and `Operation` are implemented for `Params`, so
   `glow.pipe(Fold { depth: 0.5 })?` is the call. `Thing::source::<T>`, `shaper::<T>`, `operation::<T>` and `Thing::custom`
   (a callback) make a `Thing`; `Registry::register(Thing)` takes it. *Reason:* Rust cannot bound `T` by "one of three
-  traits" for a `register::<T>(name)`, and a thing's doc and parameter title are not on the trait. In R5a `Source` and
-  `Shaper` took `type Inputs` as `Operation` has it, one mechanism for the three kinds: the door records what
-  `Inputs::into_inputs` gives, so a recipe cannot miss an input. `pipe` is bounded to `Inputs = ()`, so a shaper with
-  inputs cannot be piped without them; `pipe_with` takes them.
+  traits" for a `register::<T>(name)`, and a thing's doc and parameter title are not on the trait. Inputs on all three
+  kinds: "Built-ins with data in Rust (batch R5a)".
 - **`build.rs` finds the impl in the code, not the text.** A file with `impl Source|Shaper|Operation for Params` is registered
   (a source is also a `lib::` function); a token scan skips comments, docs, strings, characters and `macro_rules!` bodies
   and accepts the trait by any path. *Reason:* a plain text search registered a marker in a comment and missed
@@ -868,13 +866,30 @@ door and back); the 17 that remain in Python are ported in R5.
   while its node drops is one a thread: one for all made that 7 times slower.
 - The wheel check of the deepest chains on a 256 KiB thread is in "Resource gates (R4c, owner, 2026-11-01)".
 
-## libm for exp (R5a)
+## Built-ins with data in Rust (batch R5a)
 
-`follow` calls `libm::exp` (the `libm` crate, MIT, pure Rust, pinned exact), not std's. *Reason:* std's `exp` calls the
-platform's math library, so the same signal could differ by an ulp between targets (rule 6 allows float tolerance across
-platforms, but the core's easing and hashing already give the same bits everywhere, and a patch's hash and a rendered
-file should too). Over 10 000 seeded arguments the two differ by at most 1 ulp. Later built-ins that need `sin`, `exp` or
-`powf` use `libm` the same way.
+- **`type Inputs` on all three kinds.** `Source` and `Shaper` take it as `Operation` does: one mechanism, and the door
+  records what `Inputs::into_inputs` gives, so a recipe cannot miss an input.
+- **`pipe` and `pipe_with`.** `pipe(params)` is bounded to `Inputs = ()`; a shaper with inputs is `pipe_with(params,
+  inputs)`. *Reason:* a shaper that needs data cannot be piped without it, at compile time.
+- **`lib::` argument order** is api.md rule 2: borrowed required inputs first, then the parameters, optional inputs last;
+  a fieldless source (`struct Params;` or `{}`) takes no struct. *Reason:* the call reads like the Python one, and a
+  struct with nothing to set is noise.
+- **`Signal::retimed(map)`** reads its input at the times `map` gives. `delay` and `hold` are built on it. *Reason:* a
+  `from_fn` reading its input is a nested walk, capped at 48; `retimed` hands the times to the one loop, so its `map` is a
+  callback that reads no signal and a chain of 999 delays reads.
+- **libm for exp.** `follow` calls `libm::exp` (the `libm` crate, MIT, pure Rust, pinned exact), not std's. *Reason:*
+  std's `exp` calls the platform's math library, so the same signal could differ by an ulp between targets (rule 6
+  allows float tolerance across platforms, but the core's easing and hashing already give the same bits everywhere, and a
+  patch's hash and a rendered file should too). Over 10 000 seeded arguments the two differ by at most 1 ulp. Later
+  built-ins that need `sin`, `exp` or `powf` use `libm` the same way.
+- **Ported against the Python bodies.** A differential harness (not committed) compared each port with the body it
+  replaced; all bit-identical: `delay` 351 cases, `hold` 370, `latch` 398, `every` 408, `thin` 385, `shift` 385, `beats`
+  376, `quantize` 570, `normalise` 924.
+- **`latch` switches at plain `>=`**, as the Python body did, not `rounding::at_least`.
+- **`normalise` leaves the sign of an output zero unspecified.** From 5 values it may differ from the old body: numpy's
+  partition order of equal zeros is not reproduced; values never differ. Its percentile follows the installed numpy
+  (2.5.4), whose `_lerp` has no `a == b` snap.
 
 ## Resource gates (R4c, owner, 2026-11-01)
 

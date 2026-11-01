@@ -35,7 +35,7 @@ the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `no
 `gate`, `hold`, `remap` and `delay`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`,
 patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. The Rust core's foundation
 (R0) exists: `slew` and `follow` run in Rust, and CI builds the core and a wheel per platform (R0b; first GitHub run pending).
-The formats are in Rust (R1): `Series`, `Event`, `Grid`, `Bundle` and `Unit` are classes of the extension. Parameters are in Rust (R2): every built-in declares them there (`#[derive(Params)]`), and the core checks every parameter, a plugin's too. The signal graph is in Rust (R3): `Signal`, arithmetic, `Rendered`, `slew` and `follow` (as Rust `Signal` shapers) and easing, cadence, hashing, scaling and rounding run in the core, and Python's `Signal` is a handle over it. The inputs are in Rust (R4a): the core's `inputs` module checks every input, `Keyframe` is a class of the extension, and pydantic is gone. The registry and patches are in Rust (R4b): the core's `registry` module holds every source, shaper and operation (Rust things register themselves, Python ones as callbacks), `constant`, `select`, `slew` and `follow` run in Rust, a patch is read, built and saved by the core with no Python, and a graph made through the registry saves as a patch (`Patch.from_signals`). Next: R5, R6, then C5, the first release (`docs/roadmap.md`).
+The formats are in Rust (R1): `Series`, `Event`, `Grid`, `Bundle` and `Unit` are classes of the extension. Parameters are in Rust (R2): every built-in declares them there (`#[derive(Params)]`), and the core checks every parameter, a plugin's too. The signal graph is in Rust (R3): `Signal`, arithmetic, `Rendered`, `slew` and `follow` (as Rust `Signal` shapers) and easing, cadence, hashing, scaling and rounding run in the core, and Python's `Signal` is a handle over it. The inputs are in Rust (R4a): the core's `inputs` module checks every input, `Keyframe` is a class of the extension, and pydantic is gone. The registry and patches are in Rust (R4b): the core's `registry` module holds every source, shaper and operation (Rust things register themselves, Python ones as callbacks), a patch is read, built and saved by the core with no Python, and a graph made through the registry saves as a patch (`Patch.from_signals`). Built-ins with data are in Rust (R5a): every kind takes `type Inputs`, `Signal::retimed` moves time, and 13 of the 21 built-ins run in Rust: the sources `constant` and `latch`, the shapers `slew`, `follow`, `delay` and `hold`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`; `clip`, `gate`, `remap`, `noise`, `steps`, `keyframes`, `lfo` and `envelope` are still Python. Next: R5b, R5c, R6, then C5, the first release (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.
@@ -85,7 +85,7 @@ Layers, imports flow **downward only** (import-linter: contracts in `pyproject.t
 
 ```
 app        __main__, cli
-builtin    the built-in sources, shapers and operations still written in Python: one module each, never importing each other, using only `plugin` (and `_native`); its parameters are the core's. `constant`, `select`, `slew` and `follow` run in Rust and have no module
+builtin    the built-in sources, shapers and operations still written in Python: one module each, never importing each other, using only `plugin` (and `_native`); its parameters are the core's. The 13 that run in Rust ("State") have no module
 lib        every registered source, shaper and operation by name (`lib.slew`), with `help()` built from its parameters; `lib.pyi` types it
 patch      Patch, load_patch: a graph of them as data (TOML), read, built against a bundle and saved by the Rust core; imports only registry, formats, errors and `_native`; the patch schema
 plotting   plot: signals drawn as a PNG (matplotlib, an optional extra, imported when a picture is drawn)
@@ -108,7 +108,7 @@ their own deserializer over Python objects (`data.rs`), so a NaN reaches the cor
 and `FormatError.problems` lists the broken rules, the first 100 (`FormatError::omitted()` counts the others; a value of the wrong JSON type, an unknown field and the like stop
 the reading at that value). A built-in that runs in Rust has no Python module: its Rust file defines it, `Registry::builtin()` holds it and the package's
 registry starts from that. A built-in still in Python keeps `@source`, `@shaper` or `@operation` and a params class
-`class EveryParams(Params, builtin="every")` (a docstring only; the fields are the core's), and registers through the entry point as a
+`class ClipParams(Params, builtin="clip")` (a docstring only; the fields are the core's), and registers through the entry point as a
 callback thing. The Rust registry is the authority: it checks the name, a parameter named like an input or a patch key, the taken
 name and every call; Python checks only what is about a Python function's shape. A call returns the core's signal, never the body's
 own object, and a Python body gets a new handle over the caller's signal; an exception a Python body raises reaches the caller
@@ -116,8 +116,8 @@ unchanged. There is no other boundary: a Rust `Signal` is sampled without Python
 where a plugin wrote a `compute` or a `Rendered(run=...)`. A Python `compute` is called with 1-D float64 times; its exception
 reaches `sample`'s caller unchanged. `Constant` and `Rendered` list their native base first
 (`class Rendered(_core.Rendered, Signal)`). `_native` is below every layer but `errors`, so any layer may call it; built-ins may
-too, an explicit exception to the author-API door ("Built-in sources use only the author API" contract). `constant`, `select`,
-`slew` and `follow` run in Rust; all 21 built-ins declare their parameters there. Rust built-ins never refer to each other.
+too, an explicit exception to the author-API door ("Built-in sources use only the author API" contract). 13 of the 21
+built-ins run in Rust ("State" names them); all 21 declare their parameters there. Rust built-ins never refer to each other.
 
 A source is `def name(params) -> Signal`, a shaper `def name(signal, params) -> Signal`, each registered with `@source` or
 `@shaper` and its `Params` class (in Rust: `impl Source` or `impl Shaper` for the `Params` struct); packages are entry points of
