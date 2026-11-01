@@ -885,3 +885,71 @@ fn an_error_at_the_bottom_of_the_deepest_graph_reaches_the_reader_on_a_small_thr
         "{walked:?}"
     );
 }
+
+thread_local! {
+    /// A signal a thread keeps until it ends.
+    static KEPT: std::cell::RefCell<Option<Signal>> = const { std::cell::RefCell::new(None) };
+}
+
+#[test]
+fn the_deepest_graph_a_thread_local_holds_is_dropped_when_its_thread_ends_on_a_small_thread_stack() {
+    // (row, whether the thread drops a graph before it first keeps one: which of the two thread locals, the kept
+    // signal and the library's own, its thread makes first, and so which goes first when it ends)
+    for (row, dropped_first) in [("kept first", false), ("dropped first", true)] {
+        let ended = on_a_stack_of(64 * 1024, move || -> Result<(), Error> {
+            if dropped_first {
+                drop(Signal::constant(0.5)? + 0.0);
+            }
+            KEPT.with(|kept| kept.borrow_mut().take());
+            drop(Signal::constant(0.5)? + 0.0);
+            let signal = kept(MAX_DEPTH - 1, |signal| Ok(signal + 0.0))?;
+            KEPT.with(|kept| *kept.borrow_mut() = Some(signal));
+            Ok(())
+        });
+        assert!(matches!(ended, Ok(Ok(()))), "{row}: {ended:?}");
+    }
+}
+
+/// What a callback holds that says when it is dropped.
+struct Observed(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for Observed {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// What a callback holds whose drop panics: a bug in a plugin's own type.
+struct Panicking;
+
+impl Drop for Panicking {
+    #[expect(clippy::panic, reason = "the bug this test needs: a drop that panics")]
+    fn drop(&mut self) {
+        panic!("a drop that panics");
+    }
+}
+
+/// A signal whose callback holds `held`, and drops it with itself.
+fn holding<T: Send + Sync + 'static>(held: T) -> Signal {
+    Signal::from_fn(move |_, _| {
+        let _held = &held;
+        Ok::<(), Unreachable>(())
+    })
+}
+
+#[test]
+fn a_panic_in_a_drop_loses_nothing_and_its_thread_drops_on() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let ended = on_a_stack_of(64 * 1024, || {
+        let (before, after) = (Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)));
+        let both = holding(Observed(Arc::clone(&before))) + holding(Panicking);
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(both))).is_err();
+        drop(holding(Observed(Arc::clone(&after))) + 0.0);
+        let deepest = kept(MAX_DEPTH - 1, |signal| Ok(signal + 0.0));
+        drop(deepest);
+        (panicked, before.load(Ordering::SeqCst), after.load(Ordering::SeqCst))
+    });
+    assert_eq!(ended.ok(), Some((true, true, true)));
+}

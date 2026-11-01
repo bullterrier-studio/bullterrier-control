@@ -33,10 +33,6 @@ impl fmt::Debug for SeriesNode {
 }
 
 impl Node for SeriesNode {
-    fn holds_signals(&self) -> bool {
-        false
-    }
-
     fn start<'g>(&'g self, times: &[f64], out: &mut [f64]) -> Result<Next<'g>, Box<Error>> {
         for (value, time) in out.iter_mut().zip(times) {
             // finite times and a finite start: never NaN, at most an infinity past either end

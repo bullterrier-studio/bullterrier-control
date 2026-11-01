@@ -42,14 +42,8 @@ pub(crate) trait Node: fmt::Debug {
         Ok(())
     }
 
-    /// Whether dropping this node can drop a signal (its inputs', a callback's): then its last handle drops it in the
-    /// walk's loop.
-    fn holds_signals(&self) -> bool {
-        true
-    }
-
-    /// How many nodes deep the graph is from this one, counting it: 1 for a node without inputs. A read and a drop
-    /// recurse this deep, so `Signal` refuses to build a graph deeper than its `MAX_DEPTH`.
+    /// How many nodes deep the graph is from this one, counting it: 1 for a node without inputs. `Signal` refuses to
+    /// build a graph deeper than its `MAX_DEPTH`; a read sizes its stack of frames by it.
     fn depth(&self) -> usize;
 
     /// How this node's signal was made; only a recorded node was made by a thing (and holds its recipe).
@@ -61,10 +55,6 @@ pub(crate) trait Node: fmt::Debug {
 pub(crate) struct Constant(pub(crate) f64);
 
 impl Node for Constant {
-    fn holds_signals(&self) -> bool {
-        false
-    }
-
     fn start<'g>(&'g self, _times: &[f64], out: &mut [f64]) -> Result<Next<'g>, Box<Error>> {
         out.fill(self.0);
         Ok(Next::Done)
@@ -126,10 +116,6 @@ impl Node for FromFn {
 pub(crate) struct Refused(pub(crate) Error);
 
 impl Node for Refused {
-    fn holds_signals(&self) -> bool {
-        false
-    }
-
     fn start<'g>(&'g self, _times: &[f64], _out: &mut [f64]) -> Result<Next<'g>, Box<Error>> {
         Err(Box::new(self.0.clone()))
     }

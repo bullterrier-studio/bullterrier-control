@@ -5,6 +5,7 @@
 //! refuses one nested more than [`NESTED`] deep.
 
 use std::cell::{Cell, RefCell};
+use std::mem::ManuallyDrop;
 use std::sync::{Arc, LazyLock};
 
 use super::Signal;
@@ -199,46 +200,59 @@ fn out_of<'a>(reader: &'a mut [f64], buffers: &'a mut [Vec<f64>], into: Out) -> 
 /// A node no signal reads: what a dropped handle holds while its node drops.
 static VACANT: LazyLock<Arc<dyn Node + Send + Sync>> = LazyLock::new(|| Arc::new(Constant(0.0)));
 
-thread_local! {
-    /// The nodes waiting to drop on this thread, and whether a loop is dropping them.
-    static DROPPING: (Cell<bool>, RefCell<Vec<Arc<dyn Node + Send + Sync>>>) =
-        const { (Cell::new(false), RefCell::new(Vec::new())) };
+/// The drop loop of a thread: whether one runs, and the nodes waiting for it.
+struct Dropping {
+    running: Cell<bool>,
+    /// Empty whenever no loop runs, and its buffer freed then: nothing in it outlives a loop.
+    waiting: RefCell<Vec<Arc<dyn Node + Send + Sync>>>,
 }
 
-/// Drops `node`'s handle (leaving [`VACANT`] in its place). The last handle of a node with inputs drops it in a loop:
-/// a node dropping drops its inputs' handles, and those only queue their nodes for the loop, so a drop of any depth
-/// runs one node's frame deep. A node that holds no signal (a constant, a series) drops at once, and so does any node
-/// on a thread whose locals are gone.
+thread_local! {
+    /// This thread's drop loop. It has no destructor (`ManuallyDrop`), so it is never torn down: a signal another
+    /// thread local holds is dropped by the loop too when the thread ends, whichever of them goes first.
+    static DROPPING: ManuallyDrop<Dropping> = const {
+        ManuallyDrop::new(Dropping {
+            running: Cell::new(false),
+            waiting: RefCell::new(Vec::new()),
+        })
+    };
+}
+
+/// Drops `node`'s handle (leaving [`VACANT`] in its place). The last handle of a node drops it in a loop: a node
+/// dropping drops its inputs' handles, and those only queue their nodes for the loop, so a drop of any depth runs
+/// one node's frame deep. Every node takes this path, whatever it holds: none declares what it holds.
 // `strong_count` is 1 only for the last handle (a signal has no weak handles). Two handles dropped at once on two
 // threads may both see 2: the node then drops in the frame of whichever counts down last, its inputs' handles each
 // checking again.
 pub(super) fn release(node: &mut Arc<dyn Node + Send + Sync>) {
-    if Arc::strong_count(node) != 1 || !node.holds_signals() {
+    if Arc::strong_count(node) != 1 {
         return;
     }
     let last = std::mem::replace(node, Arc::clone(&VACANT));
-    let first = DROPPING.try_with(move |(dropping, pending)| {
-        if dropping.get() {
-            pending.borrow_mut().push(last);
-            return None;
+    DROPPING.with(|dropping| {
+        if dropping.running.replace(true) {
+            dropping.waiting.borrow_mut().push(last);
+            return;
         }
-        dropping.set(true);
-        Some(last)
-    });
-    if let Ok(Some(first)) = first {
-        let _done = Draining;
-        drop(first);
-        while let Ok(Some(next)) = DROPPING.try_with(|(_, pending)| pending.borrow_mut().pop()) {
+        let _done = Draining(dropping);
+        drop(last);
+        loop {
+            let next = dropping.waiting.borrow_mut().pop();
+            let Some(next) = next else { break };
             drop(next);
         }
-    }
+    });
 }
 
-/// The loop of [`release`] running on this thread; marked done when it ends or unwinds.
-struct Draining;
+/// The loop of [`release`] running; when it ends or unwinds (a panic in a node's drop), marked done and its buffer
+/// freed, the nodes still waiting dropped by the thread's next loop.
+struct Draining<'a>(&'a Dropping);
 
-impl Drop for Draining {
+impl Drop for Draining<'_> {
     fn drop(&mut self) {
-        let _ = DROPPING.try_with(|(dropping, _)| dropping.set(false));
+        self.0.running.set(false);
+        if self.0.waiting.borrow().is_empty() {
+            drop(std::mem::take(&mut *self.0.waiting.borrow_mut()));
+        }
     }
 }
