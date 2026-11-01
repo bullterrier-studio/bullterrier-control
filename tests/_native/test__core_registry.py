@@ -73,13 +73,17 @@ def scale(signal: Signal, params: Level) -> Signal:
 
 def test_the_registry_of_the_core_holds_what_the_core_runs_and_an_empty_one_nothing():
     assert list(_core.Registry(builtin=True).things()) == [
+        "beats",
         "constant",
         "delay",
+        "every",
         "follow",
         "hold",
         "latch",
         "select",
+        "shift",
         "slew",
+        "thin",
     ]
     assert _core.Registry(builtin=False).things() == {}
 

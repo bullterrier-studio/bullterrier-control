@@ -99,13 +99,17 @@ mod tests {
         assert_eq!(
             things,
             [
+                ("beats", Kind::Operation),
                 ("constant", Kind::Source),
                 ("delay", Kind::Shaper),
+                ("every", Kind::Operation),
                 ("follow", Kind::Shaper),
                 ("hold", Kind::Shaper),
                 ("latch", Kind::Source),
                 ("select", Kind::Operation),
-                ("slew", Kind::Shaper)
+                ("shift", Kind::Operation),
+                ("slew", Kind::Shaper),
+                ("thin", Kind::Operation)
             ]
         );
         Ok(())
