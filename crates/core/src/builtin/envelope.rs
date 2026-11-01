@@ -628,7 +628,10 @@ mod tests {
 
         #[test]
         fn under_max_it_is_never_below_0_nor_above_the_largest_strength(
-            events in events(), params in params(), times in prop::collection::vec(0.0..1e300_f64, 1..20),
+            events in events(),
+            params in params(),
+            // mostly where the events are, now and then far beyond them
+            times in prop::collection::vec(prop_oneof![9 => 0.0..40.0_f64, 1 => 0.0..1e300_f64], 1..20),
         ) {
             let largest = events.iter().map(Event::strength).fold(0.0, f64::max);
             let max = envelope::Params { mix: Mix::Max, ..params };
