@@ -215,10 +215,24 @@ fn source_function(code: &mut String, file: &File<'_>, tokens: &[&str]) -> Resul
             ));
         }
     };
-    let of = if taken.is_empty() {
-        "its parameters"
-    } else {
-        "its inputs (borrowed, cloned once) and parameters"
+    let of = match (taken.is_empty(), fieldless) {
+        (true, false) => "its parameters",
+        (false, false) => "its inputs (borrowed, cloned once) and parameters",
+        (false, true) => "its inputs (borrowed, cloned once)",
+        (true, true) => "nothing",
+    };
+    let mut refusals = Vec::new();
+    if !fieldless {
+        refusals.push(format!(
+            "[`Error::Params`](crate::Error::Params) under the name `{name}`\n/// listing every rule the parameters break"
+        ));
+    }
+    if !taken.is_empty() {
+        refusals.push("[`Error::Input`](crate::Error::Input) if an input breaks its kind's\n/// rules".to_owned());
+    }
+    let refusals = match refusals.as_slice() {
+        [] => "whatever error the source gives".to_owned(),
+        given => format!("{}, and whatever error the source gives", given.join(", ")),
     };
     let (optional, required): (Vec<&Argument>, Vec<&Argument>) = taken.iter().partition(|argument| argument.optional);
     let arguments: Vec<String> = required
@@ -232,9 +246,7 @@ fn source_function(code: &mut String, file: &File<'_>, tokens: &[&str]) -> Resul
         format_args!(
             "/// The signal of the source [`{name}`](crate::builtin::{name}) of {of}, made through the one\n/// door \
              of the [registry](crate::registry): checked, named and recorded as every door makes it.\n///\n\
-             /// # Errors\n/// As [`Thing::call`](crate::registry::Thing::call): [`Error::Params`](crate::Error::Params) \
-             under the name `{name}`\n/// listing every rule the parameters break, [`Error::Input`](crate::Error::Input) \
-             if an input breaks its kind's\n/// rules, and whatever error the source gives.\npub fn {name}({}) -> Result<crate::Signal, crate::Error> {{\n    \
+             /// # Errors\n/// As [`Thing::call`](crate::registry::Thing::call): {refusals}.\npub fn {name}({}) -> Result<crate::Signal, crate::Error> {{\n    \
              crate::registry::sourced({given}, {inputs})\n}}\n",
             arguments.join(", ")
         ),
@@ -905,6 +917,49 @@ mod tests {
                 Ok(String::new()),
                 "{kind}"
             );
+        }
+    }
+
+    #[test]
+    fn a_lib_functions_doc_names_only_the_parameters_and_inputs_it_takes() {
+        let fields = "pub struct Params {\n    pub level: f64,\n}";
+        let doc = |inputs: &str, params: &str| {
+            let source = format!("{params}\nimpl Source for Params {{\n    type Inputs = {inputs};\n}}\n");
+            let code = table(&[file("it", &source)]).map_or_else(|error| error, |code| code.lib);
+            let lines: Vec<&str> = code.lines().filter_map(|line| line.strip_prefix("/// ")).collect();
+            lines.join(" ")
+        };
+        let (made, params, input) = ("made through the one door", "[`Error::Params`]", "[`Error::Input`]");
+        // (row, `type Inputs`, the parameters, what it is the signal of, whether the errors name parameters, inputs)
+        let rows = [
+            ("parameters only", "()", fields, "of its parameters,", true, false),
+            (
+                "inputs and parameters",
+                "Vec<f64>",
+                fields,
+                "of its inputs (borrowed, cloned once) and parameters,",
+                true,
+                true,
+            ),
+            (
+                "inputs only",
+                "Vec<Keyframe>",
+                "pub struct Params;",
+                "of its inputs (borrowed, cloned once),",
+                false,
+                true,
+            ),
+            ("neither", "()", "pub struct Params;", "of nothing,", false, false),
+        ];
+        for (row, inputs, struct_params, of, names_params, names_inputs) in rows {
+            let doc = doc(inputs, struct_params);
+            assert!(doc.contains(&format!("{of} {made}")), "{row}: {doc}");
+            assert_eq!(
+                (doc.contains(params), doc.contains(input)),
+                (names_params, names_inputs),
+                "{row}: {doc}"
+            );
+            assert!(doc.contains("whatever error the source gives."), "{row}: {doc}");
         }
     }
 
