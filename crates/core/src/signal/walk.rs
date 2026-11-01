@@ -211,7 +211,7 @@ static VACANT: LazyLock<Arc<dyn Node + Send + Sync>> = LazyLock::new(|| Arc::new
 /// The drop loop of a thread: whether one runs, and the nodes waiting for it.
 struct Dropping {
     running: Cell<bool>,
-    /// Empty whenever no loop runs, and its buffer freed then: nothing in it outlives a loop.
+    /// Empty whenever no loop runs; its buffer is kept for the next loop, and freed by [`FREED`] when the thread ends.
     waiting: RefCell<Vec<Arc<dyn Node + Send + Sync>>>,
 }
 
@@ -224,6 +224,20 @@ thread_local! {
             waiting: RefCell::new(Vec::new()),
         })
     };
+
+    /// Frees the buffer of this thread's queue when the thread ends (a loop that runs later, inside another thread
+    /// local's destructor, frees it as it ends).
+    static FREED: Freed = const { Freed };
+}
+
+/// What [`FREED`] holds.
+struct Freed;
+
+impl Drop for Freed {
+    fn drop(&mut self) {
+        let waiting = DROPPING.with(|dropping| std::mem::take(&mut *dropping.waiting.borrow_mut()));
+        drop(waiting);
+    }
 }
 
 /// Drops `node`'s handle (leaving [`VACANT`] in its place). The last handle of a node drops it in a loop: a node
@@ -252,14 +266,15 @@ pub(super) fn release(node: &mut Arc<dyn Node + Send + Sync>) {
     });
 }
 
-/// The loop of [`release`] running; when it ends or unwinds (a panic in a node's drop), marked done and its buffer
-/// freed, the nodes still waiting dropped by the thread's next loop.
+/// The loop of [`release`] running; marked done when it ends or unwinds (a panic in a node's drop: the nodes still
+/// waiting are dropped by the thread's next loop).
 struct Draining<'a>(&'a Dropping);
 
 impl Drop for Draining<'_> {
     fn drop(&mut self) {
         self.0.running.set(false);
-        if self.0.waiting.borrow().is_empty() {
+        // the first loop on a thread sets up `FREED`; once it is gone (the thread is ending), the loop frees the buffer
+        if FREED.try_with(|_| ()).is_err() && self.0.waiting.borrow().is_empty() {
             drop(std::mem::take(&mut *self.0.waiting.borrow_mut()));
         }
     }
