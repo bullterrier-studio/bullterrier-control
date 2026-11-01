@@ -25,7 +25,7 @@ impl Operation for Params {
     const RETURNS: Returns = Returns::Events;
 
     /// The events of `events` from the earliest on that are at least `gap` seconds after the last one kept, each as
-    /// it was.
+    /// it was. The door gives `events` in time order (those at one time as given); the first of them is the earliest.
     ///
     /// ```
     /// use bullterrier_control::builtin::thin;
@@ -44,9 +44,6 @@ impl Operation for Params {
     /// # Errors
     /// None: every set of events can be thinned.
     fn run(&self, events: Vec<Event>) -> Result<Output, Error> {
-        let mut events = events;
-        // stable: events at one time keep their order (a door gives them sorted already; the body does not rely on it)
-        events.sort_by(|a, b| a.t().total_cmp(&b.t()));
         let mut kept: Vec<Event> = Vec::new();
         for event in events {
             if kept.last().is_none_or(|last| at_least(event.t() - last.t(), self.gap)) {
@@ -147,10 +144,24 @@ mod tests {
         Ok(())
     }
 
+
+    /// 0.0 and -0.0 are one time: the door keeps the order given, `a` then `b`, and so does the operation.
+    fn tied() -> Result<[Event; 2], Error> {
+        let named = |t: f64, name: &str| event(t, EventOptions { label: Some(name.into()), ..EventOptions::default() });
+        Ok([named(0.0, "a")?, named(-0.0, "b")?])
+    }
+
+    #[test]
+    fn thin_keeps_the_first_given_of_events_at_zero_and_minus_zero() -> Result<(), Error> {
+        let [a, b] = tied()?;
+        assert_eq!(by_name(json!({"gap": 0.5}), &[a.clone(), b.clone()])?, std::slice::from_ref(&a));
+        assert_eq!(by_name(json!({"gap": 0.5}), &[b.clone(), a])?, std::slice::from_ref(&b));
+        Ok(())
+    }
+
     #[test]
     fn thin_works_in_time_order_whatever_the_order_given() -> Result<(), Error> {
         let shuffled = moments(&[1.05, 0.5, 1.0, 0.76, 0.6])?;
-        assert_eq!(times(&by_body(0.25, &shuffled)?), [0.5, 0.76, 1.05]);
         assert_eq!(times(&by_name(json!({"gap": 0.25}), &shuffled)?), [0.5, 0.76, 1.05]);
         Ok(())
     }

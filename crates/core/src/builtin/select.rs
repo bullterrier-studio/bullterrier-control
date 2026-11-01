@@ -24,8 +24,8 @@ impl Operation for Params {
     type Inputs = Vec<Event>;
     const RETURNS: Returns = Returns::Events;
 
-    /// The events of `events` with the label (any, if it is empty) and a strength of at least the threshold, in time
-    /// order (events at one time in the order given), each as it was.
+    /// The events of `events` with the label (any, if it is empty) and a strength of at least the threshold, each as
+    /// it was and in the order given: the door gives them in time order (events at one time as given), so they stay so.
     ///
     /// ```
     /// use bullterrier_control::builtin::select;
@@ -48,8 +48,6 @@ impl Operation for Params {
     fn run(&self, events: Vec<Event>) -> Result<Output, Error> {
         let mut kept = matching(&events, &self.label);
         kept.retain(|event| event.strength() >= self.threshold);
-        // stable: events at one time keep their order (a door gives them sorted already; the body does not rely on it)
-        kept.sort_by(|a, b| a.t().total_cmp(&b.t()));
         Ok(Output::Events(kept))
     }
 }
@@ -173,7 +171,6 @@ mod tests {
         let mut backwards = drums()?;
         backwards.reverse();
         assert_eq!(times(&by_name(json!({"threshold": 0.5}), &backwards)?), [0.5, 1.0, 1.2]);
-        assert_eq!(times(&by_body("", 0.5, &backwards)?), [0.5, 1.0, 1.2]);
         Ok(())
     }
 
@@ -184,6 +181,15 @@ mod tests {
             assert_eq!(by_name(json!({}), &given)?, given);
             assert_eq!(by_body("", 0.0, &given)?, given);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn select_keeps_events_at_zero_and_minus_zero_in_the_order_given() -> Result<(), Error> {
+        let named = |t: f64, name: &str| event(t, 0.5, Some(name));
+        let (a, b) = (named(0.0, "a")?, named(-0.0, "b")?);
+        assert_eq!(by_name(json!({}), &[a.clone(), b.clone()])?, [a.clone(), b.clone()]);
+        assert_eq!(by_name(json!({}), &[b.clone(), a.clone()])?, [b, a]);
         Ok(())
     }
 
@@ -199,7 +205,8 @@ mod tests {
             .collect::<Result<_, _>>()?;
         let (late, early): (Vec<Event>, Vec<Event>) = given.iter().cloned().partition(|event| event.t() > 1.5);
         let expected: Vec<Event> = early.into_iter().chain(late).collect();
-        assert_eq!(by_body("", 0.0, &given)?, expected);
+        // the body keeps the order it is given, which the door made time order
+        assert_eq!(by_body("", 0.0, &expected)?, expected);
         assert_eq!(by_name(json!({}), &given)?, expected);
         Ok(())
     }
@@ -301,8 +308,8 @@ mod tests {
                     .filter(|event| event.strength() >= threshold && (label.is_empty() || event.label() == Some(label)))
                     .count();
                 prop_assert_eq!(kept.len(), qualifying);
-                // the body alone agrees
-                prop_assert_eq!(by_body(label, threshold, &given).map_err(|error| TestCaseError::fail(error.to_string()))?, kept);
+                // the body alone agrees, given the events in the door's order
+                prop_assert_eq!(by_body(label, threshold, &sorted).map_err(|error| TestCaseError::fail(error.to_string()))?, kept);
             }
         }
     }

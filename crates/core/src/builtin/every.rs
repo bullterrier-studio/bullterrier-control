@@ -24,8 +24,8 @@ impl Operation for Params {
     type Inputs = Vec<Event>;
     const RETURNS: Returns = Returns::Events;
 
-    /// The events at positions `offset`, `offset + n`, ... of `events` in time order (events at one time in the
-    /// order given), each as it was.
+    /// The events at positions `offset`, `offset + n`, ... of `events`, each as it was. The door gives `events` in time
+    /// order (those at one time as given), and the positions count in that order.
     ///
     /// ```
     /// use bullterrier_control::builtin::every;
@@ -44,9 +44,6 @@ impl Operation for Params {
     /// # Errors
     /// None: every set of events can be thinned.
     fn run(&self, events: Vec<Event>) -> Result<Output, Error> {
-        let mut events = events;
-        // stable: events at one time keep their order (a door gives them sorted already; the body does not rely on it)
-        events.sort_by(|a, b| a.t().total_cmp(&b.t()));
         // counted in i64, the type of the parameters, which the table keeps in 1..=1000 and 0..=999
         let kept = (0_i64..)
             .zip(events)
@@ -142,7 +139,6 @@ mod tests {
     fn every_counts_in_time_order_whatever_the_order_given() -> Result<(), Error> {
         let mut backwards = seven()?;
         backwards.reverse();
-        assert_eq!(indices(&by_body(3, 1, &backwards)?), [1, 4]);
         assert_eq!(indices(&by_name(json!({"n": 3, "offset": 1}), &backwards)?), [1, 4]);
         Ok(())
     }
@@ -156,6 +152,21 @@ mod tests {
         let reversed: Vec<Event> = named.iter().rev().cloned().collect();
         assert_eq!(by_body(2, 0, &named)?, [named[0].clone(), named[2].clone()]);
         assert_eq!(by_name(json!({}), &reversed)?, [reversed[0].clone(), reversed[2].clone()]);
+        Ok(())
+    }
+
+
+    /// 0.0 and -0.0 are one time: the door keeps the order given, `a` then `b`, and so does the operation.
+    fn tied() -> Result<[Event; 2], Error> {
+        let named = |t: f64, name: &str| event(t, EventOptions { label: Some(name.into()), ..EventOptions::default() });
+        Ok([named(0.0, "a")?, named(-0.0, "b")?])
+    }
+
+    #[test]
+    fn every_counts_events_at_zero_and_minus_zero_as_one_time_in_the_order_given() -> Result<(), Error> {
+        let [a, b] = tied()?;
+        assert_eq!(by_name(json!({}), &[a.clone(), b.clone()])?, std::slice::from_ref(&a));
+        assert_eq!(by_name(json!({}), &[b.clone(), a])?, std::slice::from_ref(&b));
         Ok(())
     }
 

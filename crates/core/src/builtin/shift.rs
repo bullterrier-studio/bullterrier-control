@@ -25,7 +25,8 @@ impl Operation for Params {
     const RETURNS: Returns = Returns::Events;
 
     /// The events of `events` with every time moved by `offset` seconds, what lands before time 0 dropped and a span
-    /// that starts before it cut there; in time order, every other field as it was.
+    /// that starts before it cut there; every other field as it was. The door gives `events` in time order (those at
+    /// one time as given), and a move keeps that order.
     ///
     /// ```
     /// use bullterrier_control::builtin::shift;
@@ -43,9 +44,6 @@ impl Operation for Params {
     /// # Errors
     /// None for events the door checked: a moved time and a rest of a duration are valid.
     fn run(&self, events: Vec<Event>) -> Result<Output, Error> {
-        let mut events = events;
-        // stable: events at one time keep their order (a door gives them sorted already; the body does not rely on it)
-        events.sort_by(|a, b| a.t().total_cmp(&b.t()));
         let mut moved = Vec::with_capacity(events.len());
         for event in &events {
             let start = event.t() + self.offset;
@@ -179,7 +177,7 @@ mod tests {
         let given = [moment(0.1)?, note, span(0.0, 2.0)?];
         // unchanged, in time order
         let expected = [given[2].clone(), given[0].clone(), given[1].clone()];
-        assert_eq!(by_body(0.0, &given)?, expected);
+        assert_eq!(by_body(0.0, &expected)?, expected);
         assert_eq!(by_name(0.0, &given)?, expected);
         Ok(())
     }
@@ -246,10 +244,26 @@ mod tests {
         Ok(())
     }
 
+
+    /// 0.0 and -0.0 are one time: the door keeps the order given, `a` then `b`, and so does the operation.
+    fn tied() -> Result<[Event; 2], Error> {
+        let named = |t: f64, name: &str| event(t, EventOptions { label: Some(name.into()), ..EventOptions::default() });
+        Ok([named(0.0, "a")?, named(-0.0, "b")?])
+    }
+
+    #[test]
+    fn shift_keeps_events_at_zero_and_minus_zero_in_the_order_given() -> Result<(), Error> {
+        let [a, b] = tied()?;
+        let labels = |moved: Vec<Event>| moved.iter().map(|moved| moved.label().map(str::to_owned)).collect::<Vec<_>>();
+        assert_eq!(labels(by_name(0.0, &[a.clone(), b.clone()])?), [Some("a".to_owned()), Some("b".to_owned())]);
+        assert_eq!(labels(by_name(0.0, &[b, a])?), [Some("b".to_owned()), Some("a".to_owned())]);
+        Ok(())
+    }
+
     #[test]
     fn shift_works_in_time_order_whatever_the_order_given() -> Result<(), Error> {
         let given = [moment(1.0)?, moment(0.25)?, moment(0.5)?];
-        assert_eq!(times(&shifted(0.25, &given)?), [0.5, 0.75, 1.25]);
+        assert_eq!(times(&by_name(0.25, &given)?), [0.5, 0.75, 1.25]);
         Ok(())
     }
 
