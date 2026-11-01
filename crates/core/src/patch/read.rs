@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{Map, Value};
 
 use super::repr::{listed, quoted, shown};
-use super::{FORMAT, Given, Node, Patch, PatchError, RESERVED, Reference, VERSION};
+use super::{FORMAT, Given, Node, Patch, PatchError, Reference, VERSION, is_node_name, not_a_node_name};
 use crate::Error;
 use crate::formats::Problem;
 use crate::formats::Problems;
@@ -17,7 +17,6 @@ use crate::registry::NODE_KEYS;
 use crate::registry::Registry;
 use crate::registry::Returns;
 use crate::registry::Thing;
-use crate::registry::is_name;
 
 /// What a reference can point at, by what it gives.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -157,12 +156,8 @@ pub(super) fn read(
     };
     let mut read = Vec::new();
     for (name, table) in tables {
-        if !is_name(name) || RESERVED.contains(&name) {
-            let rule = format!(
-                "lower case letters, digits and _, starting with a letter, and not one of {}",
-                RESERVED.join(", ")
-            );
-            report.add(name.to_owned(), format!("is not a node name: {rule}"));
+        if !is_node_name(name) {
+            report.add(name.to_owned(), not_a_node_name());
         }
         if nodes.above.contains_key(name) {
             report.add(

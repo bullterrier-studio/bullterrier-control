@@ -2,8 +2,8 @@
 
 use std::fmt;
 
-use super::{Interpolation, Origin};
 use super::node::{Node, Read};
+use super::{Interpolation, Origin};
 
 /// A share of a sample within which a position is the sample it rounds to: `(time - start) * rate` of a time that is
 /// a sample's time in decimals can land a float rounding below it (`0.29 * 100` is 28.999999999999996), and a held

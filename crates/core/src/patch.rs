@@ -62,6 +62,7 @@ mod build;
 mod privacy;
 mod read;
 mod repr;
+mod save;
 #[cfg(test)]
 mod tests;
 mod text;
@@ -71,6 +72,7 @@ use std::fmt;
 use serde_json::{Map, Value, json};
 
 use crate::Error;
+use crate::Signal;
 use crate::formats::Bundle;
 use crate::formats::Problem;
 use crate::inputs::Input;
@@ -80,6 +82,7 @@ use crate::registry::Output;
 use crate::registry::Registry;
 use crate::registry::Returns;
 use crate::registry::Thing;
+use crate::registry::is_name;
 
 /// The `format` of every patch.
 const FORMAT: &str = "bullterrier-control/patch";
@@ -88,6 +91,19 @@ const VERSION: u32 = 1;
 /// The names no node may have: `format` and `version` are the header, and `events`, `series` and `grid` start the
 /// paths into a bundle.
 const RESERVED: [&str; 5] = ["format", "version", "events", "series", "grid"];
+
+/// Whether `name` may name a node: a thing's name ([`NAME_PATTERN`]) that is not [`RESERVED`].
+fn is_node_name(name: &str) -> bool {
+    is_name(name) && !RESERVED.contains(&name)
+}
+
+/// The rule a name that is not [`is_node_name`] breaks.
+fn not_a_node_name() -> String {
+    format!(
+        "is not a node name: lower case letters, digits and _, starting with a letter, and not one of {}",
+        RESERVED.join(", ")
+    )
+}
 
 /// The nodes of a patch by name, in file order: what each uses and what it is built from. Read with
 /// [`Patch::from_toml`] or [`Patch::parse`]; two patches are equal when their nodes name the same things with the same
@@ -325,6 +341,28 @@ impl Patch {
     pub fn build_only<'a>(&self, bundle: impl Into<Option<&'a Bundle>>, names: &[&str]) -> Result<Built, PatchError> {
         build::build(self, bundle.into(), Some(names))
     }
+
+    /// The patch of `signals`, each under its name, for [`Registry::builtin`].
+    ///
+    /// # Errors
+    /// As [`Patch::from_signals_with`].
+    pub fn from_signals(signals: &[(&str, &Signal)]) -> Result<Self, PatchError> {
+        Self::from_signals_with(Registry::builtin(), signals)
+    }
+
+    /// The patch of `signals`, each under its name, for `registry`.
+    ///
+    /// # Errors
+    /// [`PatchError::Unsaved`].
+    pub fn from_signals_with(registry: &Registry, signals: &[(&str, &Signal)]) -> Result<Self, PatchError> {
+        save::save(registry, signals)
+    }
+
+    /// The patch as TOML text.
+    #[must_use]
+    pub fn to_toml(&self) -> String {
+        text::write(self)
+    }
 }
 
 /// What a patch built: each node's result by name, in file order.
@@ -424,6 +462,13 @@ pub enum PatchError {
         /// The patch's nodes, in file order.
         nodes: Vec<String>,
     },
+    /// Saving: signals that a patch cannot hold, or names that no node may have, each at its path.
+    Unsaved {
+        /// Each signal refused at its path, or a name refused alone, in the order given: the first 100.
+        problems: Vec<Problem>,
+        /// How many more problems there were than `problems` holds.
+        omitted: usize,
+    },
     /// Building: the thing of a node refused its call or failed.
     Node {
         /// The node's name.
@@ -437,19 +482,8 @@ impl fmt::Display for PatchError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Toml { detail } => write!(formatter, "not TOML ({detail})"),
-            Self::Invalid { problems, omitted } => {
-                formatter.write_str("Patch: ")?;
-                for (index, problem) in problems.iter().enumerate() {
-                    if index > 0 {
-                        formatter.write_str("; ")?;
-                    }
-                    write!(formatter, "{problem}")?;
-                }
-                match omitted {
-                    0 => Ok(()),
-                    omitted => write!(formatter, "; ... and {omitted} more"),
-                }
-            }
+            Self::Invalid { problems, omitted } => listing(formatter, "Patch: ", problems, *omitted),
+            Self::Unsaved { problems, omitted } => listing(formatter, "cannot save as a patch: ", problems, *omitted),
             Self::Bundle { problem } => write!(formatter, "{problem}"),
             Self::UnknownNode { name, nodes } => {
                 let has = if nodes.is_empty() {
@@ -461,6 +495,21 @@ impl fmt::Display for PatchError {
             }
             Self::Node { node, source } => write!(formatter, "{node}: {source}"),
         }
+    }
+}
+
+/// `problems` after `title`, joined by `; `, and how many more there were.
+fn listing(formatter: &mut fmt::Formatter<'_>, title: &str, problems: &[Problem], omitted: usize) -> fmt::Result {
+    formatter.write_str(title)?;
+    for (index, problem) in problems.iter().enumerate() {
+        if index > 0 {
+            formatter.write_str("; ")?;
+        }
+        write!(formatter, "{problem}")?;
+    }
+    match omitted {
+        0 => Ok(()),
+        omitted => write!(formatter, "; ... and {omitted} more"),
     }
 }
 

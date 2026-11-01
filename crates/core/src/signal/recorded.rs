@@ -2,8 +2,8 @@
 
 use std::fmt;
 
-use super::{Origin, Signal};
 use super::node::{Node, Read};
+use super::{Origin, Signal};
 use crate::registry::Recipe;
 
 /// A signal as it is, with how the registry made it: it reads as `inner`. A read recurses through it into `inner`,

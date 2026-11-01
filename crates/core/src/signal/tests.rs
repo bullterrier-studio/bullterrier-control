@@ -790,6 +790,9 @@ fn every_way_of_making_a_signal_says_how_it_was_made() -> Result<(), Error> {
         Origin::Thing(recipe) => Some(recipe.name.as_str()),
         _ => None,
     };
-    assert_eq!((recipe, slewed.recipe().map(|recipe| recipe.name.as_str())), (Some("slew"), Some("slew")));
+    assert_eq!(
+        (recipe, slewed.recipe().map(|recipe| recipe.name.as_str())),
+        (Some("slew"), Some("slew"))
+    );
     Ok(())
 }
