@@ -62,8 +62,9 @@ impl Operation for Params {
     fn run(&self, series: Series) -> Result<Output, Error> {
         let scaled = within_one(series.values());
         let mut sorted = scaled.clone();
-        // stable, and 0.0 and -0.0 one value (`+ 0.0` makes -0.0 0.0): equal values stay in the order given, which is
-        // where numpy's partition leaves them in a short series (in a long one its order of equal zeros is its own)
+        // stable, and 0.0 and -0.0 one value (`+ 0.0` makes -0.0 0.0): equal zeros stay in the order given. numpy's
+        // partition leaves equal zeros in an order of its own, so from 5 values the sign of an output zero can differ
+        // from the Python body this replaced; the values never differ
         sorted.sort_by(|a, b| (a + 0.0).total_cmp(&(b + 0.0)));
         let (low, high) = (quantile(&sorted, self.lower), quantile(&sorted, self.upper));
         let span = high - low;
@@ -272,9 +273,9 @@ mod tests {
     }
 
     /// `(id, values, lower, upper, outputs)` to the bit, the outputs as numpy 2.5.4 gives them through the Python
-    /// body this replaced (the sign of each zero too).
+    /// body this replaced (the sign of each zero too), but for the row that says otherwise.
     #[allow(clippy::type_complexity, reason = "a table of rows, read as one")]
-    const EXACT: [(&str, &[f64], f64, f64, &[f64]); 16] = [
+    const EXACT: [(&str, &[f64], f64, f64, &[f64]); 17] = [
         // index 1.6 between 0.3 and 1 (scaled by 1/2): from 1 back, 1 - 0.7 * 0.4, not 0.3 + 0.7 * 0.6
         ("a weight of a half or more is read back from the upper value", &[0.0, 0.3, 1.0], 0.0, 0.8,
             &[0.0, 0.416_666_666_666_666_63, 1.0]),
@@ -290,6 +291,10 @@ mod tests {
         ("0.0 given before -0.0 is the lowest", &[0.0, -0.0, 1.0], -0.0, 1.0, &[0.0, -0.0, 1.0]),
         // index 0.8 between the first two zeros, read back from the second: 0.0 - 0 * 0.2 = 0.0
         ("the zeros stay in the order given", &[-0.0, 0.0, -0.0, 0.0, 2.0], 0.2, 1.0, &[-0.0, 0.0, -0.0, 0.0, 1.0]),
+        // index 1.6, between the 0.0 and the -0.0 given after it, read back from the -0.0: -0.0 - -0.0 * 0.4 is 0.0,
+        // and -0.0 - 0.0 is -0.0
+        ("numpy's order of equal zeros is not reproduced: only the sign of a zero differs from the old body (all 0.0)",
+            &[0.0, -0.0, -0.0, -1.0, 1.0], 0.4, 0.9, &[0.0, -0.0, -0.0, 0.0, 1.0]),
         ("a flat series is all 0", &[3.0, 3.0, 3.0], 0.05, 0.98, &[0.0, 0.0, 0.0]),
         ("one value is 0", &[3.0], 0.05, 0.98, &[0.0]),
         ("one -0.0 is 0.0", &[-0.0], 0.0, 1.0, &[0.0]),
