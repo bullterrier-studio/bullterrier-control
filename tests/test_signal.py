@@ -328,12 +328,8 @@ def test_pipe_refuses_a_callable_that_does_not_return_a_signal_naming_it():
 
 
 GALLERY = Path(__file__).resolve().parents[1] / "examples" / "gallery"
-BUILT_IN_SHAPERS = sorted(
-    name
-    for name, thing in registry.shapers().items()
-    # one the Rust core runs has no Python function; the others are defined in the package's own modules
-    if thing.function is None or thing.function.__module__.startswith("bullterrier_control.builtin.")
-)
+# a built-in is one the Rust core runs: it has no Python function
+BUILT_IN_SHAPERS = sorted(name for name, thing in registry.shapers().items() if thing.function is None)
 
 
 @pytest.mark.parametrize("name", BUILT_IN_SHAPERS)

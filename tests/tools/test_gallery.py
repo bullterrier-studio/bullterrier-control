@@ -30,9 +30,8 @@ gallery = tool()
 NAMES = sorted(
     name
     for name, thing in registry.all_registered().items()
-    # one the Rust core runs has no Python function; the others are defined in the package's own modules
-    if thing.kind != "operation"
-    and (thing.function is None or thing.function.__module__.startswith("bullterrier_control.builtin."))
+    # a built-in is one the Rust core runs: it has no Python function
+    if thing.kind != "operation" and thing.function is None
 )
 PATCHES = ROOT / "examples" / "gallery"
 

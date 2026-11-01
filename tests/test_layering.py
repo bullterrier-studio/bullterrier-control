@@ -2,8 +2,8 @@
 import only the layers below it:
 
     app        __main__ > cli
-    builtin | lib | patch | plotting   bullterrier-control's own sources and shapers (never importing each other) | all
-               of them by name | a graph of them as data | signals drawn as a picture
+    lib | patch | plotting   every source, shaper and operation by name | a graph of them as data | signals drawn as
+               a picture
     plugin     the author API: the names a package of sources and shapers uses
     registry   the table of sources and shapers, and the queries over it
     rendered | inputs   a signal that needs history, rendered once | the data a source takes besides parameters
@@ -17,7 +17,7 @@ import only the layers below it:
                imports only `errors` (the extension imports its `FormatError` when it first raises one)
     errors     the exceptions; they import nothing from bullterrier_control, so every layer may raise them
 
-The Rust core keeps the same rule for its built-ins: `crates/core/src/builtin/<name>.rs` never refers to another.
+The Rust core's built-ins never refer to each other: `crates/core/src/builtin/<name>.rs` never names another.
 
 These are architecture tests: their subject is the package's structure (its import graph, its source files and the
 modules a fresh import loads), so, unlike behaviour tests, they read source (the linter).
@@ -41,13 +41,11 @@ ROOT = PACKAGE.parent.parent  # the repository: pyproject.toml holds the contrac
 LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-imports` from the repository root
 
 LAYERS = (
-    "Layers: app > builtin | lib | patch | plotting > plugin > registry > rendered | inputs > signal | params | easing"
+    "Layers: app > lib | patch | plotting > plugin > registry > rendered | inputs > signal | params | easing"
     " | cadence | hashing | scaling | rounding > _chain > formats > _native > errors"
 )
-SOURCES_APART = "Built-in sources never import each other"
-SOURCES_DOOR = "Built-in sources use only the author API"
 PATCH_DOOR = "Patch imports only registry, formats, errors and _native"
-CONTRACTS = [LAYERS, SOURCES_APART, SOURCES_DOOR, PATCH_DOOR]
+CONTRACTS = [LAYERS, PATCH_DOOR]
 
 
 def lint(cwd: Path, pythonpath: Path | None = None) -> subprocess.CompletedProcess:
@@ -58,17 +56,10 @@ def lint(cwd: Path, pythonpath: Path | None = None) -> subprocess.CompletedProce
     )
 
 
-# Two built-in modules the copy gains, so the rules about built-ins are checked whichever built-ins are still in Python.
-HOST, OTHER = "builtin/host.py", "builtin/other.py"
-
-
 def lint_a_copy_with(tmp_path: Path, module: str, line: str) -> subprocess.CompletedProcess:
-    """Lint a copy of the package (and its contracts), with the built-ins `HOST` and `OTHER`, in which `module` also
-    has the import `line`."""
+    """Lint a copy of the package (and its contracts) in which `module` also has the import `line`."""
     shutil.copytree(PACKAGE, tmp_path / "bullterrier_control", ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copy(ROOT / "pyproject.toml", tmp_path)
-    for sample in (HOST, OTHER):
-        (tmp_path / "bullterrier_control" / sample).write_text('"""A built-in of the test."""\n', encoding="utf-8")
     target = tmp_path / "bullterrier_control" / module
     target.write_text(target.read_text(encoding="utf-8") + f"\n{line}  # injected by the test\n", encoding="utf-8")
     return lint(tmp_path, pythonpath=tmp_path)
@@ -114,17 +105,11 @@ FORBIDDEN = {
     ),
     "registry to plugin": ("registry.py", "import bullterrier_control.plugin", "bullterrier_control.registry", LAYERS),
     "signal to registry": ("signal.py", "import bullterrier_control.registry", "bullterrier_control.signal", LAYERS),
-    "plugin to sources": ("plugin.py", "import bullterrier_control.builtin", "bullterrier_control.plugin", LAYERS),
-    "registry to sources": (
+    "plugin to lib": ("plugin.py", "import bullterrier_control.lib", "bullterrier_control.plugin", LAYERS),
+    "registry to plotting": (
         "registry.py",
-        "import bullterrier_control.builtin",
+        "import bullterrier_control.plotting",
         "bullterrier_control.registry",
-        LAYERS,
-    ),
-    "a source to the command line": (
-        HOST,
-        "import bullterrier_control.cli",
-        "bullterrier_control.builtin.host",
         LAYERS,
     ),
     "a patch to the command line": ("patch.py", "import bullterrier_control.cli", "bullterrier_control.patch", LAYERS),
@@ -136,63 +121,9 @@ FORBIDDEN = {
     ),
     "a patch to lib": ("patch.py", "import bullterrier_control.lib", "bullterrier_control.patch", LAYERS),
     "lib to a patch": ("lib.py", "import bullterrier_control.patch", "bullterrier_control.lib", LAYERS),
-    "a source to a patch": (
-        HOST,
-        "import bullterrier_control.patch",
-        "bullterrier_control.builtin.host",
-        LAYERS,
-    ),
-    "a source to the signal module": (
-        HOST,
-        "import bullterrier_control.signal",
-        "bullterrier_control.builtin.host",
-        SOURCES_DOOR,
-    ),
-    "a source to the errors": (
-        HOST,
-        "import bullterrier_control.errors",
-        "bullterrier_control.builtin.host",
-        SOURCES_DOOR,
-    ),
-    "a source to the registry": (
-        HOST,
-        "import bullterrier_control.registry",
-        "bullterrier_control.builtin.host",
-        SOURCES_DOOR,
-    ),
-    "a source to the params module": (
-        HOST,
-        "import bullterrier_control.params",
-        "bullterrier_control.builtin.host",
-        SOURCES_DOOR,
-    ),
-    "a source to the rendered module": (
-        HOST,
-        "import bullterrier_control.rendered",
-        "bullterrier_control.builtin.host",
-        SOURCES_DOOR,
-    ),
-    "a source to the formats": (
-        HOST,
-        "import bullterrier_control.formats",
-        "bullterrier_control.builtin.host",
-        SOURCES_DOOR,
-    ),
-    "a source to another source": (
-        HOST,
-        "import bullterrier_control.builtin.other",
-        "bullterrier_control.builtin.host",
-        SOURCES_APART,
-    ),
     "inputs to registry": ("inputs.py", "import bullterrier_control.registry", "bullterrier_control.inputs", LAYERS),
     "inputs to rendered": ("inputs.py", "import bullterrier_control.rendered", "bullterrier_control.inputs", LAYERS),
     "signal to inputs": ("signal.py", "import bullterrier_control.inputs", "bullterrier_control.signal", LAYERS),
-    "a source to the inputs module": (
-        HOST,
-        "import bullterrier_control.inputs",
-        "bullterrier_control.builtin.host",
-        SOURCES_DOOR,
-    ),
     "errors to formats": ("errors.py", "import bullterrier_control.formats", "bullterrier_control.errors", LAYERS),
     "formats to cli": (
         "formats/event.py",
@@ -251,8 +182,7 @@ ALLOWED = {
     "registry to params": ("registry.py", "import bullterrier_control.params"),
     "plugin to registry": ("plugin.py", "import bullterrier_control.registry"),
     "cli to plugin": ("cli.py", "import bullterrier_control.plugin"),
-    "cli to sources": ("cli.py", "import bullterrier_control.builtin"),
-    "a source to the plugin api": (HOST, "import bullterrier_control.plugin"),
+    "cli to lib": ("cli.py", "import bullterrier_control.lib"),
     "patch to registry": ("patch.py", "import bullterrier_control.registry"),
     "patch to formats": ("patch.py", "import bullterrier_control.formats"),
     "patch to errors": ("patch.py", "import bullterrier_control.errors"),
@@ -265,8 +195,6 @@ ALLOWED = {
     "formats to the Rust extension": ("formats/bundle.py", "from bullterrier_control._native import _core"),
     "the Rust extension's home to errors": ("_native/__init__.py", "import bullterrier_control.errors"),
     "rendered to the Rust extension": ("rendered.py", "from bullterrier_control._native import _core"),
-    # the one exception to "Built-in sources use only the author API": a built-in may call the Rust core
-    "a source to the Rust extension": (HOST, "from bullterrier_control._native import _core"),
 }
 
 

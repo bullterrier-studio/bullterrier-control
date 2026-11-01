@@ -23,8 +23,8 @@ signature, its inputs, an operation's return annotation) and loads the packages.
 Where they come from: what the Rust core runs (`Registry::builtin()`) is in the table from the start;
 the first query (`get`, `sources`, `shapers`, `operations`, `all_registered`, `table`, `unregister` or `isolated`) loads
 every installed package of the entry-point group `bullterrier_control.sources`, once. A package is a module whose import
-registers sources, shapers and operations: bullterrier-control's own is one (declared in its `pyproject.toml`); a third
-party declares its own (see `bullterrier_control.plugin`). A package that fails to import raises
+registers sources, shapers and operations, declared by a third party (see `bullterrier_control.plugin`); bullterrier-
+control declares none. A package that fails to import raises
 `BullterrierControlError` naming its entry point, whatever it registered before failing is taken back, and the next
 query tries again. The registry names no package itself, so importing bullterrier-control loads none.
 

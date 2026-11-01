@@ -204,7 +204,6 @@ def test_a_name_that_is_taken_malformed_or_reserved_is_refused_and_nothing_is_wr
     folders = [
         checkout / "crates/core/src/builtin",
         checkout / "tests/builtin",
-        checkout / "src/bullterrier_control/builtin",
     ]
     before = [sorted(path.name for path in folder.iterdir()) for folder in folders]
     refused = run(checkout, "tools/dev.py", "new-source", name, "--kind", kind)
