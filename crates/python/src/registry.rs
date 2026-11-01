@@ -22,6 +22,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyMapping, PyString, PyTuple};
 
 use bullterrier_control::Error;
+use bullterrier_control::formats::Event;
 use bullterrier_control::inputs::InputKind;
 use bullterrier_control::registry::{About, Call, Declared, Kind, Output, Registry, Returns, Thing};
 
@@ -332,7 +333,7 @@ fn body(
 }
 
 /// What a Python body gave, `result`, as what the thing `label` returns: a signal, a tuple (or list) of `Event`, or a
-/// `Series`; anything else is a `TypeError`.
+/// `Series`; anything else is a `TypeError`, and events out of time order a `ValueError`.
 fn output(result: &Bound<'_, PyAny>, returns: Returns, label: &str) -> PyResult<Output> {
     let wrong = |wanted: &str| PyTypeError::new_err(format!("{label} returned {}, not {wanted}", type_name(result)));
     match returns {
@@ -348,12 +349,25 @@ fn output(result: &Bound<'_, PyAny>, returns: Returns, label: &str) -> PyResult<
             } else {
                 return Err(wrong("a tuple of events"));
             };
-            items
+            let events: Vec<Event> = items
                 .iter()
                 .map(|item| item.cast::<PyEvent>().map(|event| event.get().0.clone()))
                 .collect::<Result<_, _>>()
-                .map(Output::Events)
-                .map_err(|_| wrong("a tuple of events"))
+                .map_err(|_| wrong("a tuple of events"))?;
+            // `Output::Events` is in time order: a body's events are not sorted for it, as an order it meant may differ
+            let times = events.iter().map(Event::t);
+            if let Some((index, (before, after))) = times
+                .clone()
+                .zip(times.skip(1))
+                .enumerate()
+                .find(|(_, (before, after))| after < before)
+            {
+                return Err(PyValueError::new_err(format!(
+                    "{label} returned events out of time order (event {} at {after} s comes after one at {before} s)",
+                    index + 1
+                )));
+            }
+            Ok(Output::Events(events))
         }
         Returns::Series => result
             .cast::<PySeries>()

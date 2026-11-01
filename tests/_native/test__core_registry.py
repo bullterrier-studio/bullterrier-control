@@ -464,6 +464,29 @@ def test_a_body_that_gives_the_wrong_kind_of_result_is_a_type_error_naming_the_t
         mine.get("body")()
 
 
+@pytest.mark.parametrize(
+    ("times", "given"),
+    [
+        pytest.param(
+            [1.0, 2.0, 2.0, 3.0], [(1.0, "0"), (2.0, "1"), (2.0, "2"), (3.0, "3")], id="in time order, two at once"
+        ),
+        pytest.param([], [], id="none"),
+        pytest.param([3.0, 1.0], None, id="later first"),
+        pytest.param([1.0, 2.0, 1.5], None, id="one out of order at the end"),
+    ],
+)
+def test_events_a_body_gives_are_in_time_order_or_refused_naming_the_thing(mine, times, given):
+    def body(params: Nothing) -> tuple[Event, ...]:
+        return tuple(Event(t=t, label=str(index)) for index, t in enumerate(times))
+
+    register(mine, body, kind="operation", params=Nothing, table=NOTHING, returns="events")
+    if given is None:
+        with pytest.raises(ValueError, match="operation 'body' returned events out of time order"):
+            mine.get("body")()
+    else:
+        assert [(event.t, event.label) for event in mine.get("body")()] == given
+
+
 def test_a_body_may_call_register_and_remove_things_of_its_own_registry(mine):
     register(mine, level)
 
