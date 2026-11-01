@@ -1,5 +1,5 @@
 //! The core's [`Signal`] for Python: `SignalBase`, the class a Python signal inherits, and what makes and combines
-//! signals (`Constant`, `Rendered`, `from_series`, `from_values`, `minimum`, `maximum`, the operators, `shape`).
+//! signals (`Constant`, `Rendered`, `from_series`, `from_values`, `minimum`, `maximum`, the operators).
 //!
 //! A `SignalBase` either holds a Rust signal (one the extension made) or is a Python subclass implementing
 //! `compute(times)`, read through [`callback::computed`]. A signal the extension makes is an instance of the class
@@ -22,7 +22,6 @@ use crate::callback;
 use crate::data::{float64s, shaped, shown};
 use crate::error;
 use crate::formats::PySeries;
-use crate::params;
 
 /// A value that changes over time, readable at any moment in seconds: the base of every signal. A subclass implements
 /// `compute(times)`; its `__init__` may take any arguments and need not call `super().__init__()`. A class inheriting
@@ -261,23 +260,7 @@ pub(crate) fn minimum<'py>(first: &Bound<'py, PyAny>, second: &Bound<'py, PyAny>
     pair(first, second, bullterrier_control::minimum)
 }
 
-/// The signal the shaper of the Rust core called `name` makes of `signal` with `params` (its parameters by name; one
-/// left out takes its default). A `ParameterError` lists every rule `params` breaks; an unknown name is a
-/// `ValueError`.
-#[pyfunction]
-pub(crate) fn shape<'py>(
-    name: &str,
-    signal: &Bound<'py, SignalBase>,
-    params: &Bound<'py, PyAny>,
-) -> PyResult<Bound<'py, PyAny>> {
-    let py = signal.py();
-    let params = params::json(params).map_err(PyValueError::new_err)?;
-    let shaped =
-        bullterrier_control::shape(name, &self::signal(signal), &params).map_err(|error| error::raised(py, error))?;
-    made(py, shaped)
-}
-
-/// Make every signal the extension makes from now on (an operator's result, `from_series`, `shape`, ...) an instance
+/// Make every signal the extension makes from now on (an operator's result, `from_series`, a shaper's, ...) an instance
 /// of `cls`: a subclass of `SignalBase` that does not implement `compute` and can be made by `cls.__new__(cls)` alone
 /// (so not one with a `__new__` needing arguments, nor a subclass of `Constant` or `Rendered`: `TypeError`). Once per
 /// process: naming another class later is a `ValueError`.

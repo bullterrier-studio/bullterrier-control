@@ -611,7 +611,7 @@ Rulings:
   exception object unchanged. *Reason:* two constructors cover every outside node; a public trait would freeze the
   read signature before R4's `Source` and `Shaper` traits.
 - **`_core.render` and `bullterrier_control::shapers()` are gone.** No shaper's input passes through Python sampling when
-  the graph is Rust. A shaper is called through `_core.shape(name, signal, params)`.
+  the graph is Rust. A shaper is called through `bullterrier_control::shape(name, &Signal, &Value)`; Python calls one through the registry.
 
 Design:
 - **`MAX_DEPTH = 1000`.** A graph deeper than this is `Error::Signal` (an operator past it gives a signal that refuses

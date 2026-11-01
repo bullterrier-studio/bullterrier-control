@@ -1,5 +1,5 @@
 """The extension's signals (`SignalBase`, `Constant`, `Rendered`, `from_series`, `from_values`, `minimum`, `maximum`,
-the operators, `shape`, `make_signals_as`): the boundary the package's `Signal` is built on.
+the operators, `make_signals_as`): the boundary the package's `Signal` is built on.
 
 An architecture test of the extension's own interface: the package's classes inherit these, and only these tests
 reach them directly. Every expected number is worked out by hand. Python code the core calls back (a subclass's
@@ -17,7 +17,7 @@ from fractions import Fraction
 import numpy as np
 import pytest
 
-from bullterrier_control import Series, Signal
+from bullterrier_control import Series, Signal, registry
 from bullterrier_control._native import _core  # noqa: PLC2701  architecture: the boundary the package's Signal is
 from bullterrier_control.errors import FormatError, ParameterError, SignalError
 
@@ -261,7 +261,7 @@ def test_a_compute_may_read_other_signals_and_one_reading_itself_is_refused_with
         pytest.param(lambda s: -(s * 2 + 1), id="through operators"),
         pytest.param(lambda s: _core.minimum(s, 1.0), id="through minimum"),
         pytest.param(lambda s: _core.Rendered(s, rate=10.0, run=lambda x: x), id="as the input of a Rendered"),
-        pytest.param(lambda s: _core.shape("slew", s, {"rise": 0.1}), id="as the input of a Rust shaper"),
+        pytest.param(lambda s: registry.get("slew")(s, rise=0.1), id="as the input of a Rust shaper"),
         pytest.param(lambda s: Computing(lambda t: s.sample(t)), id="read by another Python signal"),
         pytest.param(lambda s: _core.Rendered(RAMP, rate=10.0, run=boom), id="raised by a run"),
     ],
@@ -496,35 +496,35 @@ def test_a_read_needing_more_samples_than_the_limit_is_refused_before_rendering(
     assert rendered == [100]
 
 
-# ---- shape: a shaper of the Rust core ----
+# ---- a shaper of the Rust core, called through the registry ----
 
 
-def test_shape_shapes_a_signal_with_a_shaper_of_the_core():
+def test_a_rust_shaper_shapes_a_signal_of_the_extension():
     step = _core.from_values([0.0, 1.0], 10.0, interpolation="hold")
-    slewed = _core.shape("slew", step, {"rise": 0.5, "fall": 0.5, "rate": 10.0})
+    slewed = registry.get("slew")(step, rise=0.5, fall=0.5, rate=10.0)
     # 0.2 a sample up from 0.1 s: 0.2 at 0.1 s, 0.4 at 0.25 s, 1 from 0.5 s
     assert slewed.sample([0.0, 0.1, 0.25, 0.5, 9.0]) == pytest.approx([0.0, 0.2, 0.4, 1.0, 1.0], abs=1e-12)
-    assert _core.shape("follow", Echo(1.0), {"attack": 0, "rate": 10.0}).sample([0.5]).tolist() == [0.5]
+    assert registry.get("follow")(Echo(1.0), attack=0, rate=10.0).sample([0.5]).tolist() == [0.5]
 
 
 @pytest.mark.parametrize(
-    ("name", "params", "error", "named"),
+    ("params", "named"),
     [
-        pytest.param("slew", {"rise": "slow"}, ParameterError, "rise", id="a parameter of the wrong type"),
-        pytest.param("slew", {"depth": 1.0}, ParameterError, "depth", id="an unknown parameter"),
-        pytest.param("slew", {"rise": float("nan")}, ValueError, "finite", id="NaN has no JSON form"),
-        pytest.param("slew", {"rise": 4000.0}, ParameterError, "rise", id="a value out of its range"),
-        pytest.param("slew", {"rate": 2**70}, ValueError, "64 bits", id="an integer beyond 64 bits"),
-        pytest.param("slew", {"rate": None}, ParameterError, "rate", id="None is not a number"),
-        pytest.param("slew", {"rate": (10.0,)}, ParameterError, "rate", id="a tuple is not a number"),
-        pytest.param("slew", {"rate": True}, ParameterError, "rate", id="a bool is not the number 1"),
-        pytest.param("slew", {"rate": {1, 2}}, ValueError, "parameter value", id="a set has no JSON form"),
-        pytest.param("wobble", {}, ValueError, "wobble", id="an unknown shaper"),
+        pytest.param({"rise": "slow"}, "rise", id="a parameter of the wrong type"),
+        pytest.param({"depth": 1.0}, "depth", id="an unknown parameter"),
+        pytest.param({"rise": float("nan")}, "finite", id="NaN"),
+        pytest.param({"rise": 4000.0}, "rise", id="a value out of its range"),
+        pytest.param({"rate": 2**70}, "64 bits", id="an integer beyond 64 bits"),
+        pytest.param({"rate": None}, "rate", id="None is not a number"),
+        pytest.param({"rate": (10.0,)}, "rate", id="a tuple is not a number"),
+        pytest.param({"rate": True}, "rate", id="a bool is not the number 1"),
+        pytest.param({"rate": {1, 2}}, "parameter value", id="a set is no parameter value"),
     ],
 )
-def test_shape_refuses_parameters_or_a_name_the_core_does_not_have(name, params, error, named):
-    with pytest.raises(error, match=named):
-        _core.shape(name, RAMP, params)
+def test_a_rust_shaper_refuses_parameters_it_does_not_have_or_cannot_read(params, named):
+    with pytest.raises(ParameterError, match=named) as refused:
+        registry.get("slew")(RAMP, **params)
+    assert str(refused.value).startswith("shaper 'slew': slew: ")
 
 
 # ---- threads and the GIL ----
@@ -596,7 +596,7 @@ def test_a_long_read_of_a_rust_signal_lets_another_python_thread_run():
     deep = RAMP
     for _ in range(100):
         deep = deep + 1.0
-    slewed = _core.shape("slew", deep, {"rise": 0.0, "fall": 0.0, "rate": 48000.0})
+    slewed = registry.get("slew")(deep, rise=0.0, fall=0.0, rate=48000.0)
     entered, seen = threading.Event(), {}
 
     def long_read():

@@ -1,5 +1,5 @@
 # The stub of the Rust extension `bullterrier_control._native._core` (crates/python). The documentation is the
-# extension's own (`help(_core.shape)`, `help(Event)`). The formats' classes are the package's
+# extension's own (`help(Event)`). The formats' classes are the package's
 # (`bullterrier_control.Event`, ...): their `__module__` is `bullterrier_control`.
 
 import inspect
@@ -32,7 +32,6 @@ __all__ = [
     "Unit",
     "at_least",
     "between",
-    "builtins",
     "bundle_schema",
     "check_input",
     "counter",
@@ -46,16 +45,9 @@ __all__ = [
     "maximum",
     "minimum",
     "more_than",
-    "parameters",
-    "parse_parameters",
     "patch_schema",
-    "shape",
     "uniform",
 ]
-
-def builtins() -> list[str]: ...
-def parameters(name: str) -> dict[str, dict[str, Any]]: ...
-def parse_parameters(name: str, values: Mapping[str, object]) -> dict[str, Any]: ...
 
 @final
 class ParamTable:
@@ -261,7 +253,6 @@ def from_values(
 ) -> SignalBase: ...
 def maximum(first: SignalBase | float, second: SignalBase | float) -> SignalBase: ...
 def minimum(first: SignalBase | float, second: SignalBase | float) -> SignalBase: ...
-def shape(name: str, signal: SignalBase, params: Mapping[str, object]) -> SignalBase: ...
 def make_signals_as(cls: type[SignalBase]) -> None: ...
 
 @final

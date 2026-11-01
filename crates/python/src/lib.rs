@@ -1,9 +1,9 @@
 //! `bullterrier_control._native._core`: gives the Rust core's signals (`SignalBase`, the class the package's `Signal`
-//! inherits, and `shape`, which runs the core's shapers on one), its primitives (easing, hashing, scaling, cadence,
+//! inherits), its primitives (easing, hashing, scaling, cadence,
 //! rounding) and its formats (`Unit`, `Event`, `Series`, `Grid`, `Bundle`) to Python as the package's classes.
 //! Generic: it names no shaper, so porting one never changes it.
 //!
-//! It also gives the core's parameter tables (`ParamTable`, a built-in's through `parameters` and `parse_parameters`)
+//! It also gives the core's parameter tables (`ParamTable`, a built-in's through `ParamTable.builtin`)
 //! and its inputs (`Keyframe`, `check_input`, `input_docs`). A format that breaks a rule raises the package's
 //! `bullterrier_control.errors.FormatError`, parameters or an input that do `ParameterError`, each imported when the
 //! first one is raised: importing the extension imports nothing of the package.
@@ -32,7 +32,7 @@ mod _core {
     #[pymodule_export]
     use super::inputs::{PyKeyframe, check_input, input_docs};
     #[pymodule_export]
-    use super::params::{PyParamTable, builtins, parameters, parse_parameters};
+    use super::params::PyParamTable;
     #[pymodule_export]
     use super::patch::{PyNode, PyPatch, PyReference, patch_schema};
     #[pymodule_export]
@@ -40,9 +40,7 @@ mod _core {
     #[pymodule_export]
     use super::registry::{PyRegistry, PyThing};
     #[pymodule_export]
-    use super::signal::{
-        Constant, Rendered, SignalBase, from_series, from_values, make_signals_as, maximum, minimum, shape,
-    };
+    use super::signal::{Constant, Rendered, SignalBase, from_series, from_values, make_signals_as, maximum, minimum};
 
     /// Every unit of the core becomes a member of `Unit`; the primitives' constants are added.
     #[pymodule_init]

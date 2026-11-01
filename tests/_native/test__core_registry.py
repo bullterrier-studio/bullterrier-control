@@ -618,10 +618,10 @@ def test_sixteen_threads_calling_a_python_thing_at_once_get_their_own_values(min
 # ---- a built-in's table ----
 
 
-def test_the_table_of_a_built_in_reads_and_describes_as_the_built_in_does():
+def test_the_table_of_a_built_in_reads_its_values_and_names_it_in_a_refusal():
     table = _core.ParamTable.builtin("slew")
-    assert table.parse({"rise": 0.5}) == _core.parse_parameters("slew", {"rise": 0.5})
-    assert table.describe() == _core.parameters("slew")
+    assert table.parse({"rise": 0.5}) == {"rise": 0.5, "fall": 0.1, "rate": 1000.0}
+    assert list(table.describe()) == ["rise", "fall", "rate"]
     with pytest.raises(ParameterError, match=r"^slew: rise: "):
         table.parse({"rise": -1})
     with pytest.raises(ValueError, match="wobble"):

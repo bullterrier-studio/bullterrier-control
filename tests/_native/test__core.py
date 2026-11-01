@@ -1,5 +1,5 @@
-"""The Rust extension's boundary, `_native._core`: the parameter tables (`parameters`, `parse_parameters`,
-`ParamTable`) the package's parameters are read through.
+"""The Rust extension's boundary, `_native._core`: the parameter tables (`ParamTable`, a built-in's through
+`ParamTable.builtin`) the package's parameters are read through.
 
 An architecture test: the extension is internal (the package reaches it through its parameter classes, and only this
 test calls it directly). A table refuses a declaration or values with a `ParameterError` listing every rule broken.
@@ -73,19 +73,21 @@ def assert_lists(refused, expected):
         assert part in rule, (path, rule, part)
 
 
-def test_the_core_has_a_table_for_every_registered_built_in():
-    assert _core.builtins() == BUILT_INS
-    assert set(BUILT_INS) <= set(registry.all_registered())
+@pytest.mark.parametrize("name", BUILT_INS)
+def test_the_core_has_a_table_for_every_registered_built_in(name):
+    assert name in registry.all_registered()
+    table = _core.ParamTable.builtin(name)
+    assert list(table.parse({})) == list(table.describe())
 
 
 def test_a_built_ins_table_describes_each_field_with_its_range_basic_fields_first():
-    described = _core.parameters("slew")
+    described = _core.ParamTable.builtin("slew").describe()
     assert described == SLEW_DESCRIBED
     assert list(described) == ["rise", "fall", "rate"]
 
 
 def test_a_table_declared_as_a_built_in_describes_it_the_same():
-    assert _core.ParamTable(SLEW_SPEC, name="Slew").describe() == _core.parameters("slew")
+    assert _core.ParamTable(SLEW_SPEC, name="Slew").describe() == _core.ParamTable.builtin("slew").describe()
 
 
 def test_a_table_lists_its_basic_fields_before_its_advanced_ones_each_in_declaration_order():
@@ -264,29 +266,29 @@ def test_a_declaration_is_accepted_only_when_it_follows_every_rule(spec, expecte
 
 
 def test_a_built_ins_values_are_read_through_its_table():
-    assert _core.parse_parameters("lfo", {"phase": 1.25, "shape": "saw-down"}) == {
+    assert _core.ParamTable.builtin("lfo").parse({"phase": 1.25, "shape": "saw-down"}) == {
         "shape": "saw-down", "rate": 1.0, "per": "second", "phase": 0.25, "low": 0.0, "high": 1.0, "duty": 0.5,
     }  # fmt: skip
     with pytest.raises(ParameterError, match=r"^lfo: shape: ") as refused:
-        _core.parse_parameters("lfo", {"rate": -1.0, "shape": "tri"})
+        _core.ParamTable.builtin("lfo").parse({"rate": -1.0, "shape": "tri"})
     assert [path for path, _ in refused.value.problems] == ["shape", "rate"]
 
 
 def test_a_built_ins_rule_between_fields_is_checked():
-    assert _core.parse_parameters("clip", {"low": 0.5, "high": 0.5})["high"] == 0.5
+    clip = _core.ParamTable.builtin("clip")
+    assert clip.parse({"low": 0.5, "high": 0.5})["high"] == 0.5
     with pytest.raises(ParameterError, match="high"):
-        _core.parse_parameters("clip", {"low": 0.5, "high": 0.25})
+        clip.parse({"low": 0.5, "high": 0.25})
 
 
-@pytest.mark.parametrize("ask", [_core.parameters, lambda name: _core.parse_parameters(name, {})])
-def test_a_name_with_no_built_in_is_a_value_error_naming_it(ask):
+def test_a_name_with_no_built_in_is_a_value_error_naming_it():
     with pytest.raises(ValueError, match="no_such_thing"):
-        ask("no_such_thing")
+        _core.ParamTable.builtin("no_such_thing")
 
 
 def test_the_core_refuses_an_ease_the_package_does_not_name():
     with pytest.raises(ParameterError, match="ease"):
-        _core.parse_parameters("remap", {"ease": "wobble"})
+        _core.ParamTable.builtin("remap").parse({"ease": "wobble"})
 
 
 # ---- nesting ----
@@ -315,11 +317,11 @@ def nested(depth):
             DEEPEST + 1, ParameterError, "nested too deeply (limit 128)", id="a value past the limit is refused",
         ),
         pytest.param(
-            lambda value: _core.parse_parameters("lfo", {"rate": value}),
+            lambda value: _core.ParamTable.builtin("lfo").parse({"rate": value}),
             DEEPEST, ParameterError, "must be a number", id="a built-in's value at the limit",
         ),
         pytest.param(
-            lambda value: _core.parse_parameters("lfo", {"rate": value}),
+            lambda value: _core.ParamTable.builtin("lfo").parse({"rate": value}),
             DEEPEST + 1, ParameterError, "nested too deeply", id="a built-in's value past the limit",
         ),
         pytest.param(
@@ -331,12 +333,12 @@ def nested(depth):
             DEEPEST + 1, ParameterError, "the default is not valid: nested too deeply", id="a default past the limit",
         ),
         pytest.param(
-            lambda value: _core.shape("slew", _core.Constant(0.0), {"rise": value}),
-            DEEPEST - 1, ValueError, "must be a number", id="shape: the mapping is one level, a value at the limit",
+            lambda value: registry.get("slew")(_core.Constant(0.0), rise=value),
+            DEEPEST, ParameterError, "must be a number", id="a shaper's value at the limit",
         ),
         pytest.param(
-            lambda value: _core.shape("slew", _core.Constant(0.0), {"rise": value}),
-            DEEPEST, ValueError, "nested too deeply", id="shape: a value past the limit",
+            lambda value: registry.get("slew")(_core.Constant(0.0), rise=value),
+            DEEPEST + 1, ParameterError, "nested too deeply", id="a shaper's value past the limit",
         ),
         pytest.param(
             lambda value: Series.parse({"rate": 1.0, "unit": "ratio", "values": value}),
@@ -354,7 +356,7 @@ def test_a_value_is_read_through_at_most_128_levels_of_nesting(read, depth, refu
 NESTING = """
 import numpy
 
-from bullterrier_control import Series
+from bullterrier_control import Series, registry
 from bullterrier_control._native import _core
 from bullterrier_control.errors import BullterrierControlError
 
@@ -367,6 +369,7 @@ held = numpy.empty((), dtype=object)  # an array whose tolist() is itself
 held[()] = held
 table = _core.ParamTable([{"name": "rate", "kind": "float", "default": 1.0, "doc": "d", "unit": "hertz", "min": 0,
                           "max": 10}], name="X")
+lfo = _core.ParamTable.builtin("lfo")
 try:
     READ
 except (BullterrierControlError, ValueError) as error:
@@ -379,16 +382,18 @@ except (BullterrierControlError, ValueError) as error:
     [
         pytest.param("table.parse({'rate': cyclic})", "ParameterError X: rate: nested too deeply", id="table, a cycle"),
         pytest.param("table.parse({'rate': deep})", "ParameterError X: rate: nested too deeply", id="table, 1M deep"),
-        pytest.param("_core.parse_parameters('lfo', {'rate': cyclic})", "ParameterError lfo: rate: nested too deeply",
+        pytest.param("lfo.parse({'rate': cyclic})", "ParameterError lfo: rate: nested too deeply",
                      id="a built-in, a cycle"),
-        pytest.param("_core.parse_parameters('lfo', {'rate': deep})", "ParameterError lfo: rate: nested too deeply",
+        pytest.param("lfo.parse({'rate': deep})", "ParameterError lfo: rate: nested too deeply",
                      id="a built-in, 1M deep"),
         pytest.param("table.parse({'rate': held})", "ParameterError X: rate: nested too deeply",
                      id="table, an array that holds itself"),
         pytest.param("_core.ParamTable([{'name': 'rate', 'kind': 'text', 'default': cyclic, 'doc': 'd'}], name='X')",
                      "ParameterError X: rate: the default is not valid: nested too deeply", id="a default, a cycle"),
-        pytest.param("_core.shape('slew', _core.Constant(0.0), {'rise': deep})", "ValueError",
-                     id="shape, 1M deep"),
+        pytest.param("registry.get('slew')(_core.Constant(0.0), rise=deep)",
+                     "ParameterError shaper 'slew': slew: rise: nested too deeply", id="a shaper, 1M deep"),
+        pytest.param("registry.get('slew')(_core.Constant(0.0), rise=cyclic)",
+                     "ParameterError shaper 'slew': slew: rise: nested too deeply", id="a shaper, a cycle"),
         pytest.param("Series.parse({'rate': 1.0, 'unit': 'ratio', 'values': cyclic})", "FormatError Series: values[0]",
                      id="a format, a cycle"),
         pytest.param("Series.parse({'rate': 1.0, 'unit': 'ratio', 'values': deep})", "FormatError Series: values[0]",
@@ -402,5 +407,3 @@ def test_a_cyclic_or_a_million_deep_value_is_refused_without_crashing(read, said
     done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", check=False)
     assert done.returncode == 0, done.stderr
     assert done.stdout.startswith(said), done.stdout
-    if "shape" in read:
-        assert "nested too deeply" in done.stdout, done.stdout

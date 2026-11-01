@@ -276,16 +276,18 @@ def test_the_stub_as_it_is_matches_the_extension(project_copy, copy_env):
     ("old", "new", "named"),
     [
         pytest.param(
-            "def builtins() -> list[str]: ...\n",
-            "def builtins() -> list[str]: ...\ndef ghost() -> int: ...\n",
+            "def is_bundle_name(name: str) -> bool: ...\n",
+            "def is_bundle_name(name: str) -> bool: ...\ndef ghost() -> int: ...\n",
             f"{EXTENSION}.ghost",
             id="a function the extension lacks",
         ),
-        pytest.param("def builtins() -> list[str]: ...\n", "", f"{EXTENSION}.builtins", id="a function left out"),
         pytest.param(
-            "def builtins() -> list[str]: ...\n",
-            "def builtins(names: int) -> list[str]: ...\n",
-            f"{EXTENSION}.builtins",
+            "def is_bundle_name(name: str) -> bool: ...\n", "", f"{EXTENSION}.is_bundle_name", id="a function left out"
+        ),
+        pytest.param(
+            "def is_bundle_name(name: str) -> bool: ...\n",
+            "def is_bundle_name(name: str, extra: int) -> bool: ...\n",
+            f"{EXTENSION}.is_bundle_name",
             id="a parameter the extension lacks",
         ),
     ],

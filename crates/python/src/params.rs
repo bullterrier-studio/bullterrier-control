@@ -1,5 +1,5 @@
-//! The core's parameter tables for Python: a built-in's (`builtins`, `parameters`, `parse_parameters`) and a plugin's
-//! (`ParamTable`, built from a list of declarations). Every rule is the table's (`bullterrier_control::params`): the
+//! The core's parameter tables for Python: a built-in's and a plugin's
+//! (`ParamTable`, from `ParamTable.builtin` or from a list of declarations). Every rule is the table's (`bullterrier_control::params`): the
 //! bindings read Python values as the JSON a table takes and refuse what JSON cannot hold (NaN, an infinity, an
 //! integer beyond 64 bits, a lone surrogate) as a problem of its field, listed with every other rule broken.
 //!
@@ -93,7 +93,7 @@ impl<'de> Visitor<'de> for JsonVisitor {
 
 /// `value` as JSON, or the rule it breaks: a NaN or an infinity, an integer beyond 64 bits (signed), a `str` with a
 /// lone surrogate, or a type with no JSON form (a `set`).
-pub(crate) fn json(value: &Bound<'_, PyAny>) -> Result<Value, String> {
+fn json(value: &Bound<'_, PyAny>) -> Result<Value, String> {
     Json::deserialize(Data::new(value.clone()))
         .map(|Json(read)| read)
         .map_err(|refusal| refusal.to_string())
@@ -391,33 +391,6 @@ fn builtin(name: &str) -> PyResult<&'static ParamTable> {
     bullterrier_control::parameters(name).map_err(value_error)
 }
 
-/// The names of the built-in sources, shapers and operations, sorted: each has a table (`parameters`).
-#[pyfunction]
-pub(crate) fn builtins() -> Vec<&'static str> {
-    bullterrier_control::builtins()
-}
-
-/// The fields of the built-in `name` (a source, shaper or operation), as `ParamTable.describe` gives them.
-///
-/// `ValueError` if there is no built-in of that name.
-#[pyfunction]
-pub(crate) fn parameters<'py>(py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyDict>> {
-    described(py, builtin(name)?)
-}
-
-/// The values `values` sets for the built-in `name`, as `ParamTable.parse` reads them (with its rules between fields:
-/// clip's `high` not below `low`, ...); the message of a `ParameterError` starts with `name`.
-///
-/// `ValueError` if there is no built-in of that name.
-#[pyfunction]
-pub(crate) fn parse_parameters<'py>(
-    py: Python<'py>,
-    name: &str,
-    values: &Bound<'py, PyAny>,
-) -> PyResult<Bound<'py, PyDict>> {
-    parse(py, builtin(name)?, name, values)
-}
-
 /// The parameters of a source, shaper or operation: a table of fields, each declaration checked once, here.
 ///
 /// `spec` lists one mapping per field, in declaration order: `name`, `kind` (`"float"`, `"whole"`, `"switch"`,
@@ -457,7 +430,7 @@ impl PyParamTable {
     }
 
     /// The table the core declares for the built-in `name` (a source, shaper or operation), its refusals' messages
-    /// starting with `name`: what `parameters` and `parse_parameters` read.
+    /// starting with `name`.
     ///
     /// `ValueError` if there is no built-in of that name.
     #[staticmethod]

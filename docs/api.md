@@ -5,7 +5,7 @@ The programmatic API is the product. A patch file is a serialisation of the same
 of the core. The Python blocks run as tests (`tests/test_api_doc.py`); a `# array([...])` comment is the result of the
 `.sample(...)` call above it. The Rust blocks marked **implemented** exist and are the real signatures; the others are the target API that R5 builds
 to. Implemented: the formats (`Event::new`, `Series::new`, `Grid::new`, `Bundle::from_json`), the parameters
-(`#[derive(Params)]` structs, `ParamTable`, `ParamUnit`, `parameters(name)`, `builtins()`) and the signal graph (R3):
+(`#[derive(Params)]` structs, `ParamTable`, `ParamUnit`, the Rust functions `parameters` and `builtins`) and the signal graph (R3):
 `Signal` (`constant`, `from_series`, `from_values`, `sample`, `sample_into`, `at`, `+ - *` and negation, `maximum`,
 `minimum`, `from_fn`, `rendered`), the inputs (R4a: `InputKind::check`, `Input::from_*`, `Keyframe`, `matching`), the registry and its traits (R4b:
 `Registry`, `Thing`, `Source`, `Shaper`, `Operation`, `Signal::pipe`, `Signal::recipe`), patches (R4b: `Patch::from_toml`,
