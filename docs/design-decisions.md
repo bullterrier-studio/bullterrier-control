@@ -882,5 +882,11 @@ script or a note does not run for the next contributor.
   every platform's wheel and on the sdist, grows each chain of `CHAINS` to the deepest the package accepts and walks it on a
   thread of 256 KiB, each in its own Python, so a crash is a failure naming the chain; `tests/test_depth_stack.py` runs the
   same on the development install.
+- **A gate that passed is not repeated on the same tree** (2026-11-01). `poe check` notes the tree of `HEAD` when it
+  starts and, when every step passed, records it in the git folder if the working tree was clean at both ends and `HEAD`
+  was unchanged; the pre-push hook skips the gate for a tip with that tree. *Reason:* the hook repeated a minutes-long
+  gate on contents just checked, and a slow loop gets worked around. *Consequence:* nothing is skipped that was not
+  checked; an edit, a commit during the run or any uncommitted file means no record, and CI checks everything again.
+  *Not seen by the record:* state outside the tree (installed cargo tools, the advisory database, the built extension).
 - **Not guarded:** doctests (binaries of their own) and the test binaries of the bindings and macros crates (uncapped), and
   memory on the Python side (no incident yet: a watchdog comes the day one happens).

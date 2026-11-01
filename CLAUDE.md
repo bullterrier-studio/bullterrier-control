@@ -396,7 +396,8 @@ asks for more validation, layers, documents or steps than this file, follow this
 
 Once per clone: `uv run poe setup` (hooks and commit template). Before every push or merge: `uv run poe check` (`uv run poe fix`
 repairs what it can). Commit hooks run ruff only; the pre-push hook runs the whole gate only for a push to `main` or a tag that
-changes more than documentation.
+changes more than documentation, and not again for a push of exactly the tree a passing `uv run poe check` ran on (it must
+have started and ended on a clean working tree; the record is in the git folder, so commit before you run `check`).
 - **Trunk-based:** everything integrates on `main`. Short-lived branch `<type>/<short-description>` (`feat/envelope-release`),
   merged into `main` and deleted when done; no worktrees unless the owner asks; rebase on `main` before reporting. Never push.
 - **Conventional Commits 1.0:** `type(scope)!: subject`. Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`,
