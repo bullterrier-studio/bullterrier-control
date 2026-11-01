@@ -244,7 +244,7 @@ mod tests {
 
     /// `(id, beats, division, time given, time snapped)`: where the nearest position is before 0, or at it.
     #[allow(clippy::type_complexity, reason = "a table of rows, read as one")]
-    const BEFORE_ZERO: [(&str, &[f64], i64, f64, f64); 11] = [
+    const BEFORE_ZERO: [(&str, &[f64], i64, f64, f64); 12] = [
         ("the nearest position, at -0.2 s, is before 0: the next one up, the first beat", &[0.3, 0.8], 1, 0.01, 0.3),
         ("time 0: the position at -0.2 s is before 0, so the next one", &[0.3, 0.8], 1, 0.0, 0.3),
         ("the nearest position is the first beat", &[0.3, 0.8], 1, 0.1, 0.3),
@@ -256,6 +256,7 @@ mod tests {
         ("beats 0.3, 0.4, 0.5: 0.06 is nearer the position at 0.1", &[0.3, 0.4, 0.5], 1, 0.06, 0.1),
         ("the nearest position, 1e-6 s before 0: the next one up", &[0.499_999, 0.999_999], 1, 0.0, 0.499_999),
         ("beats from 1 s: the positions at 0.5 s and 0 s are reached", &[1.0, 1.5], 1, 0.3, 0.5),
+        ("in halves, 0.3 s is -2.8 halves: -3 halves is at 0.25 s, after 0, kept", &[1.0, 1.5], 2, 0.3, 0.25),
     ];
 
     #[test]
