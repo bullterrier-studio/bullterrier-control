@@ -79,19 +79,6 @@ def param(
     return _Declared(default, doc, unit, min, max, advanced, cyclic)
 
 
-class _Builtin:
-    """The table the core declares for the built-in `name`, read as a `ParamTable` is."""
-
-    def __init__(self, name: str) -> None:
-        self.name = name
-
-    def parse(self, values: Mapping[str, object]) -> dict[str, Any]:
-        return _core.parse_parameters(self.name, values)
-
-    def describe(self) -> dict[str, dict[str, Any]]:
-        return _core.parameters(self.name)
-
-
 def _entry(name: str, annotation: object, declared: object) -> dict[str, object]:
     """The core's declaration of one field from its annotation and what the class body gave it (`param(...)`, a plain
     default, or `_NOTHING`). A type the core has no kind for is handed on by its text, for the core to refuse."""
@@ -109,14 +96,15 @@ class Params:
 
     A built-in's class is `class XParams(Params, builtin="x")`, with a docstring only: its fields are the core's."""
 
-    _table: ClassVar[_core.ParamTable | _Builtin]
+    # the core's table of the class, made with it; the registry hands it to the core with the class
+    _table: ClassVar[_core.ParamTable]
 
     def __init_subclass__(cls, *, builtin: str | None = None, **kwargs: Any) -> None:
         """Build the class's table from its annotations and `param` declarations (`ParameterError` naming each broken
         field), or take the core's table of `builtin`."""
         super().__init_subclass__(**kwargs)
         if builtin is not None:
-            cls._table = _Builtin(builtin)
+            cls._table = _core.ParamTable.builtin(builtin)
             return
         annotations = inspect.get_annotations(cls, eval_str=True)
         declared = {name: cls.__dict__.get(name, _NOTHING) for name in annotations}

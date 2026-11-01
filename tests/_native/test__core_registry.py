@@ -24,9 +24,6 @@ from bullterrier_control.errors import ParameterError, SignalError, UnknownNameE
 from bullterrier_control.plugin import Constant, Finite, Params, Signal, param
 
 TIMEOUT = 60.0  # seconds a thread test waits before it fails as a deadlock
-LEVEL_SPEC = [
-    {"name": "value", "kind": "float", "default": 0.5, "doc": "The level.", "unit": "fraction", "min": 0, "max": 1}
-]
 
 
 class Level(Params):
@@ -39,14 +36,18 @@ class Nothing(Params):
     """No parameters."""
 
 
-LEVEL = _core.ParamTable(LEVEL_SPEC, name="Level")
-NOTHING = _core.ParamTable([], name="Nothing")
+class Evented(Params):
+    """A parameter named like an input."""
+
+    events: Finite = param(0.5, doc="Clashes with the input.", unit="fraction", min=0, max=1)
+
+
 POINTS = [{"t": 0.0, "value": 1.0}, {"t": 2.0, "value": 3.0, "ease": "in"}]
 
 
-def register(registry, function, kind="source", params=Level, table=LEVEL, inputs=None, returns="signal"):
+def register(registry, function, kind="source", params=Level, inputs=None, returns="signal"):
     """`function` registered in `registry` as a thing of `kind`."""
-    return registry.register(function, kind=kind, params=params, table=table, inputs=inputs or {}, returns=returns)
+    return registry.register(function, kind=kind, params=params, inputs=inputs or {}, returns=returns)
 
 
 @pytest.fixture
@@ -120,18 +121,18 @@ def make(value):
 
 def test_two_functions_made_by_one_factory_do_not_replace_each_other(mine):
     first = make(1.0)
-    register(mine, first, params=Nothing, table=NOTHING)
+    register(mine, first, params=Nothing)
     with pytest.raises(ValueError, match=r"source 'made': the name is taken by the source defined as .*made"):
-        register(mine, make(2.0), params=Nothing, table=NOTHING)
-    register(mine, first, params=Nothing, table=NOTHING)  # the very same function again is a reload
+        register(mine, make(2.0), params=Nothing)
+    register(mine, first, params=Nothing)  # the very same function again is a reload
     assert mine.get("made")().sample(0.0).tolist() == 1.0
 
 
 def test_the_taken_name_error_shows_the_function_without_its_address(mine):
-    register(mine, make(1.0), params=Nothing, table=NOTHING)
+    register(mine, make(1.0), params=Nothing)
     shown = re.escape(f"{__name__}.make.<locals>.made")
     with pytest.raises(ValueError, match=rf"the name is taken by the source defined as {shown}$"):
-        register(mine, make(2.0), params=Nothing, table=NOTHING)
+        register(mine, make(2.0), params=Nothing)
 
 
 def test_a_module_defined_again_replaces_what_it_registered_as_reloading_does(mine):
@@ -172,7 +173,7 @@ def events_named(params: Level) -> tuple[Event, ...]:
         pytest.param(Loud, {}, "source 'Loud': a name is lower case", id="a name in capitals"),
         pytest.param(
             fine,
-            {"table": _core.ParamTable([{**LEVEL_SPEC[0], "name": "events"}], name="P")},
+            {"params": Evented},
             "the parameter 'events' has the name of an input",
             id="a parameter named like an input",
         ),
@@ -185,7 +186,14 @@ def events_named(params: Level) -> tuple[Event, ...]:
 )
 def test_a_registration_that_breaks_a_rule_is_refused_naming_it_and_registers_nothing(mine, function, declared, named):
     with pytest.raises(ValueError, match=named):
-        register(mine, function, **{"params": Nothing, "table": NOTHING, **declared})
+        register(mine, function, **{"params": Nothing, **declared})
+    assert mine.things() == {}
+
+
+@pytest.mark.parametrize("params", [dict, Level(), None], ids=["another class", "an instance", "none"])
+def test_parameters_that_are_not_a_params_class_are_a_type_error(mine, params):
+    with pytest.raises(TypeError, match="params must be a Params subclass"):
+        register(mine, fine, params=params)
     assert mine.things() == {}
 
 
@@ -259,8 +267,8 @@ def callable_things():
     registry = _core.Registry(builtin=False)
     register(registry, level)
     register(registry, track, inputs={"points": True})
-    register(registry, maybe, params=Nothing, table=NOTHING, inputs={"points": False})
-    register(registry, pair, params=Nothing, table=NOTHING, inputs={"points": True, "values": True})
+    register(registry, maybe, params=Nothing, inputs={"points": False})
+    register(registry, pair, params=Nothing, inputs={"points": True, "values": True})
     register(registry, scale, kind="shaper")
     return registry
 
@@ -398,7 +406,7 @@ def test_an_operation_gives_its_events_or_its_series():
 
     registry = _core.Registry(builtin=False)
     register(registry, louder, kind="operation", inputs={"events": True}, returns="events")
-    register(registry, ramp, kind="operation", params=Nothing, table=NOTHING, returns="series")
+    register(registry, ramp, kind="operation", params=Nothing, returns="series")
     kept = registry.get("louder")(events=[{"t": 3.0, "strength": 0.9}, {"t": 1.0, "strength": 0.2}], value=0.5)
     assert type(kept) is tuple
     assert [(event.t, event.strength) for event in kept] == [(3.0, 0.9)]
@@ -431,7 +439,7 @@ def hostile(raised: Exception | None = None, gives: object = None) -> object:
 
 def test_an_exception_a_body_raises_reaches_the_caller_unchanged(mine):
     raised = Broken("the plugin broke")
-    register(mine, hostile(raised=raised), params=Nothing, table=NOTHING)
+    register(mine, hostile(raised=raised), params=Nothing)
     with pytest.raises(Broken) as refused:
         mine.get("body")()
     assert refused.value is raised
@@ -439,7 +447,7 @@ def test_an_exception_a_body_raises_reaches_the_caller_unchanged(mine):
 
 def test_a_parameter_error_a_body_raises_is_its_own_not_the_things(mine):
     raised = ParameterError("depth: too deep", (("depth", "too deep"),))
-    register(mine, hostile(raised=raised), params=Nothing, table=NOTHING)
+    register(mine, hostile(raised=raised), params=Nothing)
     with pytest.raises(ParameterError) as refused:
         mine.get("body")()
     assert refused.value is raised
@@ -459,7 +467,7 @@ def test_a_parameter_error_a_body_raises_is_its_own_not_the_things(mine):
     ],
 )
 def test_a_body_that_gives_the_wrong_kind_of_result_is_a_type_error_naming_the_thing(mine, kind, returns, gives, named):
-    register(mine, hostile(gives=gives), kind=kind, params=Nothing, table=NOTHING, returns=returns)
+    register(mine, hostile(gives=gives), kind=kind, params=Nothing, returns=returns)
     with pytest.raises(TypeError, match=named):
         mine.get("body")()
 
@@ -479,7 +487,7 @@ def test_events_a_body_gives_are_in_time_order_or_refused_naming_the_thing(mine,
     def body(params: Nothing) -> tuple[Event, ...]:
         return tuple(Event(t=t, label=str(index)) for index, t in enumerate(times))
 
-    register(mine, body, kind="operation", params=Nothing, table=NOTHING, returns="events")
+    register(mine, body, kind="operation", params=Nothing, returns="events")
     if given is None:
         with pytest.raises(ValueError, match="operation 'body' returned events out of time order"):
             mine.get("body")()
@@ -496,7 +504,7 @@ def test_a_body_may_call_register_and_remove_things_of_its_own_registry(mine):
         mine.unregister("scale")
         return made
 
-    register(mine, host, params=Nothing, table=NOTHING)
+    register(mine, host, params=Nothing)
     assert mine.get("host")().sample(1.0).tolist() == 0.25
     assert list(mine.things()) == ["host", "level"]
 
@@ -512,8 +520,7 @@ class Nothing(Params):
 mine = _core.Registry(builtin=False)
 def again(params):
     return mine.get("again")()
-table = _core.ParamTable([], name="Nothing")
-mine.register(again, kind="source", params=Nothing, table=table, inputs={}, returns="signal")
+mine.register(again, kind="source", params=Nothing, inputs={}, returns="signal")
 def call():
     try:
         mine.get("again")()
@@ -535,7 +542,7 @@ def test_a_shaper_that_gives_its_input_back_without_end_is_refused_as_too_deep(m
     def same(signal: Signal, params: Nothing) -> Signal:
         return signal
 
-    register(mine, same, kind="shaper", params=Nothing, table=NOTHING)
+    register(mine, same, kind="shaper", params=Nothing)
     signal: Signal = ONE
     for _ in range(999):  # each call is a node: the first 999 fit the core's 1000 nodes
         signal = mine.get("same")(signal)
@@ -556,7 +563,7 @@ def test_one_thread_registers_while_sixteen_others_query_and_call_without_deadlo
         for index, name in enumerate(names):
             function = make(float(index))
             function.__name__ = function.__qualname__ = name
-            register(mine, function, params=Nothing, table=NOTHING)
+            register(mine, function, params=Nothing)
 
     def querying(index: int) -> tuple[list[float], list[tuple[str, float]]]:
         barrier.wait(TIMEOUT)

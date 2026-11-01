@@ -40,12 +40,6 @@ class FoldParams(Params):
     depth: Finite = param(0.5, doc="How far down from 1 the fold is.", unit="fraction", min=0, max=1)
 
 
-FOLD = _core.ParamTable(
-    [{"name": "depth", "kind": "float", "default": 0.5, "doc": "The fold.", "unit": "fraction", "min": 0, "max": 1}],
-    name="FoldParams",
-)
-
-
 class Folded(Signal):
     """A signal with what lies above the fold mirrored below it (docs/api.md, section 9)."""
 
@@ -66,9 +60,6 @@ class Nothing(Params):
     """No parameters."""
 
 
-NOTHING = _core.ParamTable([], name="Nothing")
-
-
 def last_point(params: Nothing, *, points: tuple[_core.Keyframe, ...]) -> Signal:
     """The value of the last keyframe at or before each time."""
 
@@ -84,8 +75,8 @@ def last_point(params: Nothing, *, points: tuple[_core.Keyframe, ...]) -> Signal
 def registry():
     """The core's things, `fold` (a Python shaper) and `last_point` (a Python source with an input)."""
     made = _core.Registry(builtin=True)
-    made.register(fold, kind="shaper", params=FoldParams, table=FOLD, inputs={}, returns="signal")
-    made.register(last_point, kind="source", params=Nothing, table=NOTHING, inputs={"points": True}, returns="signal")
+    made.register(fold, kind="shaper", params=FoldParams, inputs={}, returns="signal")
+    made.register(last_point, kind="source", params=Nothing, inputs={"points": True}, returns="signal")
     return made
 
 
@@ -130,7 +121,7 @@ def test_an_exception_a_python_body_raises_while_built_reaches_the_caller_unchan
     def broken(params: Nothing) -> Signal:
         raise raised
 
-    registry.register(broken, kind="source", params=Nothing, table=NOTHING, inputs={}, returns="signal")
+    registry.register(broken, kind="source", params=Nothing, inputs={}, returns="signal")
     with pytest.raises(RuntimeError) as refused:
         _core.Patch.parse({**HEADER, "low": {"use": "broken"}}, registry=registry).build()
     assert refused.value is raised
@@ -140,7 +131,7 @@ def test_an_invalid_error_a_body_raises_while_built_keeps_its_kind_and_names_the
     def broken(params: Nothing) -> Signal:
         raise ParameterError("it cannot be made", (("depth", "is too deep"),))
 
-    registry.register(broken, kind="source", params=Nothing, table=NOTHING, inputs={}, returns="signal")
+    registry.register(broken, kind="source", params=Nothing, inputs={}, returns="signal")
     with pytest.raises(ParameterError, match="it cannot be made") as refused:
         _core.Patch.parse({**HEADER, "low": {"use": "broken"}}, registry=registry).build()
     assert str(refused.value).startswith("low: ")
@@ -151,9 +142,7 @@ def test_a_python_operation_gives_its_events_to_the_node_below(registry):
     def louder(params: Nothing, *, events: tuple[Event, ...]) -> tuple[Event, ...]:
         return tuple(event for event in events if event.strength > 0.5)
 
-    registry.register(
-        louder, kind="operation", params=Nothing, table=NOTHING, inputs={"events": True}, returns="events"
-    )
+    registry.register(louder, kind="operation", params=Nothing, inputs={"events": True}, returns="events")
     data = {**HEADER, "loud": {"use": "louder", "events": "events.kick"}, "kept": {"use": "select", "events": "loud"}}
     built = _core.Patch.parse(data, registry=registry).build(ENERGY)
     assert [(event.t, event.strength) for event in built["kept"]] == [(0.5, 0.9)]
@@ -327,7 +316,7 @@ def test_a_body_may_read_and_build_a_patch_while_a_patch_builds_it(registry):
         inner = _core.Patch.parse({**HEADER, "level": {"use": "constant", "value": 0.75}}, registry=registry)
         return inner.build()["level"]
 
-    registry.register(nested, kind="source", params=Nothing, table=NOTHING, inputs={}, returns="signal")
+    registry.register(nested, kind="source", params=Nothing, inputs={}, returns="signal")
     outer = _core.Patch.parse({**HEADER, "outer": {"use": "nested"}}, registry=registry)
     assert outer.build()["outer"].sample(0.0).tolist() == 0.75
 
@@ -375,7 +364,7 @@ def test_a_grid_is_a_reference_or_inline_data_and_a_reference_is_equal_by_what_i
     def beat(params: Nothing, *, grid: object = None) -> Signal:
         return last_point(params, points=())
 
-    registry.register(beat, kind="source", params=Nothing, table=NOTHING, inputs={"grid": False}, returns="signal")
+    registry.register(beat, kind="source", params=Nothing, inputs={"grid": False}, returns="signal")
     nodes = _core.Patch.parse(
         {**HEADER, "a": {"use": "beat", "grid": "grid"}, "b": {"use": "beat", "grid": grid}}, registry=registry
     ).nodes
@@ -461,12 +450,13 @@ def test_the_signals_are_saved_in_the_order_the_items_give_them_and_shared_upstr
     assert written(saved.nodes["fast"].signal) == ("slow_2", "node", "slow_2")
 
 
-def test_without_a_registry_the_things_the_core_runs_are_saved(registry):
+def test_a_save_names_the_registry_it_is_for_by_keyword(registry):
     constant, slew, _ = things(registry)
     smooth = slew(constant(value=0.75), rise=0.5)
-    saved = _core.Patch.from_signals({"smooth": smooth}.items())
-    assert list(saved.nodes) == ["smooth_1", "smooth"]
-    assert saved.build()["smooth"].sample([0.0, 0.5, 2.0]).tolist() == smooth.sample([0.0, 0.5, 2.0]).tolist()
+    with pytest.raises(TypeError, match="registry"):
+        _core.Patch.from_signals({"smooth": smooth}.items())  # type: ignore[call-arg]  # left out: the case
+    with pytest.raises(TypeError):
+        _core.Patch.from_signals({"smooth": smooth}.items(), registry)  # type: ignore[misc]  # positional: the case
 
 
 def test_a_python_thing_is_saved_and_read_back_in_the_registry_that_holds_it(registry):

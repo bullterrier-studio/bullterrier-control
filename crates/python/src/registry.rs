@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PyMapping, PyString, PyTuple};
+use pyo3::types::{PyDict, PyList, PyMapping, PyString, PyTuple, PyType};
 
 use bullterrier_control::Error;
 use bullterrier_control::formats::Event;
@@ -68,10 +68,11 @@ impl Held {
 /// A table of sources, shapers and operations by name: `Registry(builtin=True)` holds the things the Rust core runs,
 /// `Registry(builtin=False)` nothing.
 ///
-/// `register(function, *, kind, params, table, inputs, returns)` registers a Python function as the thing
-/// `function.__name__` of `kind` (`"source"`, `"shaper"` or `"operation"`), whose parameters are `table` (a
-/// `ParamTable`) read into `params` (`params.parse(values)`, its `Params` class), which takes `inputs` (a mapping of each
-/// input's name to whether it is required, in the order the function declares them) and gives `returns` (`"signal"`,
+/// `register(function, *, kind, params, inputs, returns)` registers a Python function as the thing
+/// `function.__name__` of `kind` (`"source"`, `"shaper"` or `"operation"`), whose parameters are those of `params`
+/// (its `Params` class: its table checks the values, `params.parse(values)` makes them; anything else is a
+/// `TypeError`), which takes `inputs` (a mapping of each input's name to whether it is required, in the order the
+/// function declares them) and gives `returns` (`"signal"`,
 /// `"events"` or `"series"`), and returns the `Thing`. The core checks every rule: the name, a parameter named like an
 /// input or a patch key, what the kind returns, and the taken name: the same function registered again (or, for one
 /// defined at the top of a module, one of the same module and qualified name, as reloading the module makes)
@@ -88,11 +89,6 @@ pub(crate) struct PyRegistry {
 }
 
 impl PyRegistry {
-    /// A registry of the things the core runs, as `Registry(builtin=True)` makes one.
-    pub(crate) fn builtin(py: Python<'_>) -> PyResult<Self> {
-        Self::new(py, true)
-    }
-
     /// What it holds now.
     pub(crate) fn held(&self) -> Arc<Held> {
         Arc::clone(&self.lock())
@@ -138,17 +134,17 @@ impl PyRegistry {
         })
     }
 
-    #[pyo3(signature = (function, *, kind, params, table, inputs, returns))]
+    #[pyo3(signature = (function, *, kind, params, inputs, returns))]
     fn register(
         &self,
         function: &Bound<'_, PyAny>,
         kind: &str,
         params: &Bound<'_, PyAny>,
-        table: &Bound<'_, PyParamTable>,
         inputs: &Bound<'_, PyAny>,
         returns: &str,
     ) -> PyResult<Py<PyThing>> {
         let py = function.py();
+        let table = params_table(params)?;
         let name: String = function.getattr("__name__")?.extract()?;
         let kind = kind_of(kind)?;
         let label = format!("{kind} '{name}'");
@@ -236,6 +232,24 @@ fn unknown(py: Python<'_>, held: &Held, name: &str) -> PyErr {
         available: held.things.keys().cloned().collect(),
     };
     unknown_name(py, error.to_string())
+}
+
+/// The table of `params`, a `Params` class: the `ParamTable` it built when it was made (`Params._table`, which only
+/// `Params` and this read); a `TypeError` for anything else.
+fn params_table<'py>(params: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyParamTable>> {
+    params
+        .cast::<PyType>()
+        .ok()
+        .and_then(|class| class.getattr("_table").ok())
+        .and_then(|table| table.cast_into::<PyParamTable>().ok())
+        .ok_or_else(|| {
+            PyTypeError::new_err(format!(
+                "params must be a Params subclass (got {})",
+                params
+                    .repr()
+                    .map_or_else(|_| type_name(params), |text| text.to_string())
+            ))
+        })
 }
 
 /// The kind called `name`.

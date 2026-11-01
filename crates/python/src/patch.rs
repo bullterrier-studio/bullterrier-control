@@ -39,9 +39,9 @@ use crate::signal::{self, SignalBase};
 /// infinity, an integer beyond 64 bits, a `set`) is refused at its path, before anything else is checked. An exception
 /// the mapping raises while read reaches the caller unchanged.
 ///
-/// `Patch.from_signals(items, registry=None)` saves the signals of `items`, pairs of a node name and a signal (a dict's
-/// `items()`), in the order given, as a patch for `registry` (the things the core runs when `None`): every thing a
-/// signal is made by must be one `registry` holds. A signal a patch cannot hold (an operator, a `Constant`, values
+/// `Patch.from_signals(items, *, registry)` saves the signals of `items`, pairs of a node name and a signal (a dict's
+/// `items()`), in the order given, as a patch for `registry`: every thing a signal is made by must be one `registry`
+/// holds. A signal a patch cannot hold (an operator, a `Constant`, values
 /// given as they are, a `compute`, a `Rendered(run=...)`, a thing `registry` does not hold) or a name no node may have
 /// is a `FormatError` listing each as `<path>: reason` (`cannot save as a patch: glow.signal: ...`); `to_toml()` writes
 /// the patch as text that reads back, with the same `registry`, as an equal patch.
@@ -83,13 +83,10 @@ impl PyPatch {
     }
 
     #[staticmethod]
-    #[pyo3(signature = (items, registry = None))]
-    fn from_signals(items: &Bound<'_, PyAny>, registry: Option<&Bound<'_, PyRegistry>>) -> PyResult<Self> {
+    #[pyo3(signature = (items, *, registry))]
+    fn from_signals(items: &Bound<'_, PyAny>, registry: &Bound<'_, PyRegistry>) -> PyResult<Self> {
         let py = items.py();
-        let held = match registry {
-            Some(registry) => registry.get().held(),
-            None => PyRegistry::builtin(py)?.held(),
-        };
+        let held = registry.get().held();
         let given = signals(items)?;
         let refs: Vec<(&str, &Signal)> = given.iter().map(|(name, signal)| (name.as_str(), signal)).collect();
         let patch = py
