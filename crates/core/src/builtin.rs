@@ -103,6 +103,7 @@ mod tests {
                 ("delay", Kind::Shaper),
                 ("follow", Kind::Shaper),
                 ("hold", Kind::Shaper),
+                ("latch", Kind::Source),
                 ("select", Kind::Operation),
                 ("slew", Kind::Shaper)
             ]
