@@ -175,20 +175,77 @@ impl Node {
     pub fn returns(&self) -> Returns {
         self.thing.returns()
     }
+
+    /// The signal it shapes, as it writes it: a shaper's `signal`; `None` for a source or an operation.
+    ///
+    /// ```
+    /// use bullterrier_control::Patch;
+    /// use bullterrier_control::patch::Reference;
+    ///
+    /// let text = "format = 'bullterrier-control/patch'\nversion = 1\n[smooth]\nuse = 'slew'\nsignal = 'series.energy'\n";
+    /// let patch = Patch::from_toml(text)?;
+    /// let (_, node) = patch.nodes().next().ok_or("one node")?;
+    /// assert_eq!(node.signal(), Some(&Reference::Series("energy".to_owned())));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn signal(&self) -> Option<&Reference> {
+        self.signal.as_ref()
+    }
+
+    /// Its inputs, each by kind with what is given for it, in the order its thing declares them; an input left out is
+    /// not listed.
+    ///
+    /// ```
+    /// use bullterrier_control::Patch;
+    /// use bullterrier_control::inputs::{Input, InputKind};
+    /// use bullterrier_control::patch::{Given, Reference};
+    ///
+    /// let text = "format = 'bullterrier-control/patch'\nversion = 1\n\
+    ///             [pulse]\nuse = 'select'\nevents = 'events.kick'\n";
+    /// let patch = Patch::from_toml(text)?;
+    /// let (_, node) = patch.nodes().next().ok_or("one node")?;
+    /// let inputs: Vec<(InputKind, &Given)> = node.inputs().collect();
+    /// assert_eq!(inputs, [(InputKind::Events, &Given::Reference(Reference::Events("kick".to_owned())))]);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn inputs(&self) -> impl Iterator<Item = (InputKind, &Given)> {
+        self.inputs.iter().map(|(kind, given)| (*kind, given))
+    }
+
+    /// Its parameter values as written, by name (those left out take their defaults when it is built).
+    ///
+    /// ```
+    /// use bullterrier_control::Patch;
+    /// use serde_json::json;
+    ///
+    /// let text = "format = 'bullterrier-control/patch'\nversion = 1\n\
+    ///             [smooth]\nuse = 'slew'\nsignal = 'series.energy'\nrise = 0.5\n";
+    /// let patch = Patch::from_toml(text)?;
+    /// let (_, node) = patch.nodes().next().ok_or("one node")?;
+    /// assert_eq!(node.values().get("rise"), Some(&json!(0.5)));
+    /// assert_eq!(node.values().len(), 1);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn values(&self) -> &Map<String, Value> {
+        &self.values
+    }
 }
 
 /// An input as a node writes it: the data itself, or a reference to where it is.
 #[derive(Clone, Debug, PartialEq)]
-enum Given {
+pub enum Given {
     /// The data, checked as its kind.
     Data(Input),
     /// Where the data is.
     Reference(Reference),
 }
 
-/// A name written where data goes: a node above, or an entry of the bundle.
+/// A name written where data goes: a node above, or an entry of the bundle. Its [`Display`](fmt::Display) is how a
+/// patch writes it: `glow`, `events.kick`, `series.energy`, `grid`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum Reference {
+pub enum Reference {
     /// The node of this name, above the one that refers to it.
     Node(String),
     /// The bundle's events of this name (`events.<name>`).

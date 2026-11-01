@@ -449,6 +449,103 @@ fn each_node_says_what_it_uses_and_gives_without_building_anything() -> Outcome 
 }
 
 #[test]
+fn each_node_says_what_it_is_built_from_and_with_which_values() -> Outcome {
+    use super::{Given, Reference};
+    type Row<'a> = (&'a str, Option<Reference>, Vec<(InputKind, Given)>, Value);
+    let patch = parse(&patch_of(&[
+        (
+            "strong",
+            json!({"use": "pick", "events": "events.kick", "threshold": 0.5}),
+        ),
+        ("glow", json!({"use": "hits", "events": "strong"})),
+        ("slow", json!({"use": "slew", "signal": "glow", "rise": 1})),
+        ("ramp", json!({"use": "scale", "series": "series.bass", "gain": 2.5})),
+        ("pulse", json!({"use": "beat", "grid": "grid"})),
+        ("own", json!({"use": "beat", "grid": grid_data(), "per": "beat"})),
+        ("cycle", json!({"use": "cycle", "values": [1, 2.5]})),
+        ("plain", json!({"use": "level"})),
+    ]))?;
+    let read = |name: &str| patch.nodes().find(|(found, _)| *found == name).map(|(_, node)| node);
+    let node = |name: &str| read(name).ok_or(format!("no node {name}"));
+    let reference = |name: &str| Given::Reference(Reference::Events(name.to_owned()));
+    // (node, its signal, its inputs, its values)
+    let rows: Vec<Row> = vec![
+        (
+            "strong",
+            None,
+            vec![(InputKind::Events, reference("kick"))],
+            json!({"threshold": 0.5}),
+        ),
+        (
+            "glow",
+            None,
+            vec![(
+                InputKind::Events,
+                Given::Reference(Reference::Node("strong".to_owned())),
+            )],
+            json!({}),
+        ),
+        (
+            "slow",
+            Some(Reference::Node("glow".to_owned())),
+            vec![],
+            json!({"rise": 1}),
+        ),
+        (
+            "ramp",
+            None,
+            vec![(
+                InputKind::Series,
+                Given::Reference(Reference::Series("bass".to_owned())),
+            )],
+            json!({"gain": 2.5}),
+        ),
+        (
+            "pulse",
+            None,
+            vec![(InputKind::Grid, Given::Reference(Reference::Grid))],
+            json!({}),
+        ),
+        (
+            "cycle",
+            None,
+            vec![(InputKind::Values, Given::Data(Input::Values(vec![1.0, 2.5])))],
+            json!({}),
+        ),
+        ("plain", None, vec![], json!({})),
+    ];
+    for (name, signal, inputs, values) in rows {
+        let node = node(name)?;
+        assert_eq!(node.signal(), signal.as_ref(), "{name}: signal");
+        assert_eq!(
+            node.inputs().collect::<Vec<_>>(),
+            inputs.iter().map(|(k, g)| (*k, g)).collect::<Vec<_>>(),
+            "{name}: inputs"
+        );
+        assert_eq!(Value::Object(node.values().clone()), values, "{name}: values");
+    }
+    // data written inline is data, checked as its kind
+    let own = node("own")?;
+    let inputs: Vec<_> = own.inputs().collect();
+    assert!(
+        matches!(inputs.as_slice(), [(InputKind::Grid, Given::Data(Input::Grid(grid)))] if grid.beats() == [0.0, 0.5, 1.1, 1.8])
+    );
+    assert_eq!(own.values().get("per"), Some(&json!("beat")));
+    // a reference is shown as a patch writes it
+    let shown: Vec<String> = [
+        Reference::Node("glow".to_owned()),
+        Reference::Events("kick".to_owned()),
+        Reference::Series("bass".to_owned()),
+        Reference::Grid,
+    ]
+    .iter()
+    .map(ToString::to_string)
+    .collect();
+    assert_eq!(shown, ["glow", "events.kick", "series.bass", "grid"]);
+    Ok(())
+}
+
+#[test]
 fn building_twice_gives_the_same_values() -> Outcome {
     let patch = parse(&patch_of(&[(
         "glow",
