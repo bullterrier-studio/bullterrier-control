@@ -194,7 +194,7 @@ a `lib::` function) checks, runs, names and records the recipe (`Signal::recipe`
 `Patch::from_signals` saves) through one private call. `build.rs` lists every file in
 `PARAMS` and registers those whose code (not a comment or a string) has such an `impl` in `Registry::builtin()` (a
 source is also a `lib::` function, its arguments as `docs/api.md` rule 2 says). A signal is `Arc<dyn Node>` with `Node`
-sealed; code outside the crate adds nodes with `Signal::from_fn` and `Signal::rendered`; no Rust lock is held while a
+sealed; code outside the crate adds nodes with `Signal::from_fn`, `Signal::rendered` and `Signal::retimed`; no Rust lock is held while a
 callback into Python runs. A node implements `start` and `finish` and never reads an input itself: the one loop in
 `signal/walk.rs` does (a scan test fails otherwise), and drops go through a per-thread queue, so a graph of any depth
 (`MAX_DEPTH`, 1000, a memory bound) is read and dropped on any stack. Callbacks (`from_fn`, `run`, a Python `compute`

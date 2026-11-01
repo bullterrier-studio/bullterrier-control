@@ -235,6 +235,52 @@ fn a_callback_sees_finite_times_from_zero_and_a_zeroed_buffer() -> Result<(), Er
     Ok(())
 }
 
+#[test]
+fn a_retimed_signal_reads_its_input_at_the_times_its_map_gives() -> Result<(), Error> {
+    // the input is its own time, so each value is the time it was read at
+    let doubled = echo().retimed(|times| Ok::<_, Unreachable>(times.iter().map(|time| 2.0 * time).collect()))?;
+    assert_eq!(doubled.sample(&[0.0, 0.25, 3.0, -1.0])?, [0.0, 0.5, 6.0, 0.0]);
+    let reversed = echo().retimed(|times| Ok::<_, Unreachable>(times.iter().rev().copied().collect()))?;
+    assert_eq!(reversed.sample(&[1.0, 2.0, 4.0])?, [4.0, 2.0, 1.0]);
+    Ok(())
+}
+
+#[test]
+fn a_retiming_that_breaks_its_contract_or_fails_refuses_the_read_without_a_panic() {
+    type Map = fn(&[f64]) -> Result<Vec<f64>, OutOfTune>;
+    // (the broken promise, the map, what the refusal says)
+    let rows: [(&str, Map, &str); 6] = [
+        ("one time short", |times| Ok(times[1..].to_vec()), "gave 1 times for 2"),
+        (
+            "one time too many",
+            |times| Ok([times, &[0.0]].concat()),
+            "gave 3 times for 2",
+        ),
+        (
+            "a time before 0",
+            |times| Ok(times.iter().map(|time| time - 1.5).collect()),
+            "-0.5",
+        ),
+        (
+            "a time that is not a number",
+            |times| Ok(vec![f64::NAN; times.len()]),
+            "NaN",
+        ),
+        ("an infinite time", |times| Ok(vec![f64::INFINITY; times.len()]), "inf"),
+        ("an error of its own", |_| Err(OutOfTune("A4 at 443 Hz")), "out of tune"),
+    ];
+    for (row, map, says) in rows {
+        let refused = echo()
+            .retimed(map)
+            .and_then(|signal| signal.sample(&[1.0, 2.0]))
+            .map_err(|error| error.to_string());
+        assert!(
+            matches!(&refused, Err(message) if message.contains(says)),
+            "{row}: {refused:?}"
+        );
+    }
+}
+
 /// Whether `got` is `expected` to within float rounding (a millionth of a millionth).
 fn close(got: &[f64], expected: &[f64]) -> bool {
     got.len() == expected.len()
@@ -753,11 +799,13 @@ fn every_way_of_making_a_signal_says_how_it_was_made() -> Result<(), Error> {
         Ok::<_, Unreachable>(inputs.to_vec())
     })?;
     // (how it was made, the signal, how it says it was made)
-    let rows: [(&str, Signal, &str); 13] = [
+    let retimed = level.retimed(|times| Ok::<_, Unreachable>(times.to_vec()))?;
+    let rows: [(&str, Signal, &str); 14] = [
         ("a constant", level.clone(), "values"),
         ("from values", steps.clone(), "values"),
         ("from a series", ramp()?, "values"),
         ("a callback", echo(), "callback"),
+        ("a retiming", retimed, "callback"),
         ("a recurrence run over a signal", rendered, "rendered"),
         ("a sum", &level + &steps, "operator"),
         ("a difference with a number", 1.0 - &level, "operator"),
@@ -822,8 +870,11 @@ fn the_deepest_graph_of_each_kind_is_read_and_dropped_on_a_small_thread_stack() 
 
     // (the kind of link, how many links: the deepest the library accepts over a constant)
     type Link = fn(Signal) -> Result<Signal, Error>;
-    let kinds: [(&str, Link); 4] = [
+    let kinds: [(&str, Link); 5] = [
         ("a sum with a number", |signal| Ok(signal + 0.0)),
+        ("a retiming", |signal| {
+            signal.retimed(|times| Ok::<_, Unreachable>(times.to_vec()))
+        }),
         ("a sum of two signals", |signal| Ok(signal + Signal::constant(0.0)?)),
         // one sample a render (limit 1), read at time 0: a deep chain of them renders little
         ("a recurrence", |signal| {

@@ -186,6 +186,7 @@ CHAINS = {
     "follow": ("signal.follow(attack=0.01, release=0.01, rate=10.0)", 2000, True),
     "clip": ("signal.clip(low=0.0, high=1.0)", 2000, True),
     "delay": ("lib.delay(signal, lag=0.1)", 2000, True),
+    "hold": ('signal.hold(events=[{"t": 0.25}])', 2000, True),
     "a Python shaper that adds no node": ("signal.pipe(identity)", 2000, True),
     "a sum": ("signal + 0.0", 2000, False),
     "Python computes, each reading the one before": ("Link(signal)", 400, False),

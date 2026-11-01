@@ -40,7 +40,7 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
    (implemented for `lib::` sources: `build.rs` writes each from its `type Inputs`: `Vec<Event>` is `events: &[Event]`,
    `Vec<Keyframe>` `points: &[Keyframe]`, `Vec<f64>` `values: &[f64]`, `Grid` `grid: &Grid`, `Series` `series: &Series`;
    an `Option` of one is `Option<&[Event]>`, `Option<&Grid>`, last; each cloned once, into the recipe. A shaper's typed
-   method takes the same order after `&self` (`signal.hold(&kicks, hold::Params { .. })`) and is `pipe_with`; several
+   method takes the same order after `&self` (`signal.hold(&kicks)`, hold having no parameters) and is `pipe_with`; several
    inputs, a struct, come with R5b.)
 3. **Parameters are a plain struct per thing**, declared with `#[derive(Params)]`: public fields, a doc comment and a
    `#[param(..)]` attribute each; the derive writes `Default` and the `ParamTable` that checks values (`Params::parse`,
@@ -61,8 +61,8 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
 8. **Entry points:** sources are free functions under `lib::`; shapers are methods; `pipe` takes any shaper without
    inputs, `pipe_with(shaper, inputs)` any shaper (a shaper with inputs given to `pipe` does not compile). Plugins
    implement the public `Source`, `Shaper` and `Operation` traits (implemented), each with its one `NAME`; every way
-   of making a signal from one checks, names and records it alike. `Signal::from_fn` and `Signal::rendered` are how
-   code outside the crate adds a node.
+   of making a signal from one checks, names and records it alike. `Signal::from_fn`, `Signal::rendered` and
+   `Signal::retimed` are how code outside the crate adds a node.
 9. **The core crate** forbids `unsafe`, does no I/O, builds for wasm32, gives the same result on every target (no
    platform math: `follow`'s `exp` is `libm`'s), documents
    every public item, and carries these examples as doctests.

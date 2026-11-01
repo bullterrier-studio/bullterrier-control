@@ -23,6 +23,7 @@ mod combine;
 mod node;
 mod recorded;
 mod rendered;
+mod retimed;
 mod series;
 #[cfg(test)]
 mod tests;
@@ -42,6 +43,7 @@ use node::{Constant, FromFn, Node};
 use recorded::Recorded;
 use rendered::Rendered;
 pub use rendered::Rendering;
+use retimed::Retimed;
 use series::SeriesNode;
 pub(crate) use walk::callback;
 
@@ -85,7 +87,7 @@ pub enum Origin<'a> {
     Operator,
     /// From values it holds: [`Signal::constant`], [`Signal::from_values`] or [`Signal::from_series`].
     Values,
-    /// By a callback: [`Signal::from_fn`] (in Python, a `compute`).
+    /// By a callback: [`Signal::from_fn`] or [`Signal::retimed`] (in Python, a `compute`).
     Callback,
     /// By a recurrence run over another signal: [`Signal::rendered`] (in Python, `Rendered(run=...)`).
     Rendered,
@@ -238,6 +240,35 @@ impl Signal {
         E: std::error::Error + Send + Sync + 'static,
     {
         Self::checked(Rendered::new(input, rendering, run)?)
+    }
+
+    /// This signal read at other times: the value at t is this signal's at `map(t)`. `map` gets times that are finite
+    /// and from 0 up and returns as many, each finite and from 0 up; it must give the same times for the same times,
+    /// whatever it was called with before. A delay is `max(t - lag, 0)`; a sample and hold, the latest event at or
+    /// before t. An error `map` returns is the [`Error::Node`] of the read, `map`'s error its
+    /// [`source`](std::error::Error::source).
+    ///
+    /// ```
+    /// use std::convert::Infallible;
+    /// use bullterrier_control::{FromValues, Interpolation, Signal};
+    ///
+    /// let ramp = Signal::from_values(&[0.0, 1.0], 1.0, FromValues::default(), Interpolation::Linear)?;
+    /// let late = ramp.retimed(|times| Ok::<_, Infallible>(times.iter().map(|t| (t - 0.25).max(0.0)).collect()))?;
+    /// assert_eq!(late.sample(&[0.0, 0.25, 0.75])?, [0.0, 0.0, 0.5]);
+    /// let broken = ramp.retimed(|times| Ok::<_, Infallible>(times.iter().map(|t| t - 1.0).collect()))?;
+    /// assert!(broken.at(0.5).is_err()); // a time before 0
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    /// [`Error::Depth`] if the graph would be deeper than [`MAX_DEPTH`]. A read is refused as by any signal, and also
+    /// with [`Error::Signal`] when `map` returns another number of times than it got or a time that is not finite or
+    /// is below 0.
+    pub fn retimed<E>(&self, map: impl Fn(&[f64]) -> Result<Vec<f64>, E> + Send + Sync + 'static) -> Result<Self, Error>
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::checked(Retimed::new(self, map))
     }
 
     /// The signal that reads `series`: sample *i* is at `start + i / rate` seconds, the first and last values hold

@@ -160,9 +160,9 @@ FORBIDDEN = {
         SOURCES_DOOR,
     ),
     "a source to the rendered module": (
-        "builtin/hold.py",
+        "builtin/clip.py",
         "import bullterrier_control.rendered",
-        "bullterrier_control.builtin.hold",
+        "bullterrier_control.builtin.clip",
         SOURCES_DOOR,
     ),
     "a source to the formats": (

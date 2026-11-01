@@ -100,7 +100,9 @@ mod tests {
             things,
             [
                 ("constant", Kind::Source),
+                ("delay", Kind::Shaper),
                 ("follow", Kind::Shaper),
+                ("hold", Kind::Shaper),
                 ("select", Kind::Operation),
                 ("slew", Kind::Shaper)
             ]
