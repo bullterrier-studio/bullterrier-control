@@ -1,8 +1,8 @@
 //! How a graph is walked: a read and a drop each loop over a stack of their own on the heap, so a graph of any depth
 //! is read and dropped on any thread's stack, by the same code on every target. A node's own code runs one frame
-//! deep. Only a callback (user code: a `from_fn`, a recurrence, a Python `compute`) can read a signal inside a read:
-//! that read is a walk of its own on the thread's stack, so [`callback`] counts the callbacks running on a thread and
-//! refuses one nested more than [`NESTED`] deep.
+//! deep. Only a callback (user code: a `from_fn`, a recurrence, a thing's body, so a Python `compute`, `run` or body)
+//! can read a signal or call a thing inside a read or a call: that is a walk of its own on the thread's stack, so
+//! [`callback`] counts the callbacks running on a thread and refuses one nested more than [`NESTED`] deep.
 
 use std::cell::{Cell, RefCell};
 use std::mem::ManuallyDrop;

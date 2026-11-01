@@ -7,8 +7,8 @@ use super::{Origin, Signal};
 use crate::Error;
 use crate::registry::Recipe;
 
-/// A signal as it is, with how the registry made it: it reads as `inner`. A read recurses through it into `inner`,
-/// and a drop also into the recipe's signal, so it is as deep as the deeper of `inner` (one more if `inner` is
+/// A signal as it is, with how the registry made it: it reads as `inner`. A read goes through it into `inner`, and
+/// a drop also into the recipe's signal, so it is as deep as the deeper of `inner` (one more if `inner` is
 /// recorded too) and its recipe's signal with it: a call that makes no node of its own (a body that gives its input,
 /// or a constant) still counts toward [`MAX_DEPTH`](crate::MAX_DEPTH), while one that does costs nothing more.
 pub(crate) struct Recorded {

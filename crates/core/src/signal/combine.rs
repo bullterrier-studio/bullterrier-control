@@ -86,7 +86,7 @@ impl Combined {
 }
 
 impl fmt::Debug for Combined {
-    // not the operands: formatting a graph would recurse as deep as it is, as a read does, at more stack a level
+    // not the operands: formatting them would recurse as deep as the graph is
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("Combined")

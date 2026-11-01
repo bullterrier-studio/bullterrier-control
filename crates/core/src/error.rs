@@ -53,8 +53,10 @@ pub enum Error {
         /// The callback's own error.
         source: Arc<dyn std::error::Error + Send + Sync>,
     },
-    /// A signal would be deeper than [`MAX_DEPTH`](crate::MAX_DEPTH) nodes. It is the shape of a graph the caller
-    /// built, not a wrong argument: an operator that makes one reports this on every read.
+    /// A signal would be deeper than [`MAX_DEPTH`](crate::MAX_DEPTH) nodes, or callbacks (a `Signal::from_fn`, a
+    /// recurrence, a thing's body) would nest deeper than a thread's stack is sure to hold, each reading a signal or
+    /// calling a thing whose own callback does (the message says how deep they may). It is the shape of what the caller built, not a wrong argument: an operator that makes
+    /// a graph too deep reports this on every read.
     Depth {
         /// How deep the graph would be and what to do instead.
         message: String,

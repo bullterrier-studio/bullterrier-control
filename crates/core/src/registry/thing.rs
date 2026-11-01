@@ -196,7 +196,8 @@ impl Thing {
     }
 
     /// The thing `declared` says, with the doc `about` gives, whose body is `run`: how the Python package registers a
-    /// thing whose body is Python. `run` is called with the call as [`Thing::call`] checked it.
+    /// thing whose body is Python. `run` is called with the call as [`Thing::call`] checked it, as a callback: one
+    /// running inside too many others on the thread (bodies, `Signal::from_fn`s, recurrences) is refused instead.
     ///
     /// # Errors
     /// [`Error::Registration`] if the thing breaks a rule of the [registry](super) (its name, a parameter's name, an
@@ -495,7 +496,8 @@ impl Thing {
     /// series it returns`); [`Error::Output`] naming it if its events are out of time order (`operation 'x' returned
     /// events out of time order (event 1 at 1 s comes after one at 3 s)`); [`Error::Params`] under its name listing
     /// every rule the values break; [`Error::Depth`] if the signal it gives would be deeper than
-    /// [`MAX_DEPTH`](crate::MAX_DEPTH); and whatever error its body gives, unchanged.
+    /// [`MAX_DEPTH`](crate::MAX_DEPTH), or if a [custom](Self::custom) body would run inside too many callbacks
+    /// already running on the thread; and whatever error its body gives, unchanged.
     ///
     /// ```
     /// use bullterrier_control::registry::{Call, Registry};

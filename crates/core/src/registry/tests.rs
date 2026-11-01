@@ -1439,7 +1439,7 @@ fn bare(
 
 #[test]
 fn a_chain_of_calls_that_add_no_node_is_as_deep_as_one_that_does() -> Result<(), Error> {
-    // a read and a drop recurse through each recorded signal and the signal its recipe keeps, so each call counts as
+    // a read and a drop go through each recorded signal and the signal its recipe keeps, so each call counts as
     // a node does: 999 calls on a constant are the 1000 deep there may be (as 999 `+ 1.0` are), the next is refused
     let identity = bare("identity", Kind::Shaper, |call| match call.signals.as_slice() {
         [input] => Ok(Output::Signal(input.clone())),

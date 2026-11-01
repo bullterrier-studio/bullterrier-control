@@ -45,9 +45,11 @@ pub use rendered::Rendering;
 use series::SeriesNode;
 pub(crate) use walk::callback;
 
-/// How many nodes deep a signal's graph may be, counting the signal and its deepest input: reading and dropping a
-/// graph recurse this deep. An operator that would go deeper gives a signal refusing every read with
-/// [`Error::Depth`]; a sum of more terms than this fits as a balanced tree (`(a + b) + (c + d)`), not as a chain.
+/// How many nodes deep a signal's graph may be, counting the signal and its deepest input. Reading and dropping a
+/// graph are loops over a stack on the heap, not recursion, so a deep graph takes memory (a read holds a frame for
+/// each node on its way down, and a grid and buffer for each recurrence there), not thread stack. An operator that
+/// would go deeper gives a signal refusing every read with [`Error::Depth`]; a sum of more terms than this fits as a
+/// balanced tree (`(a + b) + (c + d)`), not as a chain.
 ///
 /// ```
 /// use bullterrier_control::{MAX_DEPTH, Signal};
@@ -60,8 +62,6 @@ pub(crate) use walk::callback;
 /// assert!((sum + 1.0).at(0.0).is_err()); // one more is too deep
 /// # Ok::<(), bullterrier_control::Error>(())
 /// ```
-// A level of a read takes about 400 bytes of stack in a debug build and 80 in a release one (a drop less): 1000 fits a
-// 2 MiB test thread five times over and wasm's 1 MiB stack ten times over.
 pub const MAX_DEPTH: usize = 1000;
 
 /// How a signal made from a series reads a time between two samples.
@@ -161,8 +161,10 @@ impl Signal {
     /// with 0.0. Its values are checked like any other's (a value that is not finite is an [`Error::Signal`]); an error
     /// it returns is the [`Error::Node`] of the read, with `f`'s error as its [`source`](std::error::Error::source).
     /// It must give the same values for the same times, whatever it was called with before: a signal's promise.
-    /// A node counts as depth 1 for [`MAX_DEPTH`] whatever `f` samples inside: a chain of closures that each sample
-    /// the previous one is not capped, so it must stay shallow.
+    /// A node counts as depth 1 for [`MAX_DEPTH`] whatever `f` samples inside; a read inside `f` is a read of its own
+    /// on the thread's stack, so callbacks that read signals whose callbacks read others are refused (an
+    /// [`Error::Depth`]) once more run one inside another on a thread than its stack is sure to hold, whatever their
+    /// kind ([`Signal::rendered`]'s `run` and a thing's body count too).
     ///
     /// ```
     /// use std::error::Error as _;
