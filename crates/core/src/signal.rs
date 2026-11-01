@@ -297,10 +297,29 @@ impl Signal {
         Ok(Self::from_series(&series, interpolation))
     }
 
-    /// This signal through `shaper`: any [`Shaper`], built-in or a plugin's, goes into a chain the same way, by the
-    /// one door of the [registry](crate::registry). The result is what [`Thing::call`](crate::registry::Thing::call)
-    /// of the thing `T` is gives with `shaper`'s values: checked by its table, refused under its `NAME`, and carrying
-    /// its [`recipe`](Self::recipe).
+    /// This signal through `shaper`, a [`Shaper`] that takes no inputs: [`pipe_with`](Self::pipe_with) of `shaper` and
+    /// `()`. A shaper that takes inputs is refused when the code compiles; it goes in by `pipe_with`.
+    ///
+    /// ```compile_fail
+    /// use bullterrier_control::formats::Event;
+    /// use bullterrier_control::{Error, Params, Shaper, Signal};
+    ///
+    /// /// Takes events.
+    /// #[derive(Clone, Debug, PartialEq, Params)]
+    /// struct Marked {}
+    ///
+    /// impl Shaper for Marked {
+    ///     const NAME: &'static str = "marked";
+    ///     type Inputs = Vec<Event>;
+    ///
+    ///     fn shape(&self, input: &Signal, _events: Vec<Event>) -> Result<Signal, Error> {
+    ///         Ok(input.clone())
+    ///     }
+    /// }
+    ///
+    /// let marked = Signal::constant(1.0)?.pipe(Marked {})?; // its events are not given
+    /// # Ok::<(), Error>(())
+    /// ```
     ///
     /// ```
     /// use bullterrier_control::builtin::slew;
@@ -316,11 +335,58 @@ impl Signal {
     /// ```
     ///
     /// # Errors
+    /// As [`pipe_with`](Self::pipe_with).
+    pub fn pipe<T: Shaper<Inputs = ()>>(&self, shaper: T) -> Result<Signal, Error> {
+        self.pipe_with(shaper, ())
+    }
+
+    /// This signal through `shaper`, given `inputs`: any [`Shaper`], built-in or a plugin's, goes into a chain the
+    /// same way, by the one door of the [registry](crate::registry). The result is what
+    /// [`Thing::call`](crate::registry::Thing::call) of the thing `T` is gives with `shaper`'s values and `inputs`
+    /// (as [`Inputs::into_inputs`](crate::registry::Inputs::into_inputs) checks them): checked by its table, refused
+    /// under its `NAME`, and carrying its [`recipe`](Self::recipe), which holds `inputs`.
+    ///
+    /// ```
+    /// use bullterrier_control::formats::{Event, EventOptions};
+    /// use bullterrier_control::{Error, Params, Shaper, Signal};
+    ///
+    /// /// Raised by 1 from the first event on.
+    /// #[derive(Clone, Debug, PartialEq, Params)]
+    /// struct Marked {}
+    ///
+    /// impl Shaper for Marked {
+    ///     const NAME: &'static str = "marked";
+    ///     type Inputs = Vec<Event>;
+    ///
+    ///     fn shape(&self, input: &Signal, events: Vec<Event>) -> Result<Signal, Error> {
+    ///         let first = events.first().map_or(f64::INFINITY, Event::t);
+    ///         let input = input.clone();
+    ///         Ok(Signal::from_fn(move |times, out| {
+    ///             input.read_into(times, out)?;
+    ///             for (time, value) in times.iter().zip(out.iter_mut()) {
+    ///                 if *time >= first {
+    ///                     *value += 1.0;
+    ///                 }
+    ///             }
+    ///             Ok::<(), Error>(())
+    ///         }))
+    ///     }
+    /// }
+    ///
+    /// let kicks = vec![Event::new(1.0, EventOptions::default())?];
+    /// let marked = Signal::constant(0.5)?.pipe_with(Marked {}, kicks)?;
+    /// assert_eq!(marked.sample(&[0.0, 1.0])?, [0.5, 1.5]);
+    /// assert_eq!(marked.recipe().map(|recipe| recipe.inputs.len()), Some(1)); // its events
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    ///
+    /// # Errors
     /// As [`Thing::call`](crate::registry::Thing::call): [`Error::Params`] under `T`'s `NAME` listing every rule the
-    /// parameters break, [`Error::Depth`], whatever error the shaper gives; and [`Error::Registration`] if `T` breaks
-    /// a rule of the registry (its `NAME` is not a name, a parameter has an input's name).
-    pub fn pipe<T: Shaper>(&self, shaper: T) -> Result<Signal, Error> {
-        crate::registry::shaped(shaper, self)
+    /// parameters break, [`Error::Depth`], whatever error the shaper gives; [`Error::Input`] if `inputs` break their
+    /// kind's rules; and [`Error::Registration`] if `T` breaks a rule of the registry (its `NAME` is not a name, a
+    /// parameter has an input's name).
+    pub fn pipe_with<T: Shaper>(&self, shaper: T, inputs: T::Inputs) -> Result<Signal, Error> {
+        crate::registry::shaped(shaper, self, inputs)
     }
 
     /// The values at `times` (seconds, in any order), one for each.

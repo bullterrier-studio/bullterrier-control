@@ -52,8 +52,10 @@
 //!   - a name is taken by the thing registered under it: another thing (another identity, or another kind) is
 //!     refused, while the same thing registered again replaces itself (a module reloaded).
 //! - Calling: one door. Whichever way a signal is made from a thing ([`Thing::call`], [`shape`](crate::shape),
-//!   [`Signal::pipe`], a typed method such as [`Signal::slew`], a [`lib`](crate::lib) function), it is checked, run,
-//!   named in its errors and recorded ([`Recipe`]) in the same place, as [`Thing::call`] says. A Rust thing has one
+//!   [`Signal::pipe`], [`Signal::pipe_with`], a typed method such as [`Signal::slew`], a [`lib`](crate::lib)
+//!   function), it is checked, run, named in its errors and recorded ([`Recipe`]) in the same place, as
+//!   [`Thing::call`] says. A typed door takes a thing's inputs as its [`Inputs`] value and records what
+//!   [`Inputs::into_inputs`] gives, which is what the body gets: a recipe holds every input its signal was made of. A Rust thing has one
 //!   name, its trait's `NAME`, which a built-in's file name proves at compile time.
 //! - What a thing says about itself: [`Thing::help`] and [`Thing::description`], in the words and shape of the Python
 //!   package's `help()` and `bt-control list --json`.

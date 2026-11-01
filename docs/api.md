@@ -8,7 +8,8 @@ to. Implemented: the formats (`Event::new`, `Series::new`, `Grid::new`, `Bundle:
 (`#[derive(Params)]` structs, `ParamTable`, `ParamUnit`, the Rust functions `parameters` and `builtins`) and the signal graph (R3):
 `Signal` (`constant`, `from_series`, `from_values`, `sample`, `sample_into`, `at`, `+ - *` and negation, `maximum`,
 `minimum`, `from_fn`, `rendered`), the inputs (R4a: `InputKind::check`, `Input::from_*`, `Keyframe`, `matching`), the registry and its traits (R4b:
-`Registry`, `Thing`, `Source`, `Shaper`, `Operation`, `Signal::pipe`, `Signal::recipe`), patches (R4b: `Patch::from_toml`,
+`Registry`, `Thing`, `Source`, `Shaper`, `Operation`, `Signal::pipe`, `Signal::recipe`; R5a: `type Inputs` on all three
+kinds, `Signal::pipe_with`), patches (R4b: `Patch::from_toml`,
 `build`, `from_signals`, `to_toml`), the `constant` source, the `select` operation, the `slew` and `follow` shapers and the primitives (`Ease`, `hashing::uniform`,
 `scaling::between`, `rounding`, `cadence::positions`). Their rustdoc examples (`crates/core/src/`) run with
 `cargo test --doc -p bullterrier-control`.
@@ -36,6 +37,11 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
 2. **Argument order:** required inputs first, then the parameter struct, then optional inputs
    (`envelope(&kicks, Envelope { .. })`; `lfo(Lfo { .. }, Some(&grid))`, where the grid is optional). A source or shaper
    without parameters takes no struct (`keyframes(&points)`). Inputs are borrowed (`&[Event]`, `&Grid`) and cloned inside.
+   (implemented for `lib::` sources: `build.rs` writes each from its `type Inputs`: `Vec<Event>` is `events: &[Event]`,
+   `Vec<Keyframe>` `points: &[Keyframe]`, `Vec<f64>` `values: &[f64]`, `Grid` `grid: &Grid`, `Series` `series: &Series`;
+   an `Option` of one is `Option<&[Event]>`, `Option<&Grid>`, last; each cloned once, into the recipe. A shaper's typed
+   method takes the same order after `&self` (`signal.hold(&kicks, hold::Params { .. })`) and is `pipe_with`; several
+   inputs, a struct, come with R5b.)
 3. **Parameters are a plain struct per thing**, declared with `#[derive(Params)]`: public fields, a doc comment and a
    `#[param(..)]` attribute each; the derive writes `Default` and the `ParamTable` that checks values (`Params::parse`,
    strict, every broken rule listed). Checked when passed in (the call returns `Result`). Struct literals always end in `..Default::default()`, so a
@@ -52,7 +58,8 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
    unit newtypes. The Python binding restores the input's shape (a 0-d result for a scalar).
 7. **Combining** (implemented): `+`, `-`, `*` and negation work on `Signal` and `&Signal` with `f64`. `maximum` and `minimum` are
    infallible.
-8. **Entry points:** sources are free functions under `lib::`; shapers are methods, and `pipe` takes any shaper. Plugins
+8. **Entry points:** sources are free functions under `lib::`; shapers are methods; `pipe` takes any shaper without
+   inputs, `pipe_with(shaper, inputs)` any shaper (a shaper with inputs given to `pipe` does not compile). Plugins
    implement the public `Source`, `Shaper` and `Operation` traits (implemented), each with its one `NAME`; every way
    of making a signal from one checks, names and records it alike. `Signal::from_fn` and `Signal::rendered` are how
    code outside the crate adds a node.
@@ -347,8 +354,9 @@ pub struct Fold {
 
 impl Shaper for Fold {
     const NAME: &'static str = "fold"; // its one name: in the registry, in its errors and in its recipe
+    type Inputs = (); // the data it takes besides its signal: none (`hold`'s are `Vec<Event>`)
 
-    fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+    fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
         let (line, input) = (1.0 - self.depth, input.clone());
         Ok(Signal::from_fn(move |times, out| {
             input.read_into(times, out)?;

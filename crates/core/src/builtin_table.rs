@@ -8,6 +8,10 @@
 //! character literals and `macro_rules!` bodies are not its code. Its name is the file's; its doc (what `help()` shows) is the
 //! file's leading `//!` lines; its parameters' doc is the `///` lines above `pub struct Params`, and their title the
 //! name in title case with `Params` (`every_n` is `EveryNParams`), as the Python classes are named.
+//!
+//! A source's `lib` function takes what `docs/api.md` rule 2 says, read from its `type Inputs`: a required input
+//! borrowed (`&[Event]`, `&Grid`) before its parameters, an optional one (`Option<&Grid>`) after them, and no
+//! parameters if `Params` has no fields; it clones the inputs once, into what the door records.
 
 use std::fmt::Write as _;
 
@@ -33,15 +37,26 @@ pub(crate) struct Generated {
 /// The kinds of thing a file can be: the `Thing` constructor that registers it and its trait.
 const KINDS: [(&str, &str); 3] = [("source", "Source"), ("shaper", "Shaper"), ("operation", "Operation")];
 
+/// The inputs a source's `lib` function takes: (its data as `type Inputs` writes it, paths left out; the input's name;
+/// the type the function borrows, a slice's in brackets). One of them, or an `Option` of one.
+const BORROWED: [(&str, &str, &str); 5] = [
+    ("Vec<Event>", "events", "[crate::formats::Event]"),
+    ("Vec<Keyframe>", "points", "[crate::inputs::Keyframe]"),
+    ("Vec<f64>", "values", "[f64]"),
+    ("Grid", "grid", "crate::formats::Grid"),
+    ("Series", "series", "crate::formats::Series"),
+];
+
 /// The Rust of the table of `files` (sorted by name), or the error naming a file whose text marks it as more than one
-/// kind.
+/// kind, or a source whose `type Inputs` no `lib` function is written for.
 pub(crate) fn table(files: &[File<'_>]) -> Result<Generated, String> {
     let mut builtin = String::new();
     let mut lib = String::new();
     let mut registered = String::new();
     let mut checks = String::new();
     for file in files {
-        let implemented = implemented(&tokens(file.source));
+        let code = tokens(file.source);
+        let implemented = implemented(&code);
         let kinds: Vec<(&str, &str)> = KINDS
             .into_iter()
             .filter(|(_, named)| implemented.contains(named))
@@ -62,7 +77,7 @@ pub(crate) fn table(files: &[File<'_>]) -> Result<Generated, String> {
             registration(&mut checks, &mut registered, file, kind);
         }
         if kind.is_some_and(|(kind, _)| kind == "source") {
-            source_function(&mut lib, file.name);
+            source_function(&mut lib, file, &code)?;
         }
     }
     builtin.push_str("/// Every built-in by name, sorted, with the function that gives its parameter table.\n");
@@ -107,19 +122,87 @@ fn registration(checks: &mut String, code: &mut String, file: &File<'_>, (kind, 
     );
 }
 
-/// Writes into `code` the `lib` function of the source `name`.
-fn source_function(code: &mut String, name: &str) {
+/// Writes into `code` the `lib` function of the source `file`, whose code is `tokens`; or the error naming the file
+/// if its `type Inputs` is not one [`BORROWED`] holds (or an `Option` of one) or `()`.
+fn source_function(code: &mut String, file: &File<'_>, tokens: &[&str]) -> Result<(), String> {
+    let name = file.name;
+    let fieldless = tokens.windows(3).any(|words| words == ["struct", "Params", ";"])
+        || tokens.windows(4).any(|words| words == ["struct", "Params", "{", "}"]);
+    let (params, given) = if fieldless {
+        (Vec::new(), format!("crate::builtin::{name}::Params"))
+    } else {
+        (
+            vec![format!("params: crate::builtin::{name}::Params")],
+            "params".to_owned(),
+        )
+    };
+    let written = inputs(tokens);
+    let optional = written
+        .strip_prefix("Option<")
+        .and_then(|inner| inner.strip_suffix('>'));
+    let found = BORROWED.iter().find(|(data, ..)| *data == optional.unwrap_or(&written));
+    let with_inputs = "its inputs (borrowed, cloned once) and parameters";
+    let (arguments, inputs, of) = match (found, optional) {
+        _ if written == "()" => (params, "()".to_owned(), "its parameters"),
+        (Some((_, input, data)), None) => {
+            let cloned = if data.starts_with('[') { "to_vec()" } else { "clone()" };
+            let arguments = [vec![format!("{input}: &{data}")], params].concat();
+            (arguments, format!("{input}.{cloned}"), with_inputs)
+        }
+        (Some((_, input, data)), Some(_)) => {
+            let cloned = if data.starts_with('[') {
+                "map(<[_]>::to_vec)"
+            } else {
+                "cloned()"
+            };
+            let arguments = [params, vec![format!("{input}: Option<&{data}>")]].concat();
+            (arguments, format!("{input}.{cloned}"), with_inputs)
+        }
+        (None, _) => {
+            let shown = if written.is_empty() {
+                "none".to_owned()
+            } else {
+                format!("`{written}`")
+            };
+            return Err(format!(
+                "{}: a source's `type Inputs` is (), one input's data (Vec<Event>, Vec<Keyframe>, Vec<f64>, Grid, \
+                 Series) or an Option of one, not {shown} (several inputs come with R5b)",
+                file.path
+            ));
+        }
+    };
     write(
         code,
         format_args!(
-            "/// The signal of the source [`{name}`](crate::builtin::{name}) with `params`, made through the one door \
-             of the\n/// [registry](crate::registry): checked, named and recorded as every door makes it.\n///\n\
+            "/// The signal of the source [`{name}`](crate::builtin::{name}) of {of}, made through the one\n/// door \
+             of the [registry](crate::registry): checked, named and recorded as every door makes it.\n///\n\
              /// # Errors\n/// As [`Thing::call`](crate::registry::Thing::call): [`Error::Params`](crate::Error::Params) \
-             under the name `{name}`\n/// listing every rule `params` breaks, and whatever error the source gives.\n\
-             pub fn {name}(params: crate::builtin::{name}::Params) -> Result<crate::Signal, crate::Error> {{\n    \
-             crate::registry::sourced(params)\n}}\n"
+             under the name `{name}`\n/// listing every rule the parameters break, [`Error::Input`](crate::Error::Input) \
+             if an input breaks its kind's\n/// rules, and whatever error the source gives.\npub fn {name}({}) -> Result<crate::Signal, crate::Error> {{\n    \
+             crate::registry::sourced({given}, {inputs})\n}}\n",
+            arguments.join(", ")
         ),
     );
+    Ok(())
+}
+
+/// What the code `tokens` says its `type Inputs` is, without spaces and with paths left out (`Option<Grid>` for
+/// `Option<crate::formats::Grid>`); empty if it says none.
+fn inputs(tokens: &[&str]) -> String {
+    let Some(at) = tokens.windows(3).position(|words| words == ["type", "Inputs", "="]) else {
+        return String::new();
+    };
+    let written: Vec<&str> = tokens[at + 3..]
+        .iter()
+        .copied()
+        .take_while(|token| *token != ";")
+        .collect();
+    written
+        .iter()
+        .enumerate()
+        .filter(|(index, token)| **token != "::" && written.get(index + 1) != Some(&"::"))
+        .map(|(_, token)| *token)
+        .collect()
 }
 
 /// The thing's doc: the file's leading `//!` lines, each without the marker and one space, blank lines around it
@@ -374,7 +457,10 @@ mod tests {
                 "recurs",
                 "pub struct Params {}\npub(crate) fn shape(input: &Signal, params: &Params) {}\n",
             ),
-            file("rises", "pub struct Params {}\nimpl Source for Params {}\n"),
+            file(
+                "rises",
+                "pub struct Params {\n    pub level: f64,\n}\nimpl Source for Params {\n    type Inputs = ();\n}\n",
+            ),
             file("shapes", "pub struct Params {}\nimpl Shaper for Params {}\n"),
             file("picks", "pub struct Params {}\nimpl Operation for Params {}\n"),
         ]);
@@ -408,7 +494,7 @@ mod tests {
         assert!(
             code.lib.contains(
                 "pub fn rises(params: crate::builtin::rises::Params) -> Result<crate::Signal, crate::Error> {\n    \
-                 crate::registry::sourced(params)\n}"
+                 crate::registry::sourced(params, ())\n}"
             ),
             "{}",
             code.lib
@@ -435,10 +521,14 @@ mod tests {
             ),
             (
                 "by the package's path",
-                "impl bullterrier_control::Source for Params {}",
+                "impl bullterrier_control::Source for Params { type Inputs = (); }",
                 Some("source"),
             ),
-            ("with generics", "impl<'a> Source for Params {}", Some("source")),
+            (
+                "with generics",
+                "impl<'a> Source for Params { type Inputs = (); }",
+                Some("source"),
+            ),
             ("over lines", "impl\n    Shaper\n    for Params\n{}", Some("shaper")),
             (
                 "after a quote as a character",
@@ -504,6 +594,132 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "a row per input a source can take, and the function each makes"
+    )]
+    fn a_source_is_a_lib_function_of_its_inputs_borrowed_required_first_and_optional_last() {
+        let lib = |inputs: &str, params: &str| {
+            let source = format!("{params}\nimpl Source for Params {{\n    type Inputs = {inputs};\n}}\n");
+            // the code, without its doc
+            let code = |code: Generated| {
+                let lines: Vec<&str> = code.lib.lines().filter(|line| !line.starts_with("///")).collect();
+                lines.join("\n") + "\n"
+            };
+            table(&[file("it", &source)]).map(code)
+        };
+        let fields = "pub struct Params {\n    pub level: f64,\n}";
+        let made = |signature: &str, inputs: &str| {
+            Ok(format!(
+                "pub fn it({signature}) -> Result<crate::Signal, crate::Error> {{\n    \
+                 crate::registry::sourced({inputs})\n}}\n"
+            ))
+        };
+        let params = "params: crate::builtin::it::Params";
+        // (row, its `type Inputs`, its parameters, the function's arguments and what it gives the door)
+        let rows = [
+            ("no inputs", "()", fields, made(params, "params, ()")),
+            (
+                "required events, borrowed and first",
+                "Vec<Event>",
+                fields,
+                made(
+                    &format!("events: &[crate::formats::Event], {params}"),
+                    "params, events.to_vec()",
+                ),
+            ),
+            (
+                "required points",
+                "Vec<Keyframe>",
+                fields,
+                made(
+                    &format!("points: &[crate::inputs::Keyframe], {params}"),
+                    "params, points.to_vec()",
+                ),
+            ),
+            (
+                "required values",
+                "Vec<f64>",
+                fields,
+                made(&format!("values: &[f64], {params}"), "params, values.to_vec()"),
+            ),
+            (
+                "a required grid",
+                "Grid",
+                fields,
+                made(
+                    &format!("grid: &crate::formats::Grid, {params}"),
+                    "params, grid.clone()",
+                ),
+            ),
+            (
+                "a required series by its path",
+                "crate::formats::Series",
+                fields,
+                made(
+                    &format!("series: &crate::formats::Series, {params}"),
+                    "params, series.clone()",
+                ),
+            ),
+            (
+                "an optional grid, last",
+                "Option<Grid>",
+                fields,
+                made(
+                    &format!("{params}, grid: Option<&crate::formats::Grid>"),
+                    "params, grid.cloned()",
+                ),
+            ),
+            (
+                "optional events",
+                "Option<Vec<crate::formats::Event>>",
+                fields,
+                made(
+                    &format!("{params}, events: Option<&[crate::formats::Event]>"),
+                    "params, events.map(<[_]>::to_vec)",
+                ),
+            ),
+            (
+                "no parameters, no struct",
+                "Vec<Keyframe>",
+                "pub struct Params;",
+                made(
+                    "points: &[crate::inputs::Keyframe]",
+                    "crate::builtin::it::Params, points.to_vec()",
+                ),
+            ),
+            (
+                "no parameters in braces, no struct",
+                "()",
+                "pub struct Params {}",
+                made("", "crate::builtin::it::Params, ()"),
+            ),
+            (
+                "several inputs are not a lib function yet",
+                "Inputs",
+                fields,
+                Err(
+                    "it: a source's `type Inputs` is (), one input's data (Vec<Event>, Vec<Keyframe>, Vec<f64>, \
+                     Grid, Series) or an Option of one, not `Inputs` (several inputs come with R5b)"
+                        .to_owned(),
+                ),
+            ),
+        ];
+        for (row, inputs, params, expected) in rows {
+            assert_eq!(lib(inputs, params), expected, "{row}");
+        }
+        // a shaper or an operation is no `lib` function, whatever its inputs
+        for kind in ["Shaper", "Operation"] {
+            let source = format!("pub struct Params {{}}\nimpl {kind} for Params {{\n    type Inputs = Inputs;\n}}\n");
+            assert_eq!(
+                table(&[file("it", &source)]).map(|code| code.lib),
+                Ok(String::new()),
+                "{kind}"
+            );
+        }
+    }
+
+    #[test]
     fn a_file_marked_as_two_kinds_is_refused_naming_it() {
         let refused = table(&[file("both", "impl Source for Params {}\nimpl Shaper for Params {}\n")]).err();
         assert_eq!(refused.as_deref(), Some("both: a built-in is one of source, shaper"));
@@ -519,7 +735,10 @@ mod tests {
                         params_title: \"LiftItParams\".to_owned(),\n        params_doc: \"How far.\\nAnd how.\".to_owned(),";
         assert!(code.builtin.contains(expected), "{}", code.builtin);
         // a file without either has an empty doc
-        let bare = built(&[file("bare", "pub struct Params {}\nimpl Source for Params {}\n")]);
+        let bare = built(&[file(
+            "bare",
+            "pub struct Params {}\nimpl Source for Params { type Inputs = (); }\n",
+        )]);
         assert!(
             bare.builtin
                 .contains("doc: \"\".to_owned(),\n        params_title: \"BareParams\""),

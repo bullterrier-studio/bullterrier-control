@@ -37,10 +37,11 @@ impl Signal {
 
 impl Shaper for Params {
     const NAME: &'static str = "$name";
+    type Inputs = ();
 
     /// `input` with these parameters applied. Replace the body; a shaper that needs history is a `Signal::rendered`
     /// over a causal recurrence instead (`slew.rs` is the model).
-    fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+    fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
         Ok(input * self.depth)
     }
 }
@@ -62,7 +63,7 @@ mod tests {
     fn it_scales_its_input_by_depth() -> Result<(), Error> {
         // Replace with what $name promises, each expected number worked out by hand.
         // 0.25 of a signal that reads its time, at 0, 2 and 4 seconds
-        let out = Params { depth: 0.25 }.shape(&ramp())?.sample(&[0.0, 2.0, 4.0])?;
+        let out = Params { depth: 0.25 }.shape(&ramp(), ())?.sample(&[0.0, 2.0, 4.0])?;
         assert_eq!(out, [0.0, 0.5, 1.0]);
         Ok(())
     }

@@ -4,8 +4,10 @@
 //! or [`Thing::operation`](super::Thing::operation).
 //!
 //! A trait's method is the thing's body. Called directly it is only that: unchecked and unrecorded. Every door
-//! ([`Thing::call`](super::Thing::call), [`Signal::pipe`], a typed method such as [`Signal::slew`], a `lib` function)
-//! checks the values, runs the body and records the [`Recipe`](super::Recipe) in one place, under `NAME`.
+//! ([`Thing::call`](super::Thing::call), [`Signal::pipe`], [`Signal::pipe_with`], a typed method such as
+//! [`Signal::slew`], a `lib` function) checks the values and inputs, runs the body and records the
+//! [`Recipe`](super::Recipe) in one place, under `NAME`. Each kind takes its inputs as one value, its `type Inputs`
+//! ([`Inputs`]), which the recipe records through [`Inputs::into_inputs`]: so a recipe holds every input the body got.
 
 use std::collections::BTreeMap;
 
@@ -14,9 +16,10 @@ use crate::formats::{Event, Grid, Series};
 use crate::inputs::{Input, InputKind, Keyframe};
 use crate::{Error, Params, Signal};
 
-/// A source: its parameters make a signal.
+/// A source: its parameters make a signal, of its inputs if it takes any ([`Inputs`]).
 ///
 /// ```
+/// use bullterrier_control::formats::{Event, EventOptions};
 /// use bullterrier_control::{Error, Params, Signal, Source};
 ///
 /// /// A level that holds.
@@ -29,28 +32,56 @@ use crate::{Error, Params, Signal};
 ///
 /// impl Source for Level {
 ///     const NAME: &'static str = "level";
+///     type Inputs = ();
 ///
-///     fn source(&self) -> Result<Signal, Error> {
+///     fn source(&self, (): ()) -> Result<Signal, Error> {
 ///         Signal::constant(self.value)
 ///     }
 /// }
 ///
-/// assert_eq!(Level { value: 0.25 }.source()?.at(9.0)?, 0.25);
-/// # Ok::<(), Error>(())
+/// /// How many events have passed.
+/// #[derive(Clone, Debug, PartialEq, Params)]
+/// struct Count {}
+///
+/// impl Source for Count {
+///     const NAME: &'static str = "count";
+///     type Inputs = Vec<Event>;
+///
+///     fn source(&self, events: Vec<Event>) -> Result<Signal, Error> {
+///         let times: Vec<f64> = events.iter().map(Event::t).collect();
+///         Ok(Signal::from_fn(move |at, out| {
+///             for (time, value) in at.iter().zip(out.iter_mut()) {
+///                 *value = times.iter().filter(|event| **event <= *time).map(|_| 1.0).sum();
+///             }
+///             Ok::<(), Error>(())
+///         }))
+///     }
+/// }
+///
+/// assert_eq!(Level { value: 0.25 }.source(())?.at(9.0)?, 0.25);
+/// let kicks = vec![Event::new(0.5, EventOptions::default())?, Event::new(1.0, EventOptions::default())?];
+/// assert_eq!(Count {}.source(kicks)?.sample(&[0.0, 0.5, 2.0])?, [0.0, 1.0, 2.0]);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub trait Source: Params + 'static {
     /// The name it is registered, called and recorded under (see [`NAME_PATTERN`](super::NAME_PATTERN)): its only
     /// name, whichever door it is made through.
     const NAME: &'static str;
 
-    /// The signal these parameters make: the body, which a door calls only with parameters its table accepted.
+    /// The data it takes: its inputs, as one Rust value ([`Inputs`]; `()` for none). A door records them in the
+    /// signal's [`Recipe`](super::Recipe) as [`Inputs::into_inputs`] gives them, and gives the body what it recorded.
+    type Inputs: Inputs;
+
+    /// The signal these parameters make of `inputs`: the body, which a door calls only with parameters its table
+    /// accepted and inputs as [`Inputs::DECLARED`] says.
     ///
     /// # Errors
     /// Whatever the source cannot make: an [`Error`] its signal's constructor gives.
-    fn source(&self) -> Result<Signal, Error>;
+    fn source(&self, inputs: Self::Inputs) -> Result<Signal, Error>;
 }
 
-/// A shaper: its parameters make a signal of a signal. [`Signal::pipe`] puts any shaper into a chain.
+/// A shaper: its parameters make a signal of a signal, and of its inputs if it takes any ([`Inputs`]).
+/// [`Signal::pipe`] puts a shaper that takes none into a chain, [`Signal::pipe_with`] any shaper with its inputs.
 ///
 /// ```
 /// use bullterrier_control::{Error, FromValues, Interpolation, Params, Shaper, Signal};
@@ -65,8 +96,9 @@ pub trait Source: Params + 'static {
 ///
 /// impl Shaper for Fold {
 ///     const NAME: &'static str = "fold";
+///     type Inputs = ();
 ///
-///     fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+///     fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
 ///         let (line, input) = (1.0 - self.depth, input.clone());
 ///         Ok(Signal::from_fn(move |times, out| {
 ///             input.read_into(times, out)?;
@@ -90,12 +122,15 @@ pub trait Shaper: Params + 'static {
     /// The name it is registered, called and recorded under, as [`Source::NAME`].
     const NAME: &'static str;
 
-    /// The signal these parameters make of `input`: the body, which a door calls only with parameters its table
-    /// accepted.
+    /// The data it takes besides its signal, as [`Source::Inputs`].
+    type Inputs: Inputs;
+
+    /// The signal these parameters make of `input` and `inputs`: the body, which a door calls only with parameters
+    /// its table accepted and inputs as [`Inputs::DECLARED`] says.
     ///
     /// # Errors
     /// Whatever the shaper cannot make: an [`Error`] its signal's constructor gives ([`Error::Depth`], ...).
-    fn shape(&self, input: &Signal) -> Result<Signal, Error>;
+    fn shape(&self, input: &Signal, inputs: Self::Inputs) -> Result<Signal, Error>;
 }
 
 /// An operation: its parameters make data (events or a series) of its inputs, data too.
@@ -145,9 +180,9 @@ pub trait Operation: Params + 'static {
     fn run(&self, inputs: Self::Inputs) -> Result<Output, Error>;
 }
 
-/// The inputs of an [`Operation`] as one Rust value: `()` for none; one input's data for one (`Vec<Event>` for
-/// `events`, `Vec<Keyframe>` for `points`, `Grid`, `Vec<f64>` for `values`, `Series`), an `Option` of it when it is
-/// optional; or a struct of the operation's own for several.
+/// The inputs of a [`Source`], [`Shaper`] or [`Operation`] as one Rust value: `()` for none; one input's data for one
+/// (`Vec<Event>` for `events`, `Vec<Keyframe>` for `points`, `Grid`, `Vec<f64>` for `values`, `Series`), an `Option`
+/// of it when it is optional; or a struct of the thing's own for several.
 ///
 /// ```
 /// use bullterrier_control::formats::{Event, Grid};

@@ -108,7 +108,8 @@ impl fmt::Debug for Thing {
 
 impl Thing {
     /// The source `T`, under its [`NAME`](Source::NAME), with the doc `about` gives: its parameters are `T`'s table,
-    /// its identity is `T`'s type, and a call gives the signal [`Source::source`] makes of the values read into a `T`.
+    /// its inputs [`Source::Inputs`]'s, its identity `T`'s type; a call gives the signal [`Source::source`] makes of
+    /// its inputs with the values read into a `T`.
     ///
     /// ```
     /// use bullterrier_control::registry::{About, Call, Output, Thing};
@@ -125,8 +126,9 @@ impl Thing {
     ///
     /// impl Source for Level {
     ///     const NAME: &'static str = "level";
+    ///     type Inputs = ();
     ///
-    ///     fn source(&self) -> Result<Signal, Error> {
+    ///     fn source(&self, (): ()) -> Result<Signal, Error> {
     ///         Signal::constant(self.value)
     ///     }
     /// }
@@ -142,17 +144,20 @@ impl Thing {
     /// [`Error::Registration`] if the thing breaks a rule of the [registry](super), [`Error::Params`] if `T`'s
     /// declaration breaks a rule of its table.
     pub fn source<T: Source>(about: About) -> Result<Self, Error> {
-        let parts = Self::parts::<T>(T::NAME, Kind::Source, Vec::new(), Returns::Signal)?;
+        let parts = Self::parts::<T>(T::NAME, Kind::Source, T::Inputs::DECLARED.to_vec(), Returns::Signal)?;
         Self::checked(
             about,
             parts,
-            Box::new(|_, values| Ok(Output::Signal(T::from_values(values).source()?))),
+            Box::new(|call, values| {
+                let inputs = T::Inputs::from_inputs(&call.inputs)?;
+                Ok(Output::Signal(T::from_values(values).source(inputs)?))
+            }),
         )
     }
 
     /// The shaper `T`, under its [`NAME`](Shaper::NAME), with the doc `about` gives: its parameters are `T`'s table,
-    /// its identity is `T`'s type, and a call gives the signal [`Shaper::shape`] makes of its signal with the values
-    /// read into a `T`.
+    /// its inputs [`Shaper::Inputs`]'s, its identity `T`'s type; a call gives the signal [`Shaper::shape`] makes of
+    /// its signal and inputs with the values read into a `T`.
     ///
     /// ```
     /// use bullterrier_control::builtin::slew;
@@ -166,12 +171,15 @@ impl Thing {
     /// # Errors
     /// As [`Thing::source`].
     pub fn shaper<T: Shaper>(about: About) -> Result<Self, Error> {
-        let parts = Self::parts::<T>(T::NAME, Kind::Shaper, Vec::new(), Returns::Signal)?;
+        let parts = Self::parts::<T>(T::NAME, Kind::Shaper, T::Inputs::DECLARED.to_vec(), Returns::Signal)?;
         Self::checked(
             about,
             parts,
             Box::new(|call, values| match call.signals.as_slice() {
-                [input] => Ok(Output::Signal(T::from_values(values).shape(input)?)),
+                [input] => {
+                    let inputs = T::Inputs::from_inputs(&call.inputs)?;
+                    Ok(Output::Signal(T::from_values(values).shape(input, inputs)?))
+                }
                 // `call` checked the count already
                 _ => Err(Error::Call {
                     message: "a shaper takes 1 signal".to_owned(),
@@ -646,21 +654,27 @@ impl Thing {
     }
 }
 
-/// The signal the shaper `shaper` makes of `input`, through the one door of the thing `T` is
-/// ([`Thing::shaper`]): what [`Signal::pipe`] and a typed method ([`Signal::slew`]) give.
+/// The signal the shaper `shaper` makes of `input` and `inputs`, through the one door of the thing `T` is
+/// ([`Thing::shaper`]): what [`Signal::pipe`], [`Signal::pipe_with`] and a typed method ([`Signal::slew`]) give.
 ///
 /// # Errors
-/// As [`Thing::call`], and [`Error::Registration`] if `T` breaks a rule of the [registry](super).
+/// As [`Thing::call`], [`Error::Input`] if `inputs` break their kind's rules, and [`Error::Registration`] if `T`
+/// breaks a rule of the [registry](super).
 #[expect(
     clippy::needless_pass_by_value,
     reason = "a door takes its thing as the caller writes it, a literal: `glow.pipe(Fold { depth: 0.5 })`"
 )]
-pub(crate) fn shaped<T: Shaper>(shaper: T, input: &Signal) -> Result<Signal, Error> {
-    typed(&Thing::shaper::<T>(About::default())?, vec![input.clone()], (), &shaper)
+pub(crate) fn shaped<T: Shaper>(shaper: T, input: &Signal, inputs: T::Inputs) -> Result<Signal, Error> {
+    typed(
+        &Thing::shaper::<T>(About::default())?,
+        vec![input.clone()],
+        inputs,
+        &shaper,
+    )
 }
 
-/// The signal the source `source` makes, through the one door of the thing `T` is ([`Thing::source`]): what a
-/// `lib` function gives.
+/// The signal the source `source` makes of `inputs`, through the one door of the thing `T` is ([`Thing::source`]):
+/// what a `lib` function gives.
 ///
 /// # Errors
 /// As [`shaped`].
@@ -668,8 +682,8 @@ pub(crate) fn shaped<T: Shaper>(shaper: T, input: &Signal) -> Result<Signal, Err
     clippy::needless_pass_by_value,
     reason = "a door takes its thing as the caller writes it, a literal: `lib::constant(constant::Params { .. })`"
 )]
-pub(crate) fn sourced<T: Source>(source: T) -> Result<Signal, Error> {
-    typed(&Thing::source::<T>(About::default())?, Vec::new(), (), &source)
+pub(crate) fn sourced<T: Source>(source: T, inputs: T::Inputs) -> Result<Signal, Error> {
+    typed(&Thing::source::<T>(About::default())?, Vec::new(), inputs, &source)
 }
 
 /// The signal `thing` makes of typed arguments: each lowered to what a call by name gives (`inputs` by

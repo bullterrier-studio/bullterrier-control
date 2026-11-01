@@ -758,9 +758,10 @@ Rulings:
 - **Traits make the params struct the thing.** `Source`, `Shaper` and `Operation` are implemented for `Params`, so
   `glow.pipe(Fold { depth: 0.5 })?` is the call. `Thing::source::<T>`, `shaper::<T>`, `operation::<T>` and `Thing::custom`
   (a callback) make a `Thing`; `Registry::register(Thing)` takes it. *Reason:* Rust cannot bound `T` by "one of three
-  traits" for a `register::<T>(name)`, and a thing's doc and parameter title are not on the trait. `Source` and `Shaper` take
-  no input data (an operation has `type Inputs`): the `lib::` signature of a source with inputs (`envelope(&kicks, ..)`) is
-  R5's choice (api.md rule 2), and the door is already generic over the inputs.
+  traits" for a `register::<T>(name)`, and a thing's doc and parameter title are not on the trait. In R5a `Source` and
+  `Shaper` took `type Inputs` as `Operation` has it, one mechanism for the three kinds: the door records what
+  `Inputs::into_inputs` gives, so a recipe cannot miss an input. `pipe` is bounded to `Inputs = ()`, so a shaper with
+  inputs cannot be piped without them; `pipe_with` takes them.
 - **`build.rs` finds the impl in the code, not the text.** A file with `impl Source|Shaper|Operation for Params` is registered
   (a source is also a `lib::` function); a token scan skips comments, docs, strings, characters and `macro_rules!` bodies
   and accepts the trait by any path. *Reason:* a plain text search registered a marker in a comment and missed

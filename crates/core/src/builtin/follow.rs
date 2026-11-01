@@ -59,9 +59,10 @@ impl Signal {
 
 impl Shaper for Params {
     const NAME: &'static str = "follow";
+    type Inputs = ();
 
     /// Its causal recurrence over `input` sampled at `rate`, rendered as far as the reads need.
-    fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+    fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
         let rendering = Rendering {
             rate: self.rate,
             ..Rendering::default()
@@ -105,7 +106,7 @@ mod tests {
     fn shaped(inputs: &[f64], params: &Params) -> Result<Vec<f64>, Error> {
         let input = Signal::from_values(inputs, params.rate, FromValues::default(), Interpolation::Hold)?;
         let times: Vec<f64> = (0..inputs.len()).map(|index| f64::from(u32::try_from(index).unwrap_or(0)) / params.rate).collect();
-        params.shape(&input)?.sample(&times)
+        params.shape(&input, ())?.sample(&times)
     }
 
     fn params(attack: f64, release: f64, rate: f64) -> Params {

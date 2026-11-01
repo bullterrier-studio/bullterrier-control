@@ -47,9 +47,10 @@ impl Signal {
 
 impl Shaper for Params {
     const NAME: &'static str = "slew";
+    type Inputs = ();
 
     /// Its causal recurrence over `input` sampled at `rate`, rendered as far as the reads need.
-    fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+    fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
         let rendering = Rendering {
             rate: self.rate,
             ..Rendering::default()
@@ -96,7 +97,7 @@ mod tests {
     fn shaped(inputs: &[f64], params: &Params) -> Result<Vec<f64>, Error> {
         let input = Signal::from_values(inputs, params.rate, FromValues::default(), Interpolation::Hold)?;
         let times: Vec<f64> = (0..inputs.len()).map(|index| f64::from(u32::try_from(index).unwrap_or(0)) / params.rate).collect();
-        params.shape(&input)?.sample(&times)
+        params.shape(&input, ())?.sample(&times)
     }
 
     fn params(rise: f64, fall: f64, rate: f64) -> Params {
@@ -142,7 +143,7 @@ mod tests {
             }
             Ok::<(), std::fmt::Error>(())
         });
-        let slewed = params(0.5, 0.5, 10.0).shape(&broken)?;
+        let slewed = params(0.5, 0.5, 10.0).shape(&broken, ())?;
         assert_eq!(slewed.sample(&[0.0, 0.05])?, [1.0, 1.0]);
         let refused = slewed.at(0.1);
         assert!(

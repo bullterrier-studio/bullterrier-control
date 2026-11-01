@@ -181,17 +181,19 @@ rustdoc and `help()`) and `#[param(default = .., unit = .., min = .., max = .., 
 `#[param(rule = path)]` on the struct; it runs only once every field is valid. The table checks the declaration
 (`ParamTable::new`) and reads the values (`parse`, strict, listing every broken rule), so the kernel gets typed values already
 valid. A thing that runs in Rust also implements `Source`, `Shaper` or `Operation` for its `Params` (`impl Shaper for Params
-{ const NAME: &'static str = "<file name>"; fn shape(&self, input: &Signal) -> Result<Signal, Error> }`; a source has
-`fn source(&self) -> Result<Signal, Error>`, an operation `type Inputs`, `const RETURNS` and `fn run(&self, inputs) ->
-Result<Output, Error>`; `NAME` is its one name, checked against the file name at compile time; a source or shaper takes
-no input data until R5); a stateful shaper builds its signal with `Signal::rendered`
+{ const NAME: &'static str = "<file name>"; type Inputs = (); fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> }`;
+a source has `fn source(&self, inputs: Self::Inputs) -> Result<Signal, Error>`, an operation `const RETURNS` and
+`fn run(&self, inputs: Self::Inputs) -> Result<Output, Error>`; `NAME` is its one name, checked against the file name at
+compile time; `type Inputs` is its data, as for every kind: `()`, `Vec<Event>`, `Option<Grid>`, a struct for several,
+recorded in its recipe); a stateful shaper builds its signal with `Signal::rendered`
 over a private causal `run(inputs: &[f64], params: &Params) -> Vec<f64>` (output *i* depends on inputs 0 to *i*), and a
 stateless one combines signals (`input * self.depth`). The file's leading `//!` lines are its doc (`help()` in Rust). A typed
-`Signal::<name>(&self, Params)` method is `self.pipe(params)`: every door (`Thing::call`, `shape`, `pipe`, a typed method,
+`Signal::<name>(&self, Params)` method is `self.pipe(params)` (with inputs, `self.pipe_with(params, inputs)`, its arguments in
+`docs/api.md` rule 2's order): every door (`Thing::call`, `shape`, `pipe`, `pipe_with`, a typed method,
 a `lib::` function) checks, runs, names and records the recipe (`Signal::recipe`, kept by a wrapper node, which
 `Patch::from_signals` saves) through one private call. `build.rs` lists every file in
 `PARAMS` and registers those whose code (not a comment or a string) has such an `impl` in `Registry::builtin()` (a
-source is also a `lib::` function). A signal is `Arc<dyn Node>` with `Node`
+source is also a `lib::` function, its arguments as `docs/api.md` rule 2 says). A signal is `Arc<dyn Node>` with `Node`
 sealed; code outside the crate adds nodes with `Signal::from_fn` and `Signal::rendered`; no Rust lock is held while a
 callback into Python runs. A node implements `start` and `finish` and never reads an input itself: the one loop in
 `signal/walk.rs` does (a scan test fails otherwise), and drops go through a per-thread queue, so a graph of any depth
@@ -272,10 +274,10 @@ load, naming source, field, constraint and value. Not parameters: the fields of 
    where it can be; a causal recurrence through `Signal::rendered` where it needs history), the leading `//!` lines (their first
    sentence is what `help(lib.<name>)` shows). An operation takes its data as `type Inputs` (`Vec<Event>` for `events`, `Series`,
    `Grid`, `Option` of one for an optional input, or a struct of the operation's own for several) and declares its result in
-   `const RETURNS`. A source or shaper takes no input data in Rust until R5; one that needs it (`points`, `events`, `grid`)
-   is still written in Python, by hand, as a module in `src/bullterrier_control/builtin/` with `@source` or `@shaper`, its data a
-   keyword-only argument after `params` named in `inputs.INPUTS` (`def name(params, *, points)`; `= None` makes it optional),
-   which the registry checks and passes on. A new kind of input is a variant of `InputKind` and of `Input` in
+   `const RETURNS`; a source or shaper takes its data the same way (`type Inputs = Vec<Event>;`, `()` for none; a source's
+   `lib::` function then borrows it: `docs/api.md` rule 2), and a shaper with inputs goes into a chain by `pipe_with`.
+   A Python plugin's data is a keyword-only argument after `params` named in `inputs.INPUTS` (`def name(params, *,
+   points)`; `= None` makes it optional), which the registry checks and passes on. A new kind of input is a variant of `InputKind` and of `Input` in
    `crates/core/src/inputs.rs` (its rules and tests), its conversion in `crates/python/src/inputs.rs`, a stub annotation in
    `inputs.py`, and one row in each of `SAMPLE_INPUTS` and `SMALLEST_INPUTS` in `tests/builtin/test_contract.py` (and in
    `INPUTS` of `test_operation_contract.py`, if an operation takes it).

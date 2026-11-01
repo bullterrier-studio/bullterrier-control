@@ -1254,6 +1254,222 @@ fn a_rust_operation_takes_its_inputs_by_their_kinds() -> Result<(), Error> {
     Ok(())
 }
 
+/// A source of these tests that takes data: at a time, `step` for each event at or before it.
+#[derive(Clone, Debug, PartialEq, crate::Params)]
+struct Hits {
+    /// What each event adds.
+    #[param(default = 1.0, unit = Ratio, min = 0, max = 10)]
+    step: f64,
+}
+
+impl crate::Source for Hits {
+    const NAME: &'static str = "hits";
+    type Inputs = Vec<Event>;
+
+    fn source(&self, events: Vec<Event>) -> Result<Signal, Error> {
+        Ok(counted(&events, self.step))
+    }
+}
+
+/// A shaper of these tests that takes data if it is given: its input, raised by `step` at each event.
+#[derive(Clone, Debug, PartialEq, crate::Params)]
+struct Bump {
+    /// What each event adds.
+    #[param(default = 1.0, unit = Ratio, min = 0, max = 10)]
+    step: f64,
+}
+
+impl crate::Shaper for Bump {
+    const NAME: &'static str = "bump";
+    type Inputs = Option<Vec<Event>>;
+
+    fn shape(&self, input: &Signal, events: Option<Vec<Event>>) -> Result<Signal, Error> {
+        Ok(input + &counted(&events.unwrap_or_default(), self.step))
+    }
+}
+
+/// The signal that is, at a time, `step` for each of `events` at or before it.
+fn counted(events: &[Event], step: f64) -> Signal {
+    let times: Vec<f64> = events.iter().map(Event::t).collect();
+    Signal::from_fn(move |at, out| {
+        for (time, value) in at.iter().zip(out.iter_mut()) {
+            *value = times.iter().filter(|event| **event <= *time).map(|_| step).sum();
+        }
+        Ok::<(), Error>(())
+    })
+}
+
+/// The times [`Hits`] and [`Bump`] are read at.
+const HIT_AT: [f64; 4] = [0.0, 0.5, 1.5, 2.0];
+
+/// A row of [`a_rust_source_and_shaper_take_their_inputs_by_their_kinds`]: (row, thing, inputs by name, its values at
+/// [`HIT_AT`] or the call's refusal).
+type HitRow<'a> = (&'a str, &'a Thing, Vec<(&'a str, &'a Input)>, Result<Vec<f64>, String>);
+
+#[test]
+fn a_rust_source_and_shaper_take_their_inputs_by_their_kinds() -> Result<(), Error> {
+    let hits = Thing::source::<Hits>(About::default())?;
+    let bump = Thing::shaper::<Bump>(About::default())?;
+    assert_eq!(hits.inputs(), [(InputKind::Events, true)]);
+    assert_eq!(bump.inputs(), [(InputKind::Events, false)]);
+    assert!(
+        hits.help().starts_with("source hits(*, events, **values) -> signal\n"),
+        "{}",
+        hits.help()
+    );
+    assert!(
+        bump.help()
+            .starts_with("shaper bump(signal, *, events=None, **values) -> signal\n"),
+        "{}",
+        bump.help()
+    );
+    let kicks = Input::from_events(events(&[1.0, 0.5, 2.0])?);
+    let grid = Input::Grid(Grid::new(vec![0.0, 0.5], 4, 0).map_err(|source| Error::Format { source })?);
+    let level = Signal::constant(0.25)?;
+    let call = |thing: &Thing, inputs: &[(&str, &Input)]| -> Result<Vec<f64>, String> {
+        let signals = if thing.kind() == Kind::Shaper {
+            vec![level.clone()]
+        } else {
+            vec![]
+        };
+        let given = Call {
+            signals,
+            inputs: inputs
+                .iter()
+                .map(|(name, input)| ((*name).to_owned(), (*input).clone()))
+                .collect(),
+            values: json!({"step": 0.5}),
+        };
+        match thing.call(&given) {
+            Ok(Output::Signal(signal)) => signal.sample(&HIT_AT).map_err(|error| error.to_string()),
+            Ok(other) => Err(format!("not a signal: {other:?}")),
+            Err(error @ Error::Call { .. }) => Err(error.to_string()),
+            Err(other) => Err(format!("not a call error: {other}")),
+        }
+    };
+    // 0.5 for each of the events at 0.5, 1 and 2 s at or before the time; the shaper adds it to its input, 0.25
+    let rows: [HitRow<'_>; 7] = [
+        (
+            "a source given its events",
+            &hits,
+            vec![("events", &kicks)],
+            Ok(vec![0.0, 0.5, 1.0, 1.5]),
+        ),
+        (
+            "a source without the events it needs",
+            &hits,
+            vec![],
+            Err("source 'hits' needs the input 'events'".to_owned()),
+        ),
+        (
+            "a source given another kind under the name events",
+            &hits,
+            vec![("events", &grid)],
+            Err("source 'hits': the input 'events' holds grid".to_owned()),
+        ),
+        (
+            "a source given an input it does not take",
+            &hits,
+            vec![("events", &kicks), ("grid", &grid)],
+            Err("source 'hits' takes no input 'grid'".to_owned()),
+        ),
+        (
+            "a shaper given its events",
+            &bump,
+            vec![("events", &kicks)],
+            Ok(vec![0.25, 0.75, 1.25, 1.75]),
+        ),
+        ("a shaper without its optional events", &bump, vec![], Ok(vec![0.25; 4])),
+        (
+            "a shaper given another kind under the name events",
+            &bump,
+            vec![("events", &grid)],
+            Err("shaper 'bump': the input 'events' holds grid".to_owned()),
+        ),
+    ];
+    for (row, thing, inputs, expected) in rows {
+        assert_eq!(call(thing, &inputs), expected, "{row}");
+    }
+    Ok(())
+}
+
+/// A row of [`a_signal_with_inputs_made_by_any_door_saves_as_a_patch_and_builds_again`]: (thing, door, the signal it
+/// made, the inputs its recipe holds, its values at [`HIT_AT`]).
+type InputDoorRow = (&'static str, &'static str, Signal, Vec<(String, Input)>, Vec<f64>);
+
+#[test]
+fn a_signal_with_inputs_made_by_any_door_saves_as_a_patch_and_builds_again() -> Result<(), Box<dyn std::error::Error>> {
+    use crate::Patch;
+
+    let mut registry = Registry::builtin().clone();
+    registry.register(Thing::source::<Hits>(About::default())?)?;
+    registry.register(Thing::shaper::<Bump>(About::default())?)?;
+    let kicks = events(&[1.0, 0.5, 2.0])?;
+    let given = vec![("events".to_owned(), Input::from_events(kicks.clone()))];
+    let by_name = |name: &str, signals: Vec<Signal>, inputs: &[(String, Input)]| {
+        signal(registry.get(name)?.call(&Call {
+            signals,
+            inputs: inputs.iter().cloned().collect(),
+            values: json!({"step": 0.5}),
+        }))
+    };
+    let typed = super::sourced(Hits { step: 0.5 }, kicks.clone())?;
+    let one = events(&[1.0])?;
+    let rows: Vec<InputDoorRow> = vec![
+        (
+            "hits",
+            "Thing::call",
+            by_name("hits", vec![], &given)?,
+            given.clone(),
+            vec![0.0, 0.5, 1.0, 1.5],
+        ),
+        ("hits", "lib", typed.clone(), given.clone(), vec![0.0, 0.5, 1.0, 1.5]),
+        // 0.5 an event below, 2 at the one event at 1 s on top
+        (
+            "bump",
+            "Thing::call",
+            by_name(
+                "bump",
+                vec![typed.clone()],
+                &[("events".to_owned(), Input::from_events(one.clone()))],
+            )?,
+            vec![("events".to_owned(), Input::from_events(one.clone()))],
+            vec![0.0, 0.5, 1.5, 2.0],
+        ),
+        (
+            "bump",
+            "pipe_with",
+            typed.pipe_with(Bump { step: 0.5 }, Some(one.clone()))?,
+            vec![("events".to_owned(), Input::from_events(one))],
+            vec![0.0, 0.5, 1.5, 2.0],
+        ),
+        (
+            "bump",
+            "pipe_with none",
+            typed.pipe_with(Bump { step: 0.5 }, None)?,
+            vec![],
+            vec![0.0, 0.5, 1.0, 1.5],
+        ),
+    ];
+    for (thing, door, made, inputs, values) in rows {
+        let recipe = made.recipe().ok_or("no recipe")?;
+        assert_eq!(
+            (recipe.name.as_str(), &recipe.inputs),
+            (thing, &inputs),
+            "{thing} through {door}"
+        );
+        assert_eq!(made.sample(&HIT_AT)?, values, "{thing} through {door}");
+        // saved with its inputs inline, it builds the same values again
+        let text = Patch::from_signals_with(&registry, &[("made", &made)])?.to_toml();
+        let built = Patch::from_toml_with(&registry, &text)?.build(None)?;
+        let Some(Output::Signal(again)) = built.get("made") else {
+            return Err(format!("{thing} through {door}: not built: {text}").into());
+        };
+        assert_eq!(again.sample(&HIT_AT)?, values, "{thing} through {door}: {text}");
+    }
+    Ok(())
+}
+
 /// The signal `output` holds, or why there is none.
 fn signal(output: Result<Output, Error>) -> Result<Signal, Error> {
     match output? {
@@ -1579,8 +1795,9 @@ struct Fold {
 
 impl crate::Shaper for Fold {
     const NAME: &'static str = "fold";
+    type Inputs = ();
 
-    fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+    fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
         let (line, input) = (1.0 - self.depth, input.clone());
         Ok(Signal::from_fn(move |times, out| {
             input.read_into(times, out)?;
@@ -1604,8 +1821,9 @@ struct Level {
 
 impl crate::Source for Level {
     const NAME: &'static str = "level";
+    type Inputs = ();
 
-    fn source(&self) -> Result<Signal, Error> {
+    fn source(&self, (): ()) -> Result<Signal, Error> {
         Signal::constant(self.value)
     }
 }
@@ -1721,7 +1939,7 @@ fn every_door_records_the_same_recipe_and_names_the_thing_alike() -> Result<(), 
         ("fold", "Thing::call", by_name("fold", json!({"depth": 0.25}))),
         ("fold", "pipe", step.pipe(Fold { depth: 0.25 })),
         ("level", "Thing::call", by_name("level", json!({}))),
-        ("level", "lib", super::sourced(Level::default())),
+        ("level", "lib", super::sourced(Level::default(), ())),
     ];
     let bad: Vec<DoorRow> = vec![
         (
@@ -1751,7 +1969,7 @@ fn every_door_records_the_same_recipe_and_names_the_thing_alike() -> Result<(), 
         ("fold", "Thing::call", by_name("fold", json!({"depth": 2.0}))),
         ("fold", "pipe", step.pipe(Fold { depth: 2.0 })),
         ("level", "Thing::call", by_name("level", json!({"value": 2.0}))),
-        ("level", "lib", super::sourced(Level { value: 2.0 })),
+        ("level", "lib", super::sourced(Level { value: 2.0 }, ())),
     ];
     // worked out by hand: each recipe holds every field, a default where none was given
     let expected = |thing: &str| -> (Made, String) {
@@ -1829,7 +2047,8 @@ fn a_rust_thing_is_identified_by_its_type_not_by_its_path() -> Result<(), Error>
         struct Twin {}
         impl crate::Shaper for Twin {
             const NAME: &'static str = "twin";
-            fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+            type Inputs = ();
+            fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
                 Ok(input * 2.0)
             }
         }
@@ -1844,7 +2063,8 @@ fn a_rust_thing_is_identified_by_its_type_not_by_its_path() -> Result<(), Error>
         struct Twin {}
         impl crate::Shaper for Twin {
             const NAME: &'static str = "twin";
-            fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+            type Inputs = ();
+            fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
                 Ok(input * 3.0)
             }
         }
@@ -1894,7 +2114,8 @@ fn a_rust_thing_whose_name_breaks_the_rule_is_refused_by_every_door() -> Result<
     struct Loud {}
     impl crate::Shaper for Loud {
         const NAME: &'static str = "Loud";
-        fn shape(&self, input: &Signal) -> Result<Signal, Error> {
+        type Inputs = ();
+        fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
             Ok(input.clone())
         }
     }
