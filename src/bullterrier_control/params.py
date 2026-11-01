@@ -27,7 +27,7 @@ Promises:
 import inspect
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, get_args, get_origin
+from typing import Any, ClassVar, Literal, Self, get_args, get_origin
 
 from ._native import _core
 
@@ -144,7 +144,3 @@ class Params:
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({', '.join(f'{name}={value!r}' for name, value in self.__dict__.items())})"
-
-    if TYPE_CHECKING:  # a built-in's fields are the core's, unknown to a type checker (R3 types them)
-
-        def __getattr__(self, name: str) -> Any: ...
