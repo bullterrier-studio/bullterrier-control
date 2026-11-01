@@ -35,7 +35,7 @@ the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `no
 `gate`, `hold`, `remap` and `delay`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`,
 patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`) and the gallery exist. The Rust core's foundation
 (R0) exists: `slew` and `follow` run in Rust, and CI builds the core and a wheel per platform (R0b; first GitHub run pending).
-The formats are in Rust (R1): `Series`, `Event`, `Grid`, `Bundle` and `Unit` are classes of the extension. Parameters are in Rust (R2): every built-in declares them there (`#[derive(Params)]`), and the core checks every parameter, a plugin's too. The signal graph is in Rust (R3): `Signal`, arithmetic, `Rendered`, `slew` and `follow` (as Rust `Signal` shapers) and easing, cadence, hashing, scaling and rounding run in the core, and Python's `Signal` is a handle over it. The inputs are in Rust (R4a): the core's `inputs` module checks every input, `Keyframe` is a class of the extension, and pydantic is gone. The registry and patches are in Rust (R4b): the core's `registry` module holds every source, shaper and operation (Rust things register themselves, Python ones as callbacks), a patch is read, built and saved by the core with no Python, and a graph made through the registry saves as a patch (`Patch.from_signals`). Built-ins with data are in Rust (R5a): every kind takes `type Inputs` and `Signal::retimed` moves time. All 21 built-ins run in Rust (R5b): `Signal::mapped` maps values, and a source's `lib::` function takes a struct of several inputs; the Python `builtin` package is left empty, for R5c to delete. Next: R5c, R6, then C5, the first release (`docs/roadmap.md`).
+The formats are in Rust (R1): `Series`, `Event`, `Grid`, `Bundle` and `Unit` are classes of the extension. Parameters are in Rust (R2): every built-in declares them there (`#[derive(Params)]`), and the core checks every parameter, a plugin's too. The signal graph is in Rust (R3): `Signal`, arithmetic, `Rendered`, `slew` and `follow` (as Rust `Signal` shapers) and easing, cadence, hashing, scaling and rounding run in the core, and Python's `Signal` is a handle over it. The inputs are in Rust (R4a): the core's `inputs` module checks every input, `Keyframe` is a class of the extension, and pydantic is gone. The registry and patches are in Rust (R4b): the core's `registry` module holds every source, shaper and operation (Rust things register themselves, Python ones as callbacks), a patch is read, built and saved by the core with no Python, and a graph made through the registry saves as a patch (`Patch.from_signals`). Built-ins with data are in Rust (R5a): every kind takes `type Inputs` and `Signal::retimed` moves time. All 21 built-ins run in Rust (R5b): `Signal::mapped` maps values, and a source's `lib::` function takes a struct of several inputs. The Python built-ins are gone (R5c): no `builtin` package or entry point, and the lists of built-ins are derived from the files. Next: R6, then C5, the first release (`docs/roadmap.md`).
 Maintainers may keep machine-specific notes in a git-ignored `.local/` folder (for example `.local/prior-work.md`, earlier
 experiments worth reusing) and batch plans in the git-ignored `.superpowers/plans/`: read them when present; never commit or
 cite them.
@@ -85,18 +85,17 @@ Layers, imports flow **downward only** (import-linter: contracts in `pyproject.t
 
 ```
 app        __main__, cli
-builtin    empty: every built-in runs in Rust and has no module; deleted, with its entry point and contracts, in R5c
 lib        every registered source, shaper and operation by name (`lib.slew`), with `help()` built from its parameters; `lib.pyi` types it
 patch      Patch, load_patch: a graph of them as data (TOML), read, built against a bundle and saved by the Rust core; imports only registry, formats, errors and `_native`; the patch schema
 plotting   plot: signals drawn as a PNG (matplotlib, an optional extra, imported when a picture is drawn)
-plugin     the author API: everything a source needs (built-ins use it too); the one door, enforced by a contract
+plugin     the author API: everything a plugin's source, shaper or operation needs
 registry   the package's one registry (the core's `Registry`; `Registered` is the core's `Thing`), `table()`; `@source`, `@shaper`, `@operation` (they check a Python function's shape, the core checks the rest); entry-point loading
 rendered   Rendered: a signal that needs history, rendered on a grid and read by holding the latest sample  |  inputs   `INPUTS`, Keyframe: the Rust core's input rules, named for Python
 signal     Signal (a handle over the Rust graph), Constant, from_series, from_values, minimum, maximum  |  params   Params, param: a plugin's declaration, built into the core's `ParamTable`  |  easing   `curve`: named and Bezier eases  |  cadence   `counter`: a read's position in cycles or steps, per second or beat  |  hashing   `uniform`: seeded random numbers by index  |  scaling   `between`: 0..1 onto `low`..`high`, exactly inside  |  rounding   decisions at a time boundary
 _chain     Chain: a typed method per built-in shaper, which Signal inherits (generated; rounding > _chain > formats)
 formats    Bundle > Series | Event | Grid > Unit: the Rust-backed classes of the extension, re-exported; `load`, `save`, `events`
-errors     BullterrierControlError > InvalidError > FormatError | ParameterError; SignalError; UnknownNameError
 _native    home of the Rust extension `_native._core`      (imports `errors` only, lazily, to raise its errors)
+errors     BullterrierControlError > InvalidError > FormatError | ParameterError; SignalError; UnknownNameError
 ```
 
 **Rust core:** `crates/core` (pure Rust: no PyO3, no numpy, safe code, builds for `wasm32-unknown-unknown`; one
@@ -106,15 +105,14 @@ re-exports them; they only write code) and `crates/python` (PyO3 bindings buildi
 reading and writing, schema); the bindings are `crates/python/src/{formats,params,inputs,data,error,registry,patch}.rs` (`registry.rs`: `Registry` and `Thing`, and a Python function registered as a callback thing; `patch.rs`: `Patch`, `Node`; `inputs.rs`: `Keyframe`, `check_input`; `data.rs` reads the package's own objects as their file data, and an exception a user's object raises while an input is read reaches the caller unchanged; formats and parameters turn it into a refusal message). They read a Python object with
 their own deserializer over Python objects (`data.rs`), so a NaN reaches the core and is listed with every other problem,
 and `FormatError.problems` lists the broken rules, the first 100 (`FormatError::omitted()` counts the others; a value of the wrong JSON type, an unknown field and the like stop
-the reading at that value). A built-in that runs in Rust has no Python module: its Rust file defines it, `Registry::builtin()` holds it and the package's
-registry starts from that. The Rust registry is the authority: it checks the name, a parameter named like an input or a patch key, the taken
+the reading at that value). Every built-in runs in Rust and has no Python module: its Rust file defines it, `Registry::builtin()` holds it and the package's
+registry starts from that; a plugin's Python function registers as a callback thing. The Rust registry is the authority: it checks the name, a parameter named like an input or a patch key, the taken
 name and every call; Python checks only what is about a Python function's shape. A call returns the core's signal, never the body's
 own object, and a Python body gets a new handle over the caller's signal; an exception a Python body raises reaches the caller
 unchanged. There is no other boundary: a Rust `Signal` is sampled without Python or the GIL, and Python code is a node in the graph only
 where a plugin wrote a `compute` or a `Rendered(run=...)`. A Python `compute` is called with 1-D float64 times; its exception
 reaches `sample`'s caller unchanged. `Constant` and `Rendered` list their native base first
-(`class Rendered(_core.Rendered, Signal)`). `_native` is below every layer but `errors`, so any layer may call it; built-ins may
-too, an explicit exception to the author-API door ("Built-in sources use only the author API" contract). Rust built-ins
+(`class Rendered(_core.Rendered, Signal)`). `_native` is below every layer but `errors`, so any layer may call it. Rust built-ins
 never refer to each other.
 
 A source is `def name(params) -> Signal`, a shaper `def name(signal, params) -> Signal`, each registered with `@source` or
@@ -189,9 +187,10 @@ stateless one combines signals (`input * self.depth`) or retimes one (`Signal::r
 `Signal::<name>(&self, Params)` method is `self.pipe(params)` (with inputs, `self.pipe_with(params, inputs)`, its arguments in
 `docs/api.md` rule 2's order): every door (`Thing::call`, `shape`, `pipe`, `pipe_with`, a typed method,
 a `lib::` function) checks, runs, names and records the recipe (`Signal::recipe`, kept by a wrapper node, which
-`Patch::from_signals` saves) through one private call. `build.rs` lists every file in
-`PARAMS` and registers those whose code (not a comment or a string) has such an `impl` in `Registry::builtin()` (a
-source is also a `lib::` function, its arguments as `docs/api.md` rule 2 says). A signal is `Arc<dyn Node>` with `Node`
+`Patch::from_signals` saves) through one private call. `build.rs` registers every file of `src/builtin/` in
+`Registry::builtin()` as the kind its code (not a comment or a string) implements, and refuses to build a file with no
+such `impl` or two (a source is also a `lib::` function, its arguments as `docs/api.md` rule 2 says); every list of the
+built-ins is derived from that, and a thing's table is `Thing::table`. A signal is `Arc<dyn Node>` with `Node`
 sealed; code outside the crate adds nodes with `Signal::from_fn`, `Signal::rendered`, `Signal::retimed` and `Signal::mapped`; no Rust lock is held while a
 callback into Python runs. A node implements `start` and `finish` and never reads an input itself: the one loop in
 `signal/walk.rs` does (a scan test fails otherwise), and drops go through a per-thread queue, so a graph of any depth
@@ -201,7 +200,7 @@ stack is 256 KiB. `Signal`'s `Debug` prints a node label and the depth only (`No
 field, trivial, or a cited constant. No `unwrap`, `expect`, `panic!`, `todo!` or printing (clippy fails them): return an
 `Error`; an error in the core is a bug in the caller, mapped to `ValueError`. `pub` only for what the bindings use, else
 `pub(crate)`. A NaN in the input comes through (`sample` reports it as `SignalError`); the kernel never panics on it. A
-Python body and its Rust twin do not coexist: port a built-in once and delete the Python body. The `patch` module names only
+built-in has no Python body. The `patch` module names only
 public items of the others (a scan test fails otherwise).
 
 ## Standards
@@ -265,19 +264,15 @@ load, naming source, field, constraint and value. Not parameters: the fields of 
 1. **Scaffold:** `uv run poe new-source <name> --kind source|shaper|operation` writes `crates/core/src/builtin/<name>.rs`
    (the `Params` struct, the trait impl and its tests) and `tests/builtin/test_<name>.py`, working as written (the build script
    finds the file and registers it: no list to edit). A source or shaper also gets `examples/gallery/<name>.toml`, the patch its
-   gallery picture is drawn from. A new built-in turns three hand-kept pins red in the tests of `crates/core/src/builtin.rs`:
-   the names and their count, the things the core runs (`only_the_built_ins_the_core_runs_are_registered`) and a
-   `declared_fields` row per parameter. Also edit, in the same commit (until R5c derives them), the other lists of the
-   built-ins the core runs: the "available" strings in the test `a_name_the_core_runs_no_shaper_of_is_refused_as_the_registry_refuses_it`
-   (`crates/core/src/lib.rs`), the `Registry::builtin()` doctest (`crates/core/src/registry.rs`) and
-   `test_the_registry_of_the_core_holds_what_the_core_runs_and_an_empty_one_nothing` (`tests/_native/test__core_registry.py`).
+   gallery picture is drawn from. Every list of the built-ins is derived from the files: none to edit.
 2. **Fill in:** the `Params` struct (the field's own terms, unit, range, description: "Parameters"), the body (analytic
    where it can be; a causal recurrence through `Signal::rendered` where it needs history), the leading `//!` lines (their first
    sentence is what `help(lib.<name>)` shows). An operation takes its data as `type Inputs` (`Vec<Event>` for `events`, `Series`,
    `Grid`, `Option` of one for an optional input, or a struct of the operation's own for several) and declares its result in
    `const RETURNS`; a source or shaper takes its data the same way (`type Inputs = Vec<Event>;`, `()` for none; a source's
    `lib::` function then borrows it: `docs/api.md` rule 2), and a shaper with inputs goes into a chain by `pipe_with`.
-   A Python plugin's data is a keyword-only argument after `params` named in `inputs.INPUTS` (`def name(params, *,
+   A built-in that needs data is written in Rust like this, never in Python. A plugin is Python, registered with `@source`,
+   `@shaper` or `@operation`: its data is a keyword-only argument after `params` named in `inputs.INPUTS` (`def name(params, *,
    points)`; `= None` makes it optional), which the registry checks and passes on. A new kind of input is a variant of `InputKind` and of `Input` in
    `crates/core/src/inputs.rs` (its rules and tests), its conversion in `crates/python/src/inputs.rs`, a stub annotation in
    `inputs.py`, and one row in each of `SAMPLE_INPUTS` and `SMALLEST_INPUTS` in `tests/builtin/test_contract.py` (and in

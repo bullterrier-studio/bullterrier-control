@@ -28,7 +28,7 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | R4c | Rust core: the graph walks by loop, not recursion | S | done |
 | R5a | Rust core: inputs on every kind; nine built-ins with data | M | done |
 | R5b | Rust core: the eight built-ins left in Python | M | done |
-| R5c | Rust core: derive the hand-kept lists; the empty Python `builtin` package goes | S | |
+| R5c | Rust core: derive the hand-kept lists; the empty Python `builtin` package goes | S | done |
 | R6 | Rust core: cleanup, the public crate | S | |
 | C5 | First release (after R6: it ships the Rust core) | S | |
 
@@ -201,14 +201,14 @@ The Python suite runs unchanged against the Rust core throughout.
   (all 21), each matching its old Python body in the differential harness; `Signal::mapped`; `lib::` for a source whose
   inputs are a struct of several (`steps`); `sin` and `exp` are `libm`'s. The Python `builtin` package is left empty.
   Decisions: [design-decisions.md](design-decisions.md), "The last built-ins in Rust (batch R5b)".
-- **R5c Cleanup.** The `PARAMS` list beside the registration and the hand-kept pins in `builtin.rs` (and the lists of
-  "Adding a source or shaper", step 1, in CLAUDE.md), derived. The empty Python `builtin` package goes with its entry
-  point, its import-linter contracts, `Params(builtin=...)` and `Params.__getattr__` (no Python body is left to read a
-  field). The Python helpers no built-in uses any more (`counter`, `Positions`, `between`, `plugin.matching`): kept as
-  author API or removed. Bundle-built graphs (`series.<name>`) cannot be saved, which a source that reads a series would
-  fix.
-- **R6 Cleanup.** No Python duplicate left, crate documentation, final speed and memory measured against R0's baseline
-  (R4b measured no slowdown of the slews; a Python-bodied built-in call is about 3 µs slower until R5).
+- **R5c Cleanup (done).** Every list of the built-ins is derived from `crates/core/src/builtin/`; the empty Python
+  `builtin` package, its entry point and contracts, `Params(builtin=...)`, `Params.__getattr__` and the crate's
+  `parameters`/`builtins` are gone. Against the Python bodies no ported built-in is slower: a `lib` call takes 0.2 to
+  0.9 of the time, `lfo` and `envelope` read in half the time. Decisions: [design-decisions.md](design-decisions.md),
+  "The Python built-ins go (batch R5c)".
+- **R6 Cleanup.** Crate documentation; final speed and memory measured against R0's baseline. The Python helpers no
+  built-in uses any more (`counter`, `Positions`, `between`, `plugin.matching`): kept as author API or removed.
+  Bundle-built graphs (`series.<name>`) cannot be saved, which a source that reads a series would fix.
 
 ## R0.5 Code-first API (done)
 

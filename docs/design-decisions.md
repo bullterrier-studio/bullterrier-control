@@ -386,7 +386,7 @@ separate ramp. Changed:
   package. Any layer may therefore call it. The contract "Built-in sources use only the author API" leaves it out of its
   forbidden list, an explicit exception to the author-API door (a built-in would otherwise reach it only through `plugin`).
   *Reason:* a built-in runs its body in Rust, and `plugin` stays what a third-party author needs. Today only `slew` and
-  `follow` call it.
+  `follow` call it. (R5c: no Python built-in is left, and the contract went with them.)
 - **Until R2, pydantic was the one declaration of parameters.** The Rust `Params` repeated the fields and the core
   trusted the values; vulture could not see the core read a field by name, so `poe dead-code` wrote a whitelist. R2
   removes all three (below).
@@ -432,6 +432,7 @@ Owner decisions (2026-10-31):
 - **All 21 built-ins declare their parameters in Rust now; only `slew` and `follow` have a Rust body.** *Reason:* the
   declaration is the part everything else (help, `list --json`, `lib.pyi`, the check) reads, so it cannot wait for a body.
   `build.rs` lists every built-in in `PARAMS` and those with a Rust body in `SHAPERS`; R5 deletes the difference (see R3).
+  (Done: every built-in has a Rust body since R5b; `PARAMS` went in R5c.)
 
 Rulings:
 - **`Error` and `FormatError` stay two types, both `#[non_exhaustive]`, both carrying a list of problems.** `docs/api.md`
@@ -602,8 +603,9 @@ Rulings:
 - **The `PARAMS`/`SHAPERS` split of `build.rs` stays until R5.** *Reason:* 19 built-ins still run in Python. A built-in
   file that defines `pub(crate) fn shape(input: &Signal, params: &Params) -> Result<Signal, Error>` is a shaper the core
   runs; `shape` replaces `run`. `slew` and `follow` define `shape` over `Signal::rendered` with a private `run`.
-  `bullterrier_control::shape(name, &Signal, &Value)` replaces `render`.
-- **`Params.__getattr__` waits for R5** (its readers are the Python bodies R5 deletes); **`gen_api`'s own range text,
+  `bullterrier_control::shape(name, &Signal, &Value)` replaces `render`. (R4b replaced `SHAPERS` and `shape` with the
+  registry; R5c removed `PARAMS`.)
+- **`Params.__getattr__` waits for R5** (its readers are the Python bodies R5 deletes; removed in R5c); **`gen_api`'s own range text,
   `inputs.py:127` and the O(n) problem strings in `formats.rs` wait for R4** (they go with `lib` and the inputs). Python
   that a later batch rewrites is not polished.
 - **`Node` is sealed; `Signal::from_fn` and `Signal::rendered` are the extension points** (the Python binding, Rust
@@ -764,7 +766,7 @@ Rulings:
   (a source is also a `lib::` function); a token scan skips comments, docs, strings, characters and `macro_rules!` bodies
   and accepts the trait by any path. *Reason:* a plain text search registered a marker in a comment and missed
   `impl crate::Shaper`. This replaces R3's `pub(crate) fn shape` convention and its `SHAPERS` list: `PARAMS` still lists all
-  21 and `register` the ones the core runs, until R5.
+  21 and `register` the ones the core runs, until R5. (R5c: `PARAMS` is gone; `register` is the one list.)
 - **Patches are read in Rust, in order.** `Patch::parse` takes the entries as an ordered slice, not a `serde_json::Value`
   (the core's serde_json sorts keys, and "a node above" depends on the order); `from_toml` is `parse` after the TOML
   reader. The thing a node names is looked up once, when the patch is read, so there is no `build_with`: a second registry at
@@ -924,15 +926,41 @@ door and back); the 17 that remain in Python are ported in R5.
 - **`envelope` drops two clamps** (`max(since - attack, 0)` and `max(since - end, 0)`): numpy's `where` evaluates both
   branches and needed them; Rust evaluates only the taken one, where the difference is already at least +0.0.
 - **Ported against the Python bodies** (the harness of R5a): `clip` 371 cases, `gate` 387, `remap` 483, `noise` 518 and
-  `keyframes` 435 bit-identical; `steps` 419 identical and 3 that differ in wording only; `lfo` 999: 872 identical, 3
+  `keyframes` 435 bit-identical (before `envelope` was ported: see the last clause); `steps` 419 identical and 3 that differ in wording only; `lfo` 999: 872 identical, 3
   wording, 124 sine cases whose outputs differ by `libm::sin` alone (in the wave 0.5 + 0.5 sin at most 1.11e-16);
   `envelope` 586: the 187 linear cases identical, 108 exponential ones differing by `libm::exp` alone (each `exp` is 1 ulp apart; the
   outputs 1 to 3 ulp in the harness, up to 5 in 8 000 random cases, at most 2.3e-13 on a sum of 20 000 events). Each
   explained difference was reproduced by the old formula with the libm function swapped in, bit for bit. `follow`
-  differs from its R4b body in 8 of 320 cases (7 beyond one rounding), by the R5a `libm::exp`. `clip`'s cases fed by an
-  envelope now differ by that `exp` too (10 of 371; `clip` itself is unchanged). No sign of zero differs.
+  differs from its R4b body in 8 of 320 cases (7 beyond one rounding), by the R5a `libm::exp`. `clip`'s and `remap`'s cases fed by an
+  envelope now differ by that `exp` too (10 of 371 and 4 of 483; neither shaper changed: `remap` over the old envelope's
+  values gives the old output bit for bit). No sign of zero differs.
 - **Wording:** a `per = "beat"` without a grid now names the thing (`source 'lfo': lfo: per: 'beat' needs a grid`, was
   `cadence: per: ...`); the type (`ParameterError`) and the path (`per`) are unchanged.
+
+## The Python built-ins go (batch R5c)
+
+- **Removed:** the empty `builtin` package, its entry point and its two import-linter contracts (they governed only
+  modules inside it), `Params(builtin=...)` and `Params.__getattr__`. *Reason:* every built-in runs in Rust; nothing read
+  them.
+- **Plugins keep Python registration.** `@source`, `@shaper`, `@operation` and `class P(Params)` stay: a plugin is a
+  Python package of the entry-point group, registered as callback things. *Reason:* third-party authors write Python;
+  only the built-ins moved.
+- **`Registered.describe_params()` returns data, not the table:** the `Params.describe()` dict (basic fields, then
+  advanced; JSON Schema properties and `range`), for a Rust or Python thing alike. `gen_api` reads it. *Reason:* a public
+  `ParamTable` would leak an internal type; `description()` stays what `list --json` prints.
+- **The lists of built-ins are derived from the files.** `build.rs` registers each file of `src/builtin/` as the kind
+  it implements and refuses a file with none or two; `PARAMS`, the names-and-count pin, the kind pins, the hard-coded
+  names in the doctest, the lib.rs test and the Python registry tests are gone. One check remains: a test reads the
+  files and requires `Registry::builtin()` to hold a thing for each and nothing else. `declared_fields` keeps its rows
+  for the built-ins that have them; a new built-in needs none. *Reason:* a new built-in edits no list (rule 4).
+- **`parameters(name)` and `builtins()` are removed** from the crate; a thing's table is `Thing::table`. *Reason:* one
+  public way, and nothing else called them.
+- **The scaffold reads its name rules from `schemas/patch-1.schema.json`:** the thing-name pattern and the node-name
+  pattern (reserved patch keys left out). *Reason:* one definition; the core refuses only those, so `use` and `signal`
+  are now valid names (a Rust keyword fails at build).
+- **`_core.Registry(builtin=True|False)` is kept:** `True` holds the core's built-ins (the package's registry), `False`
+  is empty (`isolated()`, `table()`'s copy, a failed load's rollback). Internal; the flag has nothing to do with the
+  removed package.
 
 ## Resource gates (R4c, owner, 2026-11-01)
 

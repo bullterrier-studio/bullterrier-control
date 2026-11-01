@@ -3,14 +3,14 @@
 The programmatic API is the product. A patch file is a serialisation of the same graph, built only through this API
 (task 10, last, as the extra it is). Each task below is shown in Python, which exists today, and in Rust, the language
 of the core. The Python blocks run as tests (`tests/test_api_doc.py`); a `# array([...])` comment is the result of the
-`.sample(...)` call above it. The Rust blocks marked **implemented** exist and are the real signatures; the others are the target API that R5 builds
+`.sample(...)` call above it. The Rust blocks marked **implemented** exist and are the real signatures; the others are the target API that R6 builds
 to. Implemented: the formats (`Event::new`, `Series::new`, `Grid::new`, `Bundle::from_json`), the parameters
-(`#[derive(Params)]` structs, `ParamTable`, `ParamUnit`, the Rust functions `parameters` and `builtins`) and the signal graph (R3):
+(`#[derive(Params)]` structs, `ParamTable`, `ParamUnit`; a thing's table is `Thing::table`) and the signal graph (R3):
 `Signal` (`constant`, `from_series`, `from_values`, `sample`, `sample_into`, `at`, `+ - *` and negation, `maximum`,
 `minimum`, `from_fn`, `rendered`), the inputs (R4a: `InputKind::check`, `Input::from_*`, `Keyframe`, `matching`), the registry and its traits (R4b:
 `Registry`, `Thing`, `Source`, `Shaper`, `Operation`, `Signal::pipe`, `Signal::recipe`; R5a: `type Inputs` on all three
 kinds, `Signal::pipe_with`), patches (R4b: `Patch::from_toml`,
-`build`, `from_signals`, `to_toml`), the built-ins (R4b, R5a, R5b: all 21, with `Signal::retimed` and `Signal::mapped`) and the primitives (`Ease`, `hashing::uniform`,
+`build`, `from_signals`, `to_toml`), the built-ins (R4b, R5a, R5b: all 21 run in Rust, with `Signal::retimed` and `Signal::mapped`; R5c: none in Python) and the primitives (`Ease`, `hashing::uniform`,
 `scaling::between`, `rounding`, `cadence::positions`). Their rustdoc examples (`crates/core/src/`) run with
 `cargo test --doc -p bullterrier-control`.
 
