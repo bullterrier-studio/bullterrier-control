@@ -54,6 +54,9 @@
 //!   what they use). The same patch and bundle give the same values. A node's [`returns`](Node::returns) says which,
 //!   without building.
 //! - A patch is built from the things it was read with: what a node names is looked up once, when it is read.
+//! - Saving ([`Patch::from_signals`]) makes a patch of signals made through the registry, each signal one node, and
+//!   refuses what a patch cannot hold, at its path; [`Patch::to_toml`] writes any patch as text that reads back as it
+//!   and builds the same values.
 //! - Nothing here depends on a consumer: a patch held inside another file (a video project) is read with
 //!   [`Patch::parse`].
 
@@ -342,7 +345,26 @@ impl Patch {
         build::build(self, bundle.into(), Some(names))
     }
 
-    /// The patch of `signals`, each under its name, for [`Registry::builtin`].
+    /// The patch of `signals`, each under its name, for [`Registry::builtin`]: as [`Patch::from_signals_with`].
+    ///
+    /// ```
+    /// use bullterrier_control::builtin::{constant, follow, slew};
+    /// use bullterrier_control::registry::Output;
+    /// use bullterrier_control::{Patch, lib};
+    ///
+    /// let level = lib::constant(constant::Params { value: 0.5 })?;
+    /// let glow = level.slew(slew::Params::default())?.follow(follow::Params::default())?;
+    /// let text = Patch::from_signals(&[("glow", &glow)])?.to_toml();
+    /// assert!(text.contains("\n[glow_2]\nuse = \"slew\"\nsignal = \"glow_1\"\n"));
+    ///
+    /// let built = Patch::from_toml(&text)?.build(None)?;
+    /// let Some(Output::Signal(again)) = built.get("glow") else { panic!("a shaper gives a signal") };
+    /// assert_eq!(again.sample(&[0.0, 0.05, 2.0])?, glow.sample(&[0.0, 0.05, 2.0])?);
+    ///
+    /// let refused = Patch::from_signals(&[("mix", &(&glow * 2.0))]).map_err(|error| error.to_string());
+    /// assert!(refused.is_err_and(|text| text.starts_with("cannot save as a patch: mix: is made by an operator")));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     ///
     /// # Errors
     /// As [`Patch::from_signals_with`].
@@ -350,15 +372,62 @@ impl Patch {
         Self::from_signals_with(Registry::builtin(), signals)
     }
 
-    /// The patch of `signals`, each under its name, for `registry`.
+    /// The patch of `signals`, each under its name, for `registry`: a node for each, and one for every signal it is
+    /// made from that is not given itself. What a node holds is its signal's [`recipe`](Signal::recipe): the thing,
+    /// every parameter value as its table read it, its inputs written inline, and the node above it as its `signal`.
+    ///
+    /// - The nodes are in an order a patch reads: each signal below every signal it is made from, the signals given
+    ///   in the order given otherwise. A signal several signals are made from is one node, which each refers to; a
+    ///   signal given under two names is a node under each.
+    /// - A signal above that is not given is named after the signal given that it is first found above, numbered from
+    ///   the top: `glow_1`, `glow_2`, ... above `glow`. A made name is none that is given, nor made already.
+    /// - [`to_toml`](Self::to_toml) writes it as text that reads back with `registry` as the same patch, and the
+    ///   patch builds signals of the same values as `signals`, bit for bit (it needs no bundle: its data is inline).
+    ///
+    /// ```
+    /// use bullterrier_control::builtin::{constant, slew};
+    /// use bullterrier_control::{Patch, Registry, lib};
+    ///
+    /// let base = lib::constant(constant::Params { value: 0.25 })?.slew(slew::Params::default())?;
+    /// let fast = base.slew(slew::Params { rise: 0.01, ..Default::default() })?;
+    /// let slow = base.slew(slew::Params { rise: 1.0, ..Default::default() })?;
+    /// let saved = Patch::from_signals(&[("fast", &fast), ("slow", &slow)])?;
+    /// let names: Vec<&str> = saved.nodes().map(|(name, _)| name).collect();
+    /// assert_eq!(names, ["fast_1", "fast_2", "fast", "slow"]); // `slow` uses `fast_2` too
+    ///
+    /// let refused = Patch::from_signals_with(&Registry::new(), &[("fast", &fast)]).map_err(|error| error.to_string());
+    /// assert!(refused.is_err_and(|text| text.contains("fast: is made by 'slew', which the registry it is saved for does not hold")));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     ///
     /// # Errors
-    /// [`PatchError::Unsaved`].
+    /// [`PatchError::Unsaved`] listing, each at its path (`glow`, `glow.signal` for the signal it shapes, and so on
+    /// up), every signal given or above one that a patch cannot hold, with why: it is made by an operator, from
+    /// values held as they are (a constant, [`from_values`](Signal::from_values), [`from_series`](Signal::from_series)),
+    /// by a callback ([`from_fn`](Signal::from_fn)) or by a recurrence of one ([`rendered`](Signal::rendered)), or
+    /// by a thing other than the one `registry` holds under its name (or `registry` holds none). Also each name that
+    /// is no node name, or is given twice.
     pub fn from_signals_with(registry: &Registry, signals: &[(&str, &Signal)]) -> Result<Self, PatchError> {
         save::save(registry, signals)
     }
 
-    /// The patch as TOML text.
+    /// The patch as TOML text, which reads back (with the registry it was read with or saved for) as the same patch:
+    /// the header, then each node in file order, a blank line before each: `use`, `signal`, its inputs in the order
+    /// its thing declares them (a reference, or the data inline as a bundle writes it), then its parameters in the
+    /// order its table declares them. A number is written as it is held (a decimal as a decimal, a whole number as a
+    /// whole one), each decimal as the same bits; text and a key are quoted and escaped as TOML needs. The same patch
+    /// gives the same text.
+    ///
+    /// ```
+    /// use bullterrier_control::Patch;
+    ///
+    /// let text = "format = 'bullterrier-control/patch'\nversion = 1\n[smooth]\nsignal = 'series.energy'\nuse = 'slew'\nrise = 0.5\n";
+    /// let written = Patch::from_toml(text)?.to_toml();
+    /// assert_eq!(written, "format = \"bullterrier-control/patch\"\nversion = 1\n\n\
+    ///                      [smooth]\nuse = \"slew\"\nsignal = \"series.energy\"\nrise = 0.5\n");
+    /// assert_eq!(Patch::from_toml(&written)?, Patch::from_toml(text)?);
+    /// # Ok::<(), bullterrier_control::patch::PatchError>(())
+    /// ```
     #[must_use]
     pub fn to_toml(&self) -> String {
         text::write(self)

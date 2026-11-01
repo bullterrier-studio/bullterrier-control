@@ -383,7 +383,8 @@ Rename the path in the source instead (`use bullterrier_control as btc;`), which
 ## 10. The same look as a file (the extra)
 
 A patch names sources, shapers and operations and their values, one table per node (`docs/formats.md`, "Patch"). It
-builds the same signals, against a bundle of measured data; saving a code-built graph as a patch is planned for R4.
+builds the same signals, against a bundle of measured data. A graph built in code through the registry saves as a
+patch whose data is inline; an operator, values given as they are or a callback in it is refused, naming the signal.
 
 ```python
 import bullterrier_control as btc
@@ -397,4 +398,5 @@ glow.sample([0.5, 0.75, 1.0, 1.5])  # a flare on each strong kick; the kick at 1
 
 ```rust
 let signals = btc::Patch::from_toml(&text)?.build(&bundle)?;
+let saved = btc::Patch::from_signals(&[("glow", &glow)])?.to_toml(); // a graph built in code, as a patch
 ```
