@@ -40,9 +40,11 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
    without parameters takes no struct (`keyframes(&points)`). Inputs are borrowed (`&[Event]`, `&Grid`) and cloned inside.
    (implemented for `lib::` sources: `build.rs` writes each from its `type Inputs`: `Vec<Event>` is `events: &[Event]`,
    `Vec<Keyframe>` `points: &[Keyframe]`, `Vec<f64>` `values: &[f64]`, `Grid` `grid: &Grid`, `Series` `series: &Series`;
-   an `Option` of one is `Option<&[Event]>`, `Option<&Grid>`, last; each cloned once, into the recipe. A shaper's typed
-   method takes the same order after `&self` (`signal.hold(&kicks)`, hold having no parameters) and is `pipe_with`; several
-   inputs, a struct, come with R5b.)
+   an `Option` of one is `Option<&[Event]>`, `Option<&Grid>`, last; each cloned once, into the recipe. Several inputs are
+   `type Inputs = Inputs`, the file's `pub struct Inputs { pub <input>: <data>, .. }`, each field named as its input:
+   its required fields in their order, then the parameters, then its optional ones (`steps(&values, Steps { .. },
+   Some(&grid))`). A shaper's typed method takes the same order after `&self` (`signal.hold(&kicks)`, hold having no
+   parameters) and is `pipe_with`.)
 3. **Parameters are a plain struct per thing**, declared with `#[derive(Params)]`: public fields, a doc comment and a
    `#[param(..)]` attribute each; the derive writes `Default` and the `ParamTable` that checks values (`Params::parse`,
    strict, every broken rule listed). Checked when passed in (the call returns `Result`). Struct literals always end in `..Default::default()`, so a

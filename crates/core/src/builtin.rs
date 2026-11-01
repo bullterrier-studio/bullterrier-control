@@ -115,6 +115,7 @@ mod tests {
                 ("select", Kind::Operation),
                 ("shift", Kind::Operation),
                 ("slew", Kind::Shaper),
+                ("steps", Kind::Source),
                 ("thin", Kind::Operation)
             ]
         );

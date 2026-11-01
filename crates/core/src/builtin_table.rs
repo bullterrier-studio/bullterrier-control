@@ -9,9 +9,10 @@
 //! file's leading `//!` lines; its parameters' doc is the `///` lines above `pub struct Params`, and their title the
 //! name in title case with `Params` (`every_n` is `EveryNParams`), as the Python classes are named.
 //!
-//! A source's `lib` function takes what `docs/api.md` rule 2 says, read from its `type Inputs`: a required input
-//! borrowed (`&[Event]`, `&Grid`) before its parameters, an optional one (`Option<&Grid>`) after them, and no
-//! parameters if `Params` has no fields; it clones the inputs once, into what the door records.
+//! A source's `lib` function takes what `docs/api.md` rule 2 says, read from its `type Inputs` (one input's data, or
+//! `Inputs`, the file's `pub struct Inputs { pub <input>: <data>, .. }` of several): each required input borrowed
+//! (`&[Event]`, `&Grid`) before its parameters, in the order declared, each optional one (`Option<&Grid>`) after them,
+//! and no parameters if `Params` has no fields; it clones the inputs once, into what the door records.
 
 use std::fmt::Write as _;
 
@@ -122,8 +123,56 @@ fn registration(checks: &mut String, code: &mut String, file: &File<'_>, (kind, 
     );
 }
 
+/// One argument of a `lib` function: the input's name, whether it is optional, and the type it is borrowed as.
+struct Argument {
+    /// The input's name, which the argument and a struct's field are called.
+    input: &'static str,
+    /// Whether the input may be left out (`Option<..>`): it then comes after the parameters.
+    optional: bool,
+    /// The type the function borrows, a slice's in brackets.
+    data: &'static str,
+}
+
+impl Argument {
+    /// The argument of the data `written` (paths left out), required or an `Option` of one; `None` if
+    /// [`BORROWED`] holds no such data.
+    fn of(written: &str) -> Option<Self> {
+        let inner = written
+            .strip_prefix("Option<")
+            .and_then(|inner| inner.strip_suffix('>'));
+        let (_, input, data) = BORROWED.iter().find(|(data, ..)| *data == inner.unwrap_or(written))?;
+        Some(Self {
+            input,
+            optional: inner.is_some(),
+            data,
+        })
+    }
+
+    /// The argument as the function declares it.
+    fn declared(&self) -> String {
+        let (input, data) = (self.input, self.data);
+        if self.optional {
+            format!("{input}: Option<&{data}>")
+        } else {
+            format!("{input}: &{data}")
+        }
+    }
+
+    /// The argument cloned into the data the source takes.
+    fn cloned(&self) -> String {
+        let cloned = match (self.optional, self.data.starts_with('[')) {
+            (false, true) => "to_vec()",
+            (false, false) => "clone()",
+            (true, true) => "map(<[_]>::to_vec)",
+            (true, false) => "cloned()",
+        };
+        format!("{}.{cloned}", self.input)
+    }
+}
+
 /// Writes into `code` the `lib` function of the source `file`, whose code is `tokens`; or the error naming the file
-/// if its `type Inputs` is not one [`BORROWED`] holds (or an `Option` of one) or `()`.
+/// if its `type Inputs` is not `()`, one input's data ([`BORROWED`], or an `Option` of one) or the file's own
+/// `Inputs` struct of them ([`fields`]).
 fn source_function(code: &mut String, file: &File<'_>, tokens: &[&str]) -> Result<(), String> {
     let name = file.name;
     let fieldless = tokens.windows(3).any(|words| words == ["struct", "Params", ";"])
@@ -138,28 +187,22 @@ fn source_function(code: &mut String, file: &File<'_>, tokens: &[&str]) -> Resul
         )
     };
     let written = inputs(tokens);
-    let optional = written
-        .strip_prefix("Option<")
-        .and_then(|inner| inner.strip_suffix('>'));
-    let found = BORROWED.iter().find(|(data, ..)| *data == optional.unwrap_or(&written));
-    let with_inputs = "its inputs (borrowed, cloned once) and parameters";
-    let (arguments, inputs, of) = match (found, optional) {
-        _ if written == "()" => (params, "()".to_owned(), "its parameters"),
-        (Some((_, input, data)), None) => {
-            let cloned = if data.starts_with('[') { "to_vec()" } else { "clone()" };
-            let arguments = [vec![format!("{input}: &{data}")], params].concat();
-            (arguments, format!("{input}.{cloned}"), with_inputs)
+    let (taken, inputs) = match (written.as_str(), Argument::of(&written)) {
+        ("()", _) => (Vec::new(), "()".to_owned()),
+        (_, Some(argument)) => {
+            let cloned = argument.cloned();
+            (vec![argument], cloned)
         }
-        (Some((_, input, data)), Some(_)) => {
-            let cloned = if data.starts_with('[') {
-                "map(<[_]>::to_vec)"
-            } else {
-                "cloned()"
-            };
-            let arguments = [params, vec![format!("{input}: Option<&{data}>")]].concat();
-            (arguments, format!("{input}.{cloned}"), with_inputs)
+        ("Inputs", None) => {
+            let taken = fields(tokens).map_err(|problem| format!("{}: {problem}", file.path))?;
+            let each: Vec<String> = taken
+                .iter()
+                .map(|field| format!("{}: {}", field.input, field.cloned()))
+                .collect();
+            let inputs = format!("crate::builtin::{name}::Inputs {{ {} }}", each.join(", "));
+            (taken, inputs)
         }
-        (None, _) => {
+        (_, None) => {
             let shown = if written.is_empty() {
                 "none".to_owned()
             } else {
@@ -167,11 +210,23 @@ fn source_function(code: &mut String, file: &File<'_>, tokens: &[&str]) -> Resul
             };
             return Err(format!(
                 "{}: a source's `type Inputs` is (), one input's data (Vec<Event>, Vec<Keyframe>, Vec<f64>, Grid, \
-                 Series) or an Option of one, not {shown} (several inputs come with R5b)",
+                 Series), an Option of one, or `Inputs`, the file's struct of them; not {shown}",
                 file.path
             ));
         }
     };
+    let of = if taken.is_empty() {
+        "its parameters"
+    } else {
+        "its inputs (borrowed, cloned once) and parameters"
+    };
+    let (optional, required): (Vec<&Argument>, Vec<&Argument>) = taken.iter().partition(|argument| argument.optional);
+    let arguments: Vec<String> = required
+        .iter()
+        .map(|argument| argument.declared())
+        .chain(params)
+        .chain(optional.iter().map(|argument| argument.declared()))
+        .collect();
     write(
         code,
         format_args!(
@@ -198,10 +253,63 @@ fn inputs(tokens: &[&str]) -> String {
         .copied()
         .take_while(|token| *token != ";")
         .collect();
-    written
+    plain(&written)
+}
+
+/// The arguments of the fields of the code `tokens`' `pub struct Inputs { pub <input>: <data>, .. }`, in their order:
+/// each field named as its input and of one input's data ([`Argument::of`]); or what is wrong with it.
+fn fields(tokens: &[&str]) -> Result<Vec<Argument>, String> {
+    let shape = "`type Inputs = Inputs` needs `pub struct Inputs { pub <input>: <its data>, .. }`";
+    let at = tokens
+        .windows(4)
+        .position(|words| words == ["pub", "struct", "Inputs", "{"])
+        .ok_or_else(|| format!("{shape}, which the file lacks"))?;
+    let end = after_balanced(tokens, at + 3, "{", "}") - 1;
+    let mut fields = Vec::new();
+    let mut depth = 0_usize;
+    let mut field = Vec::new();
+    for token in &tokens[at + 4..end] {
+        match *token {
+            "<" | "(" => depth += 1,
+            ">" | ")" => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        if *token == "," && depth == 0 {
+            fields.push(std::mem::take(&mut field));
+        } else {
+            field.push(*token);
+        }
+    }
+    fields.push(field);
+    let mut arguments = Vec::new();
+    for field in fields.iter().filter(|field| !field.is_empty()) {
+        let argument = match field.as_slice() {
+            ["pub", name, ":", data @ ..] => Argument::of(&plain(data))
+                .filter(|argument| argument.input == *name)
+                .ok_or_else(|| {
+                    let known: Vec<String> = BORROWED
+                        .iter()
+                        .map(|(data, input, _)| format!("{input}: {data}"))
+                        .collect();
+                    format!(
+                        "{shape}: the field `{name}` is not an input's data under its name ({}, or an Option of one)",
+                        known.join(", ")
+                    )
+                })?,
+            _ => return Err(format!("{shape}, not `{}`", field.join(" "))),
+        };
+        arguments.push(argument);
+    }
+    Ok(arguments)
+}
+
+/// The type of the code `tokens` without spaces and with paths left out (`Option<Grid>` for
+/// `Option<crate::formats::Grid>`).
+fn plain(tokens: &[&str]) -> String {
+    tokens
         .iter()
         .enumerate()
-        .filter(|(index, token)| **token != "::" && written.get(index + 1) != Some(&"::"))
+        .filter(|(index, token)| **token != "::" && tokens.get(index + 1) != Some(&"::"))
         .map(|(_, token)| *token)
         .collect()
 }
@@ -617,7 +725,23 @@ mod tests {
             ))
         };
         let params = "params: crate::builtin::it::Params";
-        // (row, its `type Inputs`, its parameters, the function's arguments and what it gives the door)
+        let not_an_input = |field: &str| {
+            format!(
+                "it: `type Inputs = Inputs` needs `pub struct Inputs {{ pub <input>: <its data>, .. }}`: the field \
+                 `{field}` is not an input's data under its name (events: Vec<Event>, points: Vec<Keyframe>, \
+                 values: Vec<f64>, grid: Grid, series: Series, or an Option of one)"
+            )
+        };
+        let three = format!(
+            "{fields}\npub struct Inputs {{ pub grid: Option<Grid>, pub values: Vec<f64>, pub series: Series }}"
+        );
+        let over_lines = format!(
+            "{fields}\npub struct Inputs {{\n    pub values: Vec<f64>,\n    pub grid: Option<crate::formats::Grid>,\n}}"
+        );
+        let of_f32 = format!("{fields}\npub struct Inputs {{ pub values: Vec<f32> }}");
+        let kicks = format!("{fields}\npub struct Inputs {{ pub kicks: Vec<Event> }}");
+        let private = format!("{fields}\npub struct Inputs {{ pub values: Vec<f64>, grid: Option<Grid> }}");
+        // (row, its `type Inputs`, its parameters and inputs struct, the function's arguments and what it gives the door)
         let rows = [
             ("no inputs", "()", fields, made(params, "params, ()")),
             (
@@ -696,12 +820,76 @@ mod tests {
                 made("", "crate::builtin::it::Params {}, ()"),
             ),
             (
-                "several inputs are not a lib function yet",
+                "several inputs: the required ones first as declared, then the parameters, then the optional ones",
+                "Inputs",
+                three.as_str(),
+                made(
+                    &format!(
+                        "values: &[f64], series: &crate::formats::Series, {params}, \
+                         grid: Option<&crate::formats::Grid>"
+                    ),
+                    "params, crate::builtin::it::Inputs { grid: grid.cloned(), values: values.to_vec(), \
+                     series: series.clone() }",
+                ),
+            ),
+            (
+                "several inputs by their paths, over lines, with a last comma",
+                "self::Inputs",
+                over_lines.as_str(),
+                made(
+                    &format!("values: &[f64], {params}, grid: Option<&crate::formats::Grid>"),
+                    "params, crate::builtin::it::Inputs { values: values.to_vec(), grid: grid.cloned() }",
+                ),
+            ),
+            (
+                "several inputs and no parameters",
+                "Inputs",
+                "pub struct Params;\npub struct Inputs { pub events: Vec<Event>, pub grid: Grid }",
+                made(
+                    "events: &[crate::formats::Event], grid: &crate::formats::Grid",
+                    "crate::builtin::it::Params {}, crate::builtin::it::Inputs { events: events.to_vec(), \
+                     grid: grid.clone() }",
+                ),
+            ),
+            (
+                "several inputs without their struct",
                 "Inputs",
                 fields,
                 Err(
+                    "it: `type Inputs = Inputs` needs `pub struct Inputs { pub <input>: <its data>, .. }`, which \
+                     the file lacks"
+                        .to_owned(),
+                ),
+            ),
+            (
+                "a field of data no input holds",
+                "Inputs",
+                of_f32.as_str(),
+                Err(not_an_input("values")),
+            ),
+            (
+                "a field named apart from its input",
+                "Inputs",
+                kicks.as_str(),
+                Err(not_an_input("kicks")),
+            ),
+            (
+                "a field that is not pub",
+                "Inputs",
+                private.as_str(),
+                Err(
+                    "it: `type Inputs = Inputs` needs `pub struct Inputs { pub <input>: <its data>, .. }`, not \
+                     `grid : Option < Grid >`"
+                        .to_owned(),
+                ),
+            ),
+            (
+                "data no input holds",
+                "Vec<Signal>",
+                fields,
+                Err(
                     "it: a source's `type Inputs` is (), one input's data (Vec<Event>, Vec<Keyframe>, Vec<f64>, \
-                     Grid, Series) or an Option of one, not `Inputs` (several inputs come with R5b)"
+                     Grid, Series), an Option of one, or `Inputs`, the file's struct of them; not `Vec<Signal>`"
                         .to_owned(),
                 ),
             ),
