@@ -23,11 +23,11 @@
 //! - A time too far for the position to be a number (`rate * t` overflows, or the grid cannot reach it) is an
 //!   [`Error::Signal`].
 
-use crate::Error;
 use crate::formats::{Grid, Problem};
+use crate::{Choice, Error};
 
-/// What a source counts its cycles or steps in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// What a source counts its cycles or steps in: the choice of its parameter `per` ('second' or 'beat').
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Choice)]
 #[non_exhaustive]
 pub enum Per {
     /// Seconds: the rate is cycles or steps per second.

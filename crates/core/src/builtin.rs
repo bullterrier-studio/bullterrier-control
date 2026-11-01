@@ -196,7 +196,7 @@ mod tests {
         let expected = lfo::Params {
             shape: lfo::Shape::Sine,
             rate: 1.0,
-            per: lfo::Per::Second,
+            per: crate::cadence::Per::Second,
             phase: 0.0,
             low: 0.0,
             high: 1.0,

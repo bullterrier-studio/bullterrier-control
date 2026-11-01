@@ -1,6 +1,7 @@
 //! `lfo`: the parameters of the source `lfo`, declared once, here. What it does is still done in Python.
 
 use crate::Choice;
+use crate::cadence::Per;
 
 /// The choices of `shape`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Choice)]
@@ -16,15 +17,6 @@ pub enum Shape {
     /// The choice `saw-down`.
     #[choice(name = "saw-down")]
     SawDown,
-}
-
-/// The choices of `per`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Choice)]
-pub enum Per {
-    /// The choice `second`.
-    Second,
-    /// The choice `beat`.
-    Beat,
 }
 
 /// The wave: its shape, how fast it repeats and where in the cycle it starts, and the range it moves in.

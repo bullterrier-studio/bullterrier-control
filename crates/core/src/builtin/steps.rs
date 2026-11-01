@@ -9,20 +9,11 @@
 
 use std::collections::BTreeMap;
 
-use crate::cadence::{self, positions};
+use crate::cadence::{Per, positions};
 use crate::formats::Grid;
 use crate::inputs::{Input, InputKind, NO_VALUES, empty};
 use crate::registry;
-use crate::{Choice, Error, Signal, Source};
-
-/// The choices of `per`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Choice)]
-pub enum Per {
-    /// The choice `second`.
-    Second,
-    /// The choice `beat`.
-    Beat,
-}
+use crate::{Error, Signal, Source};
 
 /// How fast the list of values is stepped through.
 #[derive(Clone, Debug, PartialEq, crate::Params)]
@@ -81,10 +72,7 @@ impl Source for Params {
             return Err(empty(NO_VALUES));
         }
         let rate = self.rate;
-        let per = match self.per {
-            Per::Second => cadence::Per::Second,
-            Per::Beat => cadence::Per::Beat,
-        };
+        let per = self.per;
         // a counter that counts no times is refused as one that counts any: per beat without a grid, when made
         positions(rate, per, grid.as_ref(), &[])?;
         Ok(Signal::from_fn(move |times, out| {
