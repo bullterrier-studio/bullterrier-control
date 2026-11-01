@@ -206,6 +206,42 @@ fn a_read_far_over_the_limit_is_refused_before_the_input_is_read_or_anything_all
     Ok(())
 }
 
+/// A constant 1 through two stacked `cumulate` renderings at 1000 Hz: sample *i* is (*i* + 1)(*i* + 2) / 2.
+fn twice_cumulated() -> Result<(Signal, Lengths), Error> {
+    let lengths = Arc::new(Mutex::new(Vec::new()));
+    let mut signal = constant(1.0)?;
+    for _ in 0..2 {
+        let seen = Arc::clone(&lengths);
+        signal = Signal::rendered(&signal, Rendering::default(), move |inputs| {
+            seen.lock().unwrap_or_else(PoisonError::into_inner).push(inputs.len());
+            cumulate(inputs)
+        })?;
+    }
+    Ok((signal, lengths))
+}
+
+#[test]
+fn a_read_holding_more_samples_across_its_graph_than_the_budget_is_refused_before_rendering() -> Result<(), Error> {
+    let (signal, lengths) = twice_cumulated()?;
+    // each rendering is under its own limit (17 000 000 of 20 000 000 samples), but together they hold a grid and a
+    // buffer each: 68 million samples, over the 2^26 = 67 108 864 a read may hold
+    let refused = signal.at(17_000.0);
+    let message = signal_error(&refused);
+    assert!(message.contains("at once") && message.contains("67108864"), "{message}");
+    assert_eq!(self::lengths(&lengths), Vec::<usize>::new(), "refused before rendering");
+    // the refusal leaves nothing behind: a read the budget allows still works
+    assert_eq!(signal.at(1.0)?, 1001.0 * 1002.0 / 2.0);
+    Ok(())
+}
+
+#[test]
+fn a_read_holding_as_many_samples_as_the_budget_allows_works() -> Result<(), Error> {
+    let (signal, _) = twice_cumulated()?;
+    // 16 000 001 samples a rendering, 64 million held at once: sample 16 000 000 is the sum of 1..=16 000 001
+    assert_eq!(signal.at(16_000.0)?, 16_000_001.0 * 16_000_002.0 / 2.0);
+    Ok(())
+}
+
 #[test]
 fn a_recurrence_that_changes_the_length_is_refused_naming_both_lengths() -> Result<(), Error> {
     let short = Signal::rendered(&constant(1.0)?, at_rate(10.0), |inputs| {

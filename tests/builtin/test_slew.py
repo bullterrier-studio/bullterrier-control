@@ -116,3 +116,11 @@ def test_a_nan_in_its_input_makes_a_read_there_a_signal_error_not_a_crash():
     assert out.sample([0.5]).tolist() == [1.0]
     with pytest.raises(SignalError, match="not finite"):
         out.sample([1.5])
+
+
+def test_stacked_slews_read_at_a_far_time_are_refused_as_a_whole_not_each_under_its_own_limit():
+    # each slew needs 17 million samples at 1000 Hz, under its limit of 20 million; the two together hold 68 million
+    chain = slew(slew(Constant(1.0), rise=1.0), rise=1.0)
+    with pytest.raises(SignalError, match="at once"):
+        chain.sample(17_000.0)
+    assert chain.sample(1.0) == pytest.approx(1.0)  # the refusal leaves the signal readable

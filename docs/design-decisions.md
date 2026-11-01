@@ -849,9 +849,13 @@ door and back); the 17 that remain in Python are ported in R5.
 - **The smallest supported thread stack is 256 KiB.** A Python thread on macOS gets 512 KiB by default. musl's 128 KiB is not
   supported: nested Python callbacks do not fit 128 KiB or 64 KiB (64 nested crashed both). Graphs of Rust nodes (a sum, a
   slew) walk on 32 KiB.
-- **`MAX_DEPTH` stays at 1000 as a memory bound.** A read holds a frame (64 B for a sum) for each node on the way
-  down, and a recurrence a grid and a buffer of at least 1024 samples each; a 100,000-deep chain of slews takes 1.7 GB
-  (16.9 KB a level). The limit was raised to 100,000 for the experiment only, on a 64 KiB thread: sums, recurrences and
+- **`MAX_DEPTH` stays at 1000 as a bound on the nodes a read holds, `MOST_HELD` on the samples.** A read holds a frame (64 B
+  for a sum) for each node on the way down, and a recurrence a grid and a buffer of at least 1024 samples each; a
+  100,000-deep chain of slews takes 1.7 GB (16.9 KB a level). A recurrence holds two samples per sample of its time, so
+  at a far time depth alone bounds nothing: one slew read at 18,000 s peaked at 320 MB, 30 stacked ones past 4 GB. The
+  walk refuses a read that holds more than 2^26 samples (512 MiB) across its graph with `Error::Signal`
+  (`walk::MOST_HELD`), checked before the buffer is allocated. *Reason:* the `limit` of a `Rendering` is per node, so a
+  patch of stacked shapers multiplied it by their number. A nested callback's read has its own budget (48 deep at most). The limit was raised to 100,000 for the experiment only, on a 64 KiB thread: sums, recurrences and
   slews read and dropped. On wasm32 a graph of Rust nodes needs no depth budget (99,999 sums read and dropped in node);
   only the callback cap applies, the same on every target. It does not bound time: a read visits a node once for each
   path to it, so a node shared at every level (`t = t + t`) doubles the read a level (22 levels: 0.1 s), as before R4c.

@@ -24,6 +24,14 @@ use crate::Error;
 /// level and is not covered.
 pub(crate) const NESTED: usize = 48;
 
+/// The most samples one read may hold at once across its graph: the grids and buffers of every node waiting on the
+/// walk's stacks, 2^26 of them, 512 MiB of `f64`. A rendering is bounded by its own `limit`, but a chain of them each
+/// holds a grid and a buffer for the same long read, so `MAX_DEPTH` of them would hold 1000 times that; this is the
+/// bound on the read. A node's finished history is kept apart (never more than half of what its read held). A read
+/// needs about two samples per rendering for each sample of its longest time: 100 stacked renderings fit 5 minutes
+/// at 1000 Hz, 2 fit 4.6 hours. The read's own `times` and `out` belong to its caller and do not count.
+pub(crate) const MOST_HELD: usize = 1 << 26;
+
 thread_local! {
     /// How many callbacks are running on this thread, one inside another.
     static CALLBACKS: Cell<usize> = const { Cell::new(0) };
@@ -99,6 +107,7 @@ pub(super) fn read(signal: &Signal, times: &[f64], out: &mut [f64]) -> Read {
     let mut frames: Vec<Frame<'_>> = Vec::new();
     let mut grids: Vec<Vec<f64>> = Vec::new();
     let mut buffers: Vec<Vec<f64>> = Vec::new();
+    let mut held = 0_usize;
     let mut step: Option<(&(dyn Node + Send + Sync), Times, Out)> = Some((&*signal.0, Times::Read, Out::Reader));
     loop {
         if let Some((node, at, into)) = step.take() {
@@ -133,6 +142,7 @@ pub(super) fn read(signal: &Signal, times: &[f64], out: &mut [f64]) -> Read {
                     Some((&*first.0, at, into))
                 }
                 Next::At(input, grid) => {
+                    hold(&mut held, 2 * grid.len())?;
                     buffers.push(vec![0.0; grid.len()]);
                     grids.push(grid);
                     push(
@@ -154,6 +164,7 @@ pub(super) fn read(signal: &Signal, times: &[f64], out: &mut [f64]) -> Read {
             return Ok(());
         };
         if let Waiting::Second(second) = frame.waiting {
+            hold(&mut held, times_of(times, &grids, frame.times).len())?;
             buffers.push(vec![0.0; times_of(times, &grids, frame.times).len()]);
             frame.waiting = Waiting::Buffer;
             step = Some((&*second.0, frame.times, Out::Buffer(buffers.len() - 1)));
@@ -172,12 +183,27 @@ pub(super) fn read(signal: &Signal, times: &[f64], out: &mut [f64]) -> Read {
             Waiting::InPlace | Waiting::Second(_) => Vec::new(),
             Waiting::Buffer => buffers.pop().unwrap_or_default(),
             Waiting::Grid => {
-                grids.pop();
+                held -= grids.pop().map_or(0, |grid| grid.len());
                 buffers.pop().unwrap_or_default()
             }
         };
+        held -= inputs.len();
         node.finish(times_of(times, &grids, at), &inputs, out_of(out, &mut buffers, into))?;
     }
+}
+
+/// `count` more samples held by the read, which is refused if that is over [`MOST_HELD`].
+fn hold(held: &mut usize, count: usize) -> Read {
+    *held += count;
+    if *held > MOST_HELD {
+        return Err(Box::new(Error::Signal {
+            message: format!(
+                "the read would hold more than {MOST_HELD} samples at once across its graph (the grids and buffers \
+                 of its stacked renderings, for a time this far): read an earlier time or stack fewer shapers"
+            ),
+        }));
+    }
+    Ok(())
 }
 
 /// `frame` on top of `frames`, which the first push sizes for the deepest read of `signal` (a frame a node, the

@@ -134,7 +134,8 @@ Every signal, and so every source and shaper, promises this (`tests/builtin/test
   (text, a bool, NaN, an infinity) with `SignalError`, and returns float64 in the same shape. A signal implements
   `compute(times)`, which only ever sees a 1-D float64 array of finite times from 0 up.
 - **Finite:** a value that is not finite (an overflow) is a `SignalError`, never returned. At any time a signal gives a finite
-  value or raises `SignalError` (a stateful shaper refuses a time that needs more samples than its limit).
+  value or raises `SignalError` (a stateful shaper refuses a time that needs more samples than its limit, and a read
+  holding more than 2^26 samples across its stacked shapers).
 - **Deterministic and read-independent:** the same times give the same values, whatever the order, size or number of earlier
   reads. A stateful shaper is a causal recurrence run through `Rendered` (output *i* depends on inputs 0 to *i*): never a
   field that remembers the last read.
