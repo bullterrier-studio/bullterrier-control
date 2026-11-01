@@ -346,6 +346,16 @@ def test_a_broken_registration_is_refused_and_registers_nothing(register):
     assert dict(registry.all_registered()) == before
 
 
+def test_what_table_gives_registers_and_removes_nothing_behind_the_decorators():
+    # `table()` is what a patch is read against; registering is the decorators' (they check the function's shape)
+    with registry.isolated():
+        kept = source(params=Nothing)(_named("kept"))
+        given = registry.table()
+        given.register(not_params, kind="source", params=Nothing, inputs={}, returns="signal")
+        given.replace(type(given)(builtin=False))
+        assert list(registry.all_registered()) == [kept.name]
+
+
 class Pointed(Params):
     """Parameters with a field named like an input."""
 

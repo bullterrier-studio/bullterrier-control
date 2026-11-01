@@ -237,10 +237,13 @@ def operations() -> dict[str, Registered]:
 
 
 def table() -> _core.Registry:
-    """The registry of the Rust core every query reads, its packages loaded: what a patch is read and saved against
-    (`bullterrier_control.patch`). It is the same object for good; `isolated` changes what it holds."""
+    """What a patch is read and saved against (`bullterrier_control.patch`): a copy of the core's registry every query
+    reads, its packages loaded, as it holds things now. A change to the copy reaches no query: things register through
+    `source`, `shaper` and `operation`, which check the function first."""
     _load_packages()
-    return _REGISTRY
+    copy = _core.Registry(builtin=False)
+    copy.replace(_REGISTRY)
+    return copy
 
 
 def _load_packages() -> None:

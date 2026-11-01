@@ -743,8 +743,8 @@ Owner decisions (2026-10-31):
 
 Rulings:
 - **The registry is a value, not a global.** `Registry::builtin()` is an immutable `&'static Registry` of what Rust runs;
-  `Registry::new()` and `Clone` give one to register in. The package owns one (`registry.table()`) and `isolated()` swaps
-  an empty one in. *Reason:* no global mutable state, safe on wasm32, tests need no teardown. The binding's registry
+  `Registry::new()` and `Clone` give one to register in. The package owns one (`registry.table()` gives a copy, so the
+  decorators stay the one way in) and `isolated()` swaps an empty one in. *Reason:* no global mutable state, safe on wasm32, tests need no teardown. The binding's registry
   changes by copy and swap under a short lock; no lock is held while a callback runs.
 - **One door, and `const NAME`.** Every way of making a signal from a thing (`Thing::call`, `shape`, `Signal::pipe`, a typed
   method such as `Signal::slew`, a `lib::` function) goes through one private call that checks the call, reads the values
