@@ -890,6 +890,9 @@ door and back); the 17 that remain in Python are ported in R5.
 - **`normalise` leaves the sign of an output zero unspecified.** From 5 values it may differ from the old body: numpy's
   partition order of equal zeros is not reproduced; values never differ. Its percentile follows the installed numpy
   (2.5.4), whose `_lerp` has no `a == b` snap.
+- **A retiming adds 2 samples per read time to `MOST_HELD`** (2^26 across stacked shapers), which the Python `compute`
+  bodies never counted. 3 600 000 times through 9 delays read; through 10, `SignalError`. *Reason:* the R4c rule applied
+  to memory always allocated, now counted. Intended.
 
 ## Resource gates (R4c, owner, 2026-11-01)
 

@@ -184,7 +184,7 @@ valid. A thing that runs in Rust also implements `Source`, `Shaper` or `Operatio
 { const NAME: &'static str = "<file name>"; type Inputs = (); fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> }`;
 a source has `fn source(&self, inputs: Self::Inputs) -> Result<Signal, Error>`, an operation `const RETURNS` and
 `fn run(&self, inputs: Self::Inputs) -> Result<Output, Error>`; `NAME` is its one name, checked against the file name at
-compile time; `type Inputs` is its data, as for every kind: `()`, `Vec<Event>`, `Option<Grid>`, a struct for several,
+compile time; `type Inputs` is its data, as for every kind: `()`, `Vec<Event>`, `Option<Grid>`, a struct for several (a source's several inputs: R5b),
 recorded in its recipe); a stateful shaper builds its signal with `Signal::rendered`
 over a private causal `run(inputs: &[f64], params: &Params) -> Vec<f64>` (output *i* depends on inputs 0 to *i*), and a
 stateless one combines signals (`input * self.depth`) or retimes one (`Signal::retimed`: `delay`, `hold`). The file's leading `//!` lines are its doc (`help()` in Rust). A typed
@@ -269,7 +269,10 @@ load, naming source, field, constraint and value. Not parameters: the fields of 
    finds the file and registers it: no list to edit). A source or shaper also gets `examples/gallery/<name>.toml`, the patch its
    gallery picture is drawn from. A new built-in turns three hand-kept pins red in the tests of `crates/core/src/builtin.rs`:
    the names and their count, the things the core runs (`only_the_built_ins_the_core_runs_are_registered`) and a
-   `declared_fields` row per parameter. Edit them in the same commit.
+   `declared_fields` row per parameter. Also edit, in the same commit (until R5c derives them), the other lists of the
+   built-ins the core runs: the "available" strings in the test `a_name_the_core_runs_no_shaper_of_is_refused_as_the_registry_refuses_it`
+   (`crates/core/src/lib.rs`), the `Registry::builtin()` doctest (`crates/core/src/registry.rs`) and
+   `test_the_registry_of_the_core_holds_what_the_core_runs_and_an_empty_one_nothing` (`tests/_native/test__core_registry.py`).
 2. **Fill in:** the `Params` struct (the field's own terms, unit, range, description: "Parameters"), the body (analytic
    where it can be; a causal recurrence through `Signal::rendered` where it needs history), the leading `//!` lines (their first
    sentence is what `help(lib.<name>)` shows). An operation takes its data as `type Inputs` (`Vec<Event>` for `events`, `Series`,
