@@ -17,7 +17,9 @@ const ALLOWED: &[&str] = &[
     "crate::Origin",
     "crate::Rendering",
     "crate::Signal",
-    "crate::builtin",
+    "crate::builtin::constant",
+    "crate::builtin::follow",
+    "crate::builtin::slew",
     "crate::easing::Ease",
     "crate::formats::Bundle",
     "crate::formats::Event",
@@ -186,7 +188,7 @@ fn sources() -> std::io::Result<Vec<PathBuf>> {
 #[test]
 fn the_scan_refuses_a_path_beyond_the_list_and_sees_only_code() {
     // (row, text, the paths refused)
-    let rows: [(&str, &str, &[&str]); 12] = [
+    let rows: [(&str, &str, &[&str]); 13] = [
         (
             "public items, one a line",
             "use crate::registry::Thing;\nuse crate::formats::Bundle;\n",
@@ -207,6 +209,11 @@ fn the_scan_refuses_a_path_beyond_the_list_and_sees_only_code() {
             "a pub(crate) item of the formats",
             "crate::formats::push_with(problems, make)",
             &["crate::formats::push_with"],
+        ),
+        (
+            "a pub(crate) item of the built-ins, whose files' items are allowed",
+            "crate::builtin::register(&mut registry)",
+            &["crate::builtin::register"],
         ),
         (
             "an item whose name starts like an allowed one",
