@@ -755,8 +755,8 @@ Rulings:
 - **The recipe lives in a wrapper node.** `Recorded { recipe, inner }` passes depth and values through; `Signal::recipe()`
   reads it. *Reason:* a field on every node would touch every constructor. Its depth counts through the signals a call
   holds (a body that gives its input back, or ignores it, adds no node of its own), so a chain of calls is bounded by
-  `MAX_DEPTH`; unbounded, a 100k chain overflowed the stack on read and on drop. Its `Debug` shows the name, values and depth,
-  not the signals, which doubled per level. Cost: about 3 ns a read per level, within noise on a batch read.
+  `MAX_DEPTH`; unbounded, a 100k chain overflowed the stack on read and on drop. Its `Debug` is the thing's name and the
+  depth, not the signals, which doubled per level ("Resource gates"). Cost: about 3 ns a read per level, within noise on a batch read.
 - **Traits make the params struct the thing.** `Source`, `Shaper` and `Operation` are implemented for `Params`, so
   `glow.pipe(Fold { depth: 0.5 })?` is the call. `Thing::source::<T>`, `shaper::<T>`, `operation::<T>` and `Thing::custom`
   (a callback) make a `Thing`; `Registry::register(Thing)` takes it. *Reason:* Rust cannot bound `T` by "one of three
@@ -815,3 +815,25 @@ Cost: ten independent slews through the registry take the same time as before R4
 the first run of a process); a `lib.slew` call costs 2.2 µs (it was 5.0 µs), a cached read 2.0 µs, parsing a 100-node
 patch 0.4 ms (it was 2.1 ms). A Python-bodied built-in call costs about 3 µs more than before (it goes through the Rust
 door and back); the 17 that remain in Python are ported in R5.
+
+## Resource gates (R4c, owner, 2026-11-01)
+
+Unbounded memory, unbounded output and stack overflow are impossible by design where the design can make them so, and caught
+where it cannot by hard gates in the repository: each runs on a bare `cargo test` or `pytest`, in `poe check` and in CI, and
+has a known-good and a known-bad test. *Reason:* runaways froze the machine (one test binary reached 43 GB); a personal
+script or a note does not run for the next contributor.
+- **`Debug` is a label.** `Node` does not require `Debug`; each node gives `label()` (its kind, or the name of the thing that
+  made it), and the one `Debug for Signal` prints that and the depth: `Signal { node: "slew", depth: 3 }`. No node can print
+  its inputs, so a derive over any type holding a signal (`Recipe`, `Output`) is bounded per level. Before, each node wrote
+  its own, and one printing its signals doubled per level. Test: the deepest chain of every node kind formats in at most 48
+  bytes a level.
+- **The core's test binary caps its memory at 4 GiB.** Its global allocator (`#[cfg(test)]`) is the `cap` crate's, a
+  dev-dependency (MIT OR Apache-2.0, no dependencies, one file), so the core keeps `forbid(unsafe_code)`; an allocation past
+  the cap is refused, which aborts the binary ("memory allocation of N bytes failed"). A whole run peaks near 140 MB. Test:
+  the binary runs itself with the cap lowered to 64 MiB in the child, which asks for twice that.
+- **The installed wheel walks the deepest chains on a 256 KiB thread.** `tools/check_installed.py`, run by CI's `build` on
+  every platform's wheel and on the sdist, grows each chain of `CHAINS` to the deepest the package accepts and walks it on a
+  thread of 256 KiB, each in its own Python, so a crash is a failure naming the chain; `tests/test_depth_stack.py` runs the
+  same on the development install.
+- **Not guarded:** doctests (binaries of their own) and the test binaries of the bindings and macros crates (uncapped), and
+  memory on the Python side (no incident yet: a watchdog comes the day one happens).

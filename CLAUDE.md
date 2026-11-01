@@ -334,6 +334,8 @@ golden file, sleep, mock of our own code) is worse than none: delete it. Reviewe
   largest strength; a gate's output is two-valued; a slew-limited signal never moves faster than its limit; reading at time t
   twice gives the same value.
 - Expected values come from an independent oracle (standard, hand computation, brute-force reference), never the code's formula.
+- A test that builds chains or graphs bounds their size; the core's test binary caps its memory at 4 GiB (an allocation past
+  it aborts the run).
 - Every checker/validator gets a known-good and a known-bad input. Seeds pin determinism. No sleeps, live network or wall-clock
   assertions.
 - Proptest's `crates/core/proptest-regressions/` files are committed: each is a seed that replays a failure found once,
