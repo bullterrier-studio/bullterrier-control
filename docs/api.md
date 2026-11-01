@@ -392,6 +392,7 @@ from pathlib import Path
 
 signals = btc.load_patch(Path("examples/glow.toml")).build(btc.load(Path("examples/kicks.json")))  # a dict of signals
 glow = signals["glow"]
+text = btc.Patch.from_signals({"glow": glow}).to_toml()  # the graph as a patch again, the kicks it chose inline
 glow.sample([0.5, 0.75, 1.0, 1.5])  # a flare on each strong kick; the kick at 1.0 s is too weak
 # array([1.    , 0.3679, 0.1353, 1.    ])
 ```
