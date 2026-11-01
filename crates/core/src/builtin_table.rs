@@ -128,8 +128,9 @@ fn source_function(code: &mut String, file: &File<'_>, tokens: &[&str]) -> Resul
     let name = file.name;
     let fieldless = tokens.windows(3).any(|words| words == ["struct", "Params", ";"])
         || tokens.windows(4).any(|words| words == ["struct", "Params", "{", "}"]);
+    // `Params {}` builds a unit struct too
     let (params, given) = if fieldless {
-        (Vec::new(), format!("crate::builtin::{name}::Params"))
+        (Vec::new(), format!("crate::builtin::{name}::Params {{}}"))
     } else {
         (
             vec![format!("params: crate::builtin::{name}::Params")],
@@ -685,14 +686,14 @@ mod tests {
                 "pub struct Params;",
                 made(
                     "points: &[crate::inputs::Keyframe]",
-                    "crate::builtin::it::Params, points.to_vec()",
+                    "crate::builtin::it::Params {}, points.to_vec()",
                 ),
             ),
             (
                 "no parameters in braces, no struct",
                 "()",
                 "pub struct Params {}",
-                made("", "crate::builtin::it::Params, ()"),
+                made("", "crate::builtin::it::Params {}, ()"),
             ),
             (
                 "several inputs are not a lib function yet",
