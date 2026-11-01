@@ -62,8 +62,8 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
 8. **Entry points:** sources are free functions under `lib::`; shapers are methods; `pipe` takes any shaper without
    inputs, `pipe_with(shaper, inputs)` any shaper (a shaper with inputs given to `pipe` does not compile). Plugins
    implement the public `Source`, `Shaper` and `Operation` traits (implemented), each with its one `NAME`; every way
-   of making a signal from one checks, names and records it alike. `Signal::from_fn`, `Signal::rendered` and
-   `Signal::retimed` are how code outside the crate adds a node.
+   of making a signal from one checks, names and records it alike. `Signal::from_fn`, `Signal::rendered`,
+   `Signal::retimed` and `Signal::mapped` are how code outside the crate adds a node.
 9. **The core crate** forbids `unsafe`, does no I/O, builds for wasm32, gives the same result on every target (no
    platform math: `follow`'s `exp` is `libm`'s), documents
    every public item, and carries these examples as doctests.

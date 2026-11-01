@@ -110,6 +110,7 @@ mod tests {
                 ("latch", Kind::Source),
                 ("normalise", Kind::Operation),
                 ("quantize", Kind::Operation),
+                ("remap", Kind::Shaper),
                 ("select", Kind::Operation),
                 ("shift", Kind::Operation),
                 ("slew", Kind::Shaper),

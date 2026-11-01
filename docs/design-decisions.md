@@ -878,6 +878,10 @@ door and back); the 17 that remain in Python are ported in R5.
 - **`Signal::retimed(map)`** reads its input at the times `map` gives. `delay` and `hold` are built on it. *Reason:* a
   `from_fn` reading its input is a nested walk, capped at 48; `retimed` hands the times to the one loop, so its `map` is a
   callback that reads no signal and a chain of 999 delays reads.
+- **`Signal::mapped(f)`** replaces each value by `f(value)` at the same times. `remap` is built on it, its ease parsed
+  once when the shaper is made. *Reason:* the walk reads the input in place and `f` runs over it, so a chain of 999
+  reads on a small stack. `f` is still counted as a callback (once a read): it may read a signal it holds, a walk of
+  its own; uncounted, 100 000 such nested reads overflowed a 256 KiB stack.
 - **libm for exp.** `follow` calls `libm::exp` (the `libm` crate, MIT, pure Rust, pinned exact), not std's. *Reason:*
   std's `exp` calls the platform's math library, so the same signal could differ by an ulp between targets (rule 6
   allows float tolerance across platforms, but the core's easing and hashing already give the same bits everywhere, and a

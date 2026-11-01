@@ -281,6 +281,29 @@ fn a_retiming_that_breaks_its_contract_or_fails_refuses_the_read_without_a_panic
     }
 }
 
+#[test]
+fn a_mapped_signal_is_f_of_each_value_at_the_same_times() -> Result<(), Error> {
+    // the input is its own time, so each value is f of the time it was read at (a time before 0 reads as 0)
+    let mapped = echo().mapped(|value| 2.0 * value + 1.0)?;
+    assert_eq!(mapped.sample(&[0.0, 0.25, 3.0, -1.0])?, [1.0, 1.5, 7.0, 1.0]);
+    assert_eq!(mapped.sample(&[3.0, 0.25])?, [7.0, 1.5]);
+    Ok(())
+}
+
+#[test]
+fn a_mapping_that_gives_a_value_that_is_not_finite_refuses_the_read_naming_the_time() -> Result<(), Error> {
+    // (the value f gives at time 2) -> the refusal names time 2
+    for given in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let mapped = echo().mapped(move |value| if value >= 2.0 { given } else { value })?;
+        let refused = mapped.sample(&[1.0, 2.0]);
+        assert!(
+            signal_error(&refused).contains("not finite at time 2.0"),
+            "{given}: {refused:?}"
+        );
+    }
+    Ok(())
+}
+
 /// Whether `got` is `expected` to within float rounding (a millionth of a millionth).
 fn close(got: &[f64], expected: &[f64]) -> bool {
     got.len() == expected.len()
@@ -800,12 +823,14 @@ fn every_way_of_making_a_signal_says_how_it_was_made() -> Result<(), Error> {
     })?;
     // (how it was made, the signal, how it says it was made)
     let retimed = level.retimed(|times| Ok::<_, Unreachable>(times.to_vec()))?;
-    let rows: [(&str, Signal, &str); 14] = [
+    let mapped = level.mapped(|value| value)?;
+    let rows: [(&str, Signal, &str); 15] = [
         ("a constant", level.clone(), "values"),
         ("from values", steps.clone(), "values"),
         ("from a series", ramp()?, "values"),
         ("a callback", echo(), "callback"),
         ("a retiming", retimed, "callback"),
+        ("a mapping", mapped, "callback"),
         ("a recurrence run over a signal", rendered, "rendered"),
         ("a sum", &level + &steps, "operator"),
         ("a difference with a number", 1.0 - &level, "operator"),
@@ -870,8 +895,9 @@ fn the_deepest_graph_of_each_kind_is_read_and_dropped_on_a_small_thread_stack() 
 
     // (the kind of link, how many links: the deepest the library accepts over a constant)
     type Link = fn(Signal) -> Result<Signal, Error>;
-    let kinds: [(&str, Link); 5] = [
+    let kinds: [(&str, Link); 6] = [
         ("a sum with a number", |signal| Ok(signal + 0.0)),
+        ("a mapping", |signal| signal.mapped(|value| value)),
         ("a retiming", |signal| {
             signal.retimed(|times| Ok::<_, Unreachable>(times.to_vec()))
         }),
@@ -910,6 +936,25 @@ fn a_hundred_thousand_callbacks_each_reading_the_one_before_are_refused_and_drop
     });
     assert!(
         matches!(walked, Ok(Ok(Err(ref message))) if message.contains("nest")),
+        "{walked:?}"
+    );
+}
+
+// a mapping's function is user code and may read a signal it holds: a walk of its own on the thread's stack, counted
+// as a callback, so a chain of them each reading the one before is refused (a refusal f turns into NaN, which the
+// outermost read refuses) instead of overflowing the smallest stack the library supports
+#[test]
+fn a_hundred_thousand_mappings_each_reading_the_one_before_are_refused_on_a_small_thread_stack() {
+    let walked = on_a_stack_of(256 * 1024, || {
+        let signal = kept(100_000, |inner| {
+            Signal::constant(0.0)?.mapped(move |_| inner.at(0.0).unwrap_or(f64::NAN))
+        })?;
+        let refused = signal.at(0.0).map_err(|error| error.to_string());
+        drop(signal);
+        Ok::<_, Error>(refused)
+    });
+    assert!(
+        matches!(walked, Ok(Ok(Err(ref message))) if message.contains("not finite")),
         "{walked:?}"
     );
 }

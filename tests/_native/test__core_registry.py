@@ -84,6 +84,7 @@ def test_the_registry_of_the_core_holds_what_the_core_runs_and_an_empty_one_noth
         "latch",
         "normalise",
         "quantize",
+        "remap",
         "select",
         "shift",
         "slew",

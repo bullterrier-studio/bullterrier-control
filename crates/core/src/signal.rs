@@ -20,6 +20,7 @@
 //!   [`Signal::constant`] gives for it, since an operator cannot return an error.
 
 mod combine;
+mod mapped;
 mod node;
 mod recorded;
 mod rendered;
@@ -39,6 +40,7 @@ use crate::formats::{Series, SeriesOptions, Unit};
 use crate::registry::Recipe;
 use crate::{Error, Shaper};
 use combine::Operation;
+use mapped::Mapped;
 use node::{Constant, FromFn, Node};
 use recorded::Recorded;
 use rendered::Rendered;
@@ -87,7 +89,7 @@ pub enum Origin<'a> {
     Operator,
     /// From values it holds: [`Signal::constant`], [`Signal::from_values`] or [`Signal::from_series`].
     Values,
-    /// By a callback: [`Signal::from_fn`] or [`Signal::retimed`] (in Python, a `compute`).
+    /// By a callback: [`Signal::from_fn`], [`Signal::retimed`] or [`Signal::mapped`] (in Python, a `compute`).
     Callback,
     /// By a recurrence run over another signal: [`Signal::rendered`] (in Python, `Rendered(run=...)`).
     Rendered,
@@ -269,6 +271,29 @@ impl Signal {
         E: std::error::Error + Send + Sync + 'static,
     {
         Self::checked(Retimed::new(self, map))
+    }
+
+    /// Each value of this signal replaced by `f(value)`, at the same times: an elementwise map, read through the walk
+    /// like an operator, so a chain of them reads on any stack. `f` gets the values as this signal gives them (finite
+    /// ones in a read [`Signal::sample`] accepts, but whatever an inner overflow made otherwise) and must give the same
+    /// value for the same value. A value `f` gives that is not finite is refused by the read as any signal's is (an
+    /// [`Error::Signal`] naming the time). `f` counts as a callback (see [`Signal::from_fn`]): one that reads a signal
+    /// is refused once such reads nest too deep.
+    ///
+    /// ```
+    /// use bullterrier_control::{FromValues, Interpolation, Signal};
+    ///
+    /// let ramp = Signal::from_values(&[0.0, 1.0], 1.0, FromValues::default(), Interpolation::Linear)?;
+    /// let squared = ramp.mapped(|value| value * value)?;
+    /// assert_eq!(squared.sample(&[0.0, 0.5, 1.0])?, [0.0, 0.25, 1.0]);
+    /// assert!(ramp.mapped(|value| 1.0 / value)?.at(0.0).is_err()); // 1 / 0 is not finite
+    /// # Ok::<(), bullterrier_control::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    /// [`Error::Depth`] if the graph would be deeper than [`MAX_DEPTH`]. A read is refused as by any signal.
+    pub fn mapped(&self, f: impl Fn(f64) -> f64 + Send + Sync + 'static) -> Result<Self, Error> {
+        Self::checked(Mapped::new(self, f))
     }
 
     /// The signal that reads `series`: sample *i* is at `start + i / rate` seconds, the first and last values hold
