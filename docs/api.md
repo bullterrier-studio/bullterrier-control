@@ -72,7 +72,7 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
 10. **Concurrency** (implemented): no hand-written atomics. The only shared mutable state is the history cache of a
     stateful signal. A Rust lock is never held while calling into Python. A graph is at most `MAX_DEPTH` (1000) nodes
     deep (a bound on memory: reading and dropping loop, whatever the thread's stack). Callbacks (`from_fn`, a
-    recurrence's `run`, a retiming's `map`, a thing's body, a Python `compute`) nested more than 48 deep on a thread are refused
+    recurrence's `run`, a retiming's `map`, a mapping's `f`, a thing's body, a Python `compute`) nested more than 48 deep on a thread are refused
     (`SignalError`); the smallest thread stack supported is 256 KiB.
 
 ## 1. A curve from measured values
@@ -277,8 +277,10 @@ wobble.sample([0.125, 0.375, 1.1, 1.3])  # beat 0.25 and 0.75, then beat 2.25 an
 ```
 
 ```rust
+use bullterrier_control::cadence;
+
 let grid = Grid::new(beat_times, 4, 0)?; // run as the doctest of `Grid::new`
-let wobble = btc::lib::lfo(Lfo { rate: 1.0, per: Per::Beat, ..Default::default() }, Some(&grid))?;
+let wobble = btc::lib::lfo(Lfo { rate: 1.0, per: cadence::Per::Beat, ..Default::default() }, Some(&grid))?;
 ```
 
 ## 8. Seeded noise

@@ -207,8 +207,8 @@ impl Stages {
 
     /// The value `since` seconds after an event starts, as long as it has not ended.
     fn held(self, since: f64, strength: f64, sustain: f64) -> f64 {
-        // envelope.py clamped `since - attack` at 0 because numpy evaluates both branches; here only the one taken
-        // is, and there `since >= attack`, so the difference is never below 0
+        // numpy's `where` evaluates both branches, so a numpy body clamps `since - attack` at 0; here only the one
+        // taken is, and there `since >= attack`, so the difference is never below 0
         if since < self.attack {
             strength * (1.0 - self.rise.left(since))
         } else {

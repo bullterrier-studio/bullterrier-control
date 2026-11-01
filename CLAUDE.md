@@ -197,7 +197,7 @@ source is also a `lib::` function, its arguments as `docs/api.md` rule 2 says). 
 sealed; code outside the crate adds nodes with `Signal::from_fn`, `Signal::rendered`, `Signal::retimed` and `Signal::mapped`; no Rust lock is held while a
 callback into Python runs. A node implements `start` and `finish` and never reads an input itself: the one loop in
 `signal/walk.rs` does (a scan test fails otherwise), and drops go through a per-thread queue, so a graph of any depth
-(`MAX_DEPTH`, 1000, a memory bound) is read and dropped on any stack. Callbacks (`from_fn`, `run`, a retiming's `map`, a Python
+(`MAX_DEPTH`, 1000, a memory bound) is read and dropped on any stack. Callbacks (`from_fn`, `run`, a retiming's `map`, a mapping's `f`, a Python
 `compute` or body) are the one recursion and are capped at 48 nested per thread (`Error::Depth`); the smallest supported thread
 stack is 256 KiB. `Signal`'s `Debug` prints a node label and the depth only (`Node::label`). No hidden tunables (rule 5): a number is a `Params`
 field, trivial, or a cited constant. No `unwrap`, `expect`, `panic!`, `todo!` or printing (clippy fails them): return an
