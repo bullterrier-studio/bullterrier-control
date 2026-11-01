@@ -2,11 +2,11 @@
 
 An architecture test of the tooling and of the extension point: the drift test's subject is every built-in source,
 shaper and operation, so a new one fails here until `uv run poe api` has rewritten the two files. The other tests run
-the generator on a small registry of throwaways, made to look built-in (only built-ins are written).
+the generator on a small registry of throwaways (`render` writes every thing it is given; `main` gives it the
+built-ins).
 """
 
 import importlib.util
-from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
@@ -59,15 +59,9 @@ class WarpParams(Params):
     tag: Text = param("", doc="A name for it.")
 
 
-def built_in[F: Callable[..., object]](function: F) -> F:
-    """`function` as if a module of bullterrier_control.builtin defined it."""
-    function.__module__ = "bullterrier_control.builtin.probe"
-    return function
-
-
 @pytest.fixture
 def small(empty_registry) -> dict[str, str]:
-    """The files written for a registry of one built-in shaper, source and operation each, and one plugin shaper."""
+    """The files written for a registry of one shaper, source and operation each."""
 
     def warp(signal: Signal, params: WarpParams, *, values: tuple[float, ...]) -> Signal:
         """A signal bent by `depth`.
@@ -83,14 +77,9 @@ def small(empty_registry) -> dict[str, str]:
         """The events it picks."""
         return events
 
-    def fold(signal: Signal, params: WarpParams) -> Signal:
-        """A plugin's shaper."""
-        return signal
-
-    shaper(params=WarpParams)(built_in(warp))
-    source(params=WarpParams)(built_in(level))
-    operation(params=WarpParams)(built_in(pick))
-    shaper(params=WarpParams)(fold)
+    shaper(params=WarpParams)(warp)
+    source(params=WarpParams)(level)
+    operation(params=WarpParams)(pick)
     return {path.as_posix(): text for path, text in gen_api.render(registry.all_registered()).items()}
 
 
@@ -140,7 +129,7 @@ def test_a_range_is_written_as_the_core_words_it_not_rounded(empty_registry):
         """A seeded signal."""
         return signal
 
-    shaper(params=SeededParams)(built_in(seeded))
+    shaper(params=SeededParams)(seeded)
     files = gen_api.render(registry.all_registered())
     assert "            seed: count, 0 to 4294967295, default 0. Which one.\n" in files[Path(CHAIN)]
 
@@ -168,9 +157,17 @@ def test_lib_has_a_typed_function_for_each_built_in(small, line):
     assert line in small[LIB]
 
 
-def test_a_plugin_is_left_out_of_both_files(small):
-    assert "fold" not in small[LIB]
-    assert "fold" not in small[CHAIN]
+def test_main_writes_the_built_ins_and_leaves_a_plugin_out(throwaway_registry, tmp_path):
+    def fold(signal: Signal, params: WarpParams) -> Signal:
+        """A plugin's shaper."""
+        return signal
+
+    shaper(params=WarpParams)(fold)
+    assert gen_api.main(["--root", str(tmp_path)]) == 0
+    for path in (LIB, CHAIN):
+        written = (tmp_path / path).read_text(encoding="utf-8")
+        assert "def slew(" in written
+        assert "fold" not in written
 
 
 @pytest.mark.parametrize("name", ["sample", "pipe", "compute"])
@@ -180,7 +177,7 @@ def test_a_built_in_shaper_named_like_an_attribute_of_signal_is_refused_naming_i
         return signal
 
     clash.__name__ = name
-    shaper(params=WarpParams)(built_in(clash))
+    shaper(params=WarpParams)(clash)
     with pytest.raises(ValueError, match=name):
         gen_api.render(registry.all_registered())
 
@@ -197,23 +194,9 @@ def test_a_summary_that_would_write_an_invalid_file_is_refused_naming_the_built_
         return signal
 
     crooked.__doc__ = summary
-    shaper(params=WarpParams)(built_in(crooked))
+    shaper(params=WarpParams)(crooked)
     with pytest.raises(ValueError, match="crooked"):
         gen_api.render(registry.all_registered())
-
-
-def test_a_shaper_without_a_module_is_not_a_built_in(empty_registry):
-    """A function made by `exec` has no `__module__`: it is left out, not an `AttributeError`."""
-
-    def made_by_exec(signal: Signal, params: WarpParams) -> Signal:
-        """Made at run time."""
-        return signal
-
-    made_by_exec.__module__ = None  # type: ignore[assignment]  # what exec gives a function
-    shaper(params=WarpParams)(made_by_exec)
-    files = gen_api.render(registry.all_registered())
-    assert "made_by_exec" not in files[Path(LIB)]
-    assert "made_by_exec" not in files[Path(CHAIN)]
 
 
 def test_check_passes_on_the_files_just_written_and_fails_naming_one_that_differs(tmp_path, capsys):
