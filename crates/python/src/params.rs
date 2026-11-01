@@ -100,7 +100,7 @@ pub(crate) fn json(value: &Bound<'_, PyAny>) -> Result<Value, String> {
 }
 
 /// `value` as Python data: `None`, `bool`, `int`, `float`, `str`, `list` and `dict`.
-fn python<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny>> {
+pub(crate) fn python<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny>> {
     match value {
         Value::Null => Ok(py.None().into_bound(py)),
         Value::Bool(flag) => flag.into_bound_py_any(py),
@@ -128,21 +128,11 @@ fn python<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny>> {
     }
 }
 
-/// The fields of `table` in the order they are listed: the basic ones, then the advanced ones, each in declaration
-/// order.
-fn listed(table: &ParamTable) -> impl Iterator<Item = &Param> {
-    let params = table.params();
-    params
-        .iter()
-        .filter(|param| !param.advanced)
-        .chain(params.iter().filter(|param| param.advanced))
-}
-
 /// The description of `table` (see [`PyParamTable::describe`]).
 fn described<'py>(py: Python<'py>, table: &ParamTable) -> PyResult<Bound<'py, PyDict>> {
     let properties = table.describe();
     let dict = PyDict::new(py);
-    for param in listed(table) {
+    for param in table.listed() {
         let field = python(py, &properties[param.name.as_str()])?;
         if let Some(range) = param.range_text() {
             field.set_item("range", range)?;
@@ -174,35 +164,23 @@ fn parse<'py>(
         );
         return Err(parameter_error(py, about, &[problem("", rule)], 0));
     };
-    let mut object = Map::new();
-    // the rule each value JSON cannot hold breaks, for the fields the table has
-    let mut unreadable: Vec<(String, String)> = Vec::new();
+    let mut pairs = Vec::new();
     let mut keys = Vec::new();
     for pair in mapping.items()?.iter() {
         let (key, value) = pair.extract::<(Bound<'py, PyAny>, Bound<'py, PyAny>)>()?;
-        let name = match text("a field name", &key) {
-            Ok(name) => name,
-            Err(rule) => {
-                keys.push(problem("", rule));
-                continue;
-            }
-        };
-        let read = json(&value).unwrap_or_else(|rule| {
-            if table.params().iter().any(|param| param.name == name) {
-                unreadable.push((name.clone(), rule));
-            }
-            // null, which every field refuses (and an unknown one is refused as unknown)
-            Value::Null
-        });
-        object.insert(name, read);
+        match text("a field name", &key) {
+            Ok(name) => pairs.push((name, value)),
+            Err(rule) => keys.push(problem("", rule)),
+        }
     }
     if !keys.is_empty() {
         return Err(parameter_error(py, about, &keys, 0));
     }
-    match table.parse(&Value::Object(object)) {
+    let given = Given::read(table, pairs);
+    match table.parse(&given.object()) {
         Ok(values) => {
             let dict = PyDict::new(py);
-            for param in listed(table) {
+            for param in table.listed() {
                 if let Some(value) = values.get(&param.name) {
                     dict.set_item(&param.name, python(py, value)?)?;
                 }
@@ -210,13 +188,50 @@ fn parse<'py>(
             Ok(dict)
         }
         Err(mut error) => {
-            // a field given a value JSON cannot hold was refused as null: say why instead
-            for problem in &mut error.problems {
-                if let Some((_, rule)) = unreadable.iter().find(|(name, _)| *name == problem.path) {
-                    problem.rule.clone_from(rule);
-                }
-            }
+            given.explain(&mut error.problems);
             Err(parameter_error(py, about, &error.problems, error.omitted()))
+        }
+    }
+}
+
+/// Parameter values given by name, as the JSON object a table reads. A value JSON cannot hold (NaN, an infinity, an
+/// integer beyond 64 bits, a lone surrogate, a `set`) is read as `null`, which every field refuses; the rule it breaks
+/// is kept, so the table's refusal of that `null` can say why instead ([`Given::explain`]).
+pub(crate) struct Given {
+    object: Map<String, Value>,
+    /// The rule each value JSON cannot hold breaks, by the name of the field the table has.
+    unreadable: Vec<(String, String)>,
+}
+
+impl Given {
+    /// The values `pairs` gives `table`, by field name.
+    pub(crate) fn read<'py>(table: &ParamTable, pairs: impl IntoIterator<Item = (String, Bound<'py, PyAny>)>) -> Self {
+        let mut object = Map::new();
+        let mut unreadable = Vec::new();
+        for (name, value) in pairs {
+            let read = json(&value).unwrap_or_else(|rule| {
+                // an unknown field is refused as unknown, whatever its value
+                if table.params().iter().any(|param| param.name == name) {
+                    unreadable.push((name.clone(), rule));
+                }
+                Value::Null
+            });
+            object.insert(name, read);
+        }
+        Self { object, unreadable }
+    }
+
+    /// The values, as a JSON object by field name.
+    pub(crate) fn object(&self) -> Value {
+        Value::Object(self.object.clone())
+    }
+
+    /// `problems`, a table's refusal of these values, each refusing a value JSON cannot hold saying why.
+    pub(crate) fn explain(&self, problems: &mut [Problem]) {
+        for problem in problems {
+            if let Some((_, rule)) = self.unreadable.iter().find(|(name, _)| *name == problem.path) {
+                problem.rule.clone_from(rule);
+            }
         }
     }
 }
@@ -418,6 +433,18 @@ pub(crate) struct PyParamTable {
     name: String,
 }
 
+impl PyParamTable {
+    /// The table.
+    pub(crate) const fn table(&self) -> &ParamTable {
+        &self.table
+    }
+
+    /// What a refusal's message starts with: the class the table is for, or the built-in's name.
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 #[pymethods]
 impl PyParamTable {
     #[new]
@@ -427,6 +454,18 @@ impl PyParamTable {
         let table =
             ParamTable::new(params).map_err(|error| parameter_error(py, &name, &error.problems, error.omitted()))?;
         Ok(Self { table, name })
+    }
+
+    /// The table the core declares for the built-in `name` (a source, shaper or operation), its refusals' messages
+    /// starting with `name`: what `parameters` and `parse_parameters` read.
+    ///
+    /// `ValueError` if there is no built-in of that name.
+    #[staticmethod]
+    fn builtin(name: &str) -> PyResult<Self> {
+        Ok(Self {
+            table: self::builtin(name)?.clone(),
+            name: name.to_owned(),
+        })
     }
 
     /// The values `values` (a mapping of values by field name) sets, as a dict of every field (a field left out

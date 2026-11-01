@@ -123,7 +123,15 @@ impl PyKeyframe {
 pub(crate) fn check_input<'py>(kind: &str, value: Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     let py = value.py();
     let kind: InputKind = kind.parse().map_err(value_error)?;
-    match data::read(value, |data| kind.check(data))?.map_err(|error| raised(py, error))? {
+    python(
+        py,
+        data::read(value, |data| kind.check(data))?.map_err(|error| raised(py, error))?,
+    )
+}
+
+/// The checked `input` as the package's objects, as [`check_input`] gives it.
+pub(crate) fn python(py: Python<'_>, input: Input) -> PyResult<Bound<'_, PyAny>> {
+    match input {
         Input::Points(frames) => Ok(PyTuple::new(py, frames.into_iter().map(PyKeyframe))?.into_any()),
         Input::Events(events) => Ok(PyTuple::new(py, events.into_iter().map(PyEvent))?.into_any()),
         Input::Grid(grid) => Ok(Bound::new(py, PyGrid(grid))?.into_any()),

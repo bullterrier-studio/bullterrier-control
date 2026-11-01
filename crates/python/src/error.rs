@@ -26,6 +26,14 @@ static SIGNAL_ERROR: PyOnceLock<Py<PyType>> = PyOnceLock::new();
 /// The package's `InvalidError`, imported and kept as [`FORMAT_ERROR`] is.
 static INVALID_ERROR: PyOnceLock<Py<PyType>> = PyOnceLock::new();
 
+/// The package's `UnknownNameError`, imported and kept as [`FORMAT_ERROR`] is.
+static UNKNOWN_NAME_ERROR: PyOnceLock<Py<PyType>> = PyOnceLock::new();
+
+/// `bullterrier_control.errors.UnknownNameError` with `message`.
+pub(crate) fn unknown_name(py: Python<'_>, message: String) -> PyErr {
+    package(py, (&UNKNOWN_NAME_ERROR, "UnknownNameError"), message)
+}
+
 /// The Python exception for `error`: a signal that cannot be read, or is too deep, is a `SignalError`, a text naming no
 /// easing curve an `InvalidError`, data breaking a format's rules a `FormatError`, parameters or an input breaking theirs
 /// a `ParameterError`; a callback's error is the exception the Python callback raised, unchanged. Anything else is a
@@ -104,6 +112,17 @@ fn list(
     } else {
         format!("{about}: {message}")
     };
+    listing(py, (class, name), message, problems)
+}
+
+/// The error of `class` (kept in its lock, named as `bullterrier_control.errors` names it) with `message` and
+/// `problems` as its (path, rule) pairs.
+fn listing(
+    py: Python<'_>,
+    (class, name): (&'static PyOnceLock<Py<PyType>>, &str),
+    message: String,
+    problems: &[Problem],
+) -> PyErr {
     let pairs = problems
         .iter()
         .map(|problem| (problem.path.as_str(), problem.rule.as_str()));

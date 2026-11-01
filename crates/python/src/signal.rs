@@ -320,7 +320,7 @@ pub(crate) fn signal(signal: &Bound<'_, SignalBase>) -> Signal {
 }
 
 /// `signal` as a Python object: an instance of the class `make_signals_as` named, or of `SignalBase`.
-fn made(py: Python<'_>, signal: Signal) -> PyResult<Bound<'_, PyAny>> {
+pub(crate) fn made(py: Python<'_>, signal: Signal) -> PyResult<Bound<'_, PyAny>> {
     let Some(class) = MADE.get(py) else {
         return Ok(Bound::new(py, SignalBase::holding(signal))?.into_any());
     };

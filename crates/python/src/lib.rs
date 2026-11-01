@@ -15,6 +15,7 @@ mod formats;
 mod inputs;
 mod params;
 mod primitives;
+mod registry;
 mod signal;
 
 use pyo3::exceptions::PyValueError;
@@ -33,6 +34,8 @@ mod _core {
     use super::params::{PyParamTable, builtins, parameters, parse_parameters};
     #[pymodule_export]
     use super::primitives::{Counter, PyEase, at_least, between, counter, ease, more_than, uniform};
+    #[pymodule_export]
+    use super::registry::{PyRegistry, PyThing};
     #[pymodule_export]
     use super::signal::{
         Constant, Rendered, SignalBase, from_series, from_values, make_signals_as, maximum, minimum, shape,

@@ -1,12 +1,14 @@
-//! Python code a Rust signal calls: a subclass's `compute` ([`computed`]) and a `Rendered`'s `run` ([`rendered`]).
+//! Python code a Rust signal calls: a subclass's `compute` ([`computed`]) and a `Rendered`'s `run` ([`rendered`]); a
+//! thing whose body is Python (`crate::registry`) counts its calls with [`Nested`] too.
 //!
 //! Each call attaches to Python for as long as the Python code runs and no longer; no Rust lock is held meanwhile, so
 //! the code may read signals again, from this thread or another. What the code is given is a fresh numpy array of its
 //! own; what it returns is copied (as float64, whatever its dtype or layout) before Rust reads it, so an array it keeps
 //! and changes later changes nothing read. An exception it raises is the error of the read, and reaches the caller of
 //! `sample` unchanged. numpy's floating-point warnings are off while it runs: a value that is not finite is refused by
-//! the read as a `SignalError`, not warned about. Calls that nest (a `compute` reading a signal whose `compute` reads another, ...) are counted
-//! per thread: one nested [`NESTED`] deep is a `SignalError`, raised before the stack can overflow.
+//! the read as a `SignalError`, not warned about. Calls that nest (a `compute` reading a signal whose `compute` reads another,
+//! a body calling a thing whose body calls another, ...) are counted per thread: one nested [`NESTED`] deep is a
+//! `SignalError`, raised before the stack can overflow (Python's own recursion limit counts its frames, not the stack).
 
 use std::cell::Cell;
 
@@ -32,19 +34,19 @@ thread_local! {
 }
 
 /// One call into Python, counted in [`DEPTH`] while it lives.
-struct Nested;
+pub(crate) struct Nested;
 
 impl Nested {
     /// Counts one more call, or refuses it with a `SignalError` if [`NESTED`] are running.
-    fn enter(py: Python<'_>) -> PyResult<Self> {
+    pub(crate) fn enter(py: Python<'_>) -> PyResult<Self> {
         let depth = DEPTH.get();
         if depth >= NESTED {
             return Err(error::raised(
                 py,
                 Error::Signal {
                     message: format!(
-                        "signals written in Python read each other more than {NESTED} deep (a compute that reads its \
-                         own signal?)"
+                        "Python code called from signals and things nests more than {NESTED} deep (a compute that \
+                         reads its own signal, a body that calls its own thing?)"
                     ),
                 },
             ));
