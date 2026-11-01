@@ -77,6 +77,7 @@ fn thing(
         name: name.to_owned(),
         kind,
         identity: identity.to_owned(),
+        shown: None,
         table,
         inputs: inputs.to_vec(),
         returns,
@@ -310,6 +311,40 @@ fn a_thing_gets_in_only_if_it_keeps_every_rule() {
 }
 
 #[test]
+fn what_an_error_shows_of_who_defined_a_thing_is_apart_from_who_they_are() -> Result<(), Error> {
+    // (identity, shown): two functions one factory made differ in the address that tells them apart
+    let made = |(identity, shown): (&str, Option<&str>)| -> Result<Thing, Error> {
+        let declared = Declared {
+            name: "level".to_owned(),
+            kind: Kind::Source,
+            identity: identity.to_owned(),
+            shown: shown.map(str::to_owned),
+            table: ParamTable::new(vec![]).map_err(|error| Error::params("level", error))?,
+            inputs: vec![],
+            returns: Returns::Signal,
+        };
+        Thing::custom(About::default(), declared, echo)
+    };
+    let mut registry = Registry::new();
+    registry.register(made(("m.make.<locals>.made at 0x1", Some("m.make.<locals>.made")))?)?;
+    // what is shown is never compared: the same identity shown another way is a reload ...
+    registry.register(made(("m.make.<locals>.made at 0x1", None))?)?;
+    // ... and another identity is another thing, named as the registered one shows itself (here: by its identity)
+    assert_eq!(
+        registration(registry.register(made(("m.make.<locals>.made at 0x2", Some("m.make.<locals>.made")))?))
+            .as_deref(),
+        Some("source 'level': the name is taken by the source defined as m.make.<locals>.made at 0x1")
+    );
+    let mut shown = Registry::new();
+    shown.register(made(("m.make.<locals>.made at 0x1", Some("m.make.<locals>.made")))?)?;
+    assert_eq!(
+        registration(shown.register(made(("other", None))?)).as_deref(),
+        Some("source 'level': the name is taken by the source defined as m.make.<locals>.made")
+    );
+    Ok(())
+}
+
+#[test]
 fn a_name_is_taken_by_another_thing_but_not_by_the_same_one_registered_again() -> Result<(), Error> {
     let source = |identity: &str, doc: &str| -> Result<Thing, Error> {
         let about = About {
@@ -320,6 +355,7 @@ fn a_name_is_taken_by_another_thing_but_not_by_the_same_one_registered_again() -
             name: "level".to_owned(),
             kind: Kind::Source,
             identity: identity.to_owned(),
+            shown: None,
             table: ParamTable::new(vec![]).map_err(|error| Error::params("level", error))?,
             inputs: vec![],
             returns: Returns::Signal,
@@ -566,6 +602,7 @@ fn the_thing_gets_its_parameters_as_the_table_read_them_and_only_its_inputs() ->
         name: "phase".to_owned(),
         kind: Kind::Source,
         identity: "tests.phase".to_owned(),
+        shown: None,
         table: ParamTable::new(vec![phase, switch("on")]).map_err(|error| Error::params("phase", error))?,
         inputs: vec![(InputKind::Grid, false)],
         returns: Returns::Signal,
@@ -614,6 +651,7 @@ fn an_error_of_the_body_reaches_the_caller_unchanged() -> Result<(), Error> {
         name: "broken".to_owned(),
         kind: Kind::Source,
         identity: "tests.broken".to_owned(),
+        shown: None,
         table: ParamTable::new(vec![]).map_err(|error| Error::params("broken", error))?,
         inputs: vec![],
         returns: Returns::Signal,
@@ -643,6 +681,7 @@ fn a_thing_that_gives_another_kind_of_result_than_it_returns_is_refused() -> Res
         name: "liar".to_owned(),
         kind: Kind::Operation,
         identity: "tests.liar".to_owned(),
+        shown: None,
         table: ParamTable::new(vec![]).map_err(|error| Error::params("liar", error))?,
         inputs: vec![],
         returns: Returns::Series,
@@ -666,6 +705,7 @@ fn a_thing_answers_what_it_is_takes_and_gives() -> Result<(), String> {
         name: "pick".to_owned(),
         kind: Kind::Operation,
         identity: "tests.pick".to_owned(),
+        shown: None,
         table: table(vec![switch("on"), switch("loud")])?,
         inputs: vec![(InputKind::Grid, false), (InputKind::Events, true)],
         returns: Returns::Events,
@@ -710,6 +750,7 @@ fn help_shows_the_call_the_doc_the_inputs_and_each_parameter_in_its_own_terms() 
         name: "pick".to_owned(),
         kind: Kind::Operation,
         identity: "tests.pick".to_owned(),
+        shown: None,
         table: table(params)?,
         inputs: vec![(InputKind::Events, true), (InputKind::Grid, false)],
         returns: Returns::Events,
@@ -759,6 +800,7 @@ fn help_of_a_thing_without_inputs_parameters_or_a_doc_is_its_call() -> Result<()
             name: "lift".to_owned(),
             kind,
             identity: "tests.lift".to_owned(),
+            shown: None,
             table: table(params)?,
             inputs: vec![],
             returns: Returns::Signal,
@@ -822,6 +864,7 @@ fn help_writes_each_default_as_python_writes_the_value() -> Result<(), String> {
             name: "level".to_owned(),
             kind: Kind::Source,
             identity: "tests.level".to_owned(),
+            shown: None,
             table: table(vec![param])?,
             inputs: vec![],
             returns: Returns::Signal,
@@ -853,6 +896,7 @@ fn a_description_is_what_the_python_package_lists() -> Result<(), String> {
         name: "pick".to_owned(),
         kind: Kind::Operation,
         identity: "tests.pick".to_owned(),
+        shown: None,
         table: table(vec![rate])?,
         inputs: vec![(InputKind::Events, true), (InputKind::Grid, false)],
         returns: Returns::Events,
@@ -908,6 +952,7 @@ fn calls_from_many_threads_run_their_callbacks_at_the_same_time() -> Result<(), 
         name: "together".to_owned(),
         kind: Kind::Source,
         identity: "tests.together".to_owned(),
+        shown: None,
         table: ParamTable::new(vec![]).map_err(|error| Error::params("together", error))?,
         inputs: vec![],
         returns: Returns::Signal,
@@ -1184,6 +1229,7 @@ fn a_recipe_keeps_the_inputs_in_the_order_the_thing_declares_them() -> Result<()
         name: "track".to_owned(),
         kind: Kind::Source,
         identity: "tests.track".to_owned(),
+        shown: None,
         table: ParamTable::new(vec![switch("on")]).map_err(|error| Error::params("track", error))?,
         inputs: vec![
             (InputKind::Values, true),
@@ -1269,6 +1315,7 @@ fn a_chain_of_recorded_signals_as_deep_as_there_may_be_reads_on_a_test_thread() 
         name: "lift".to_owned(),
         kind: Kind::Shaper,
         identity: "tests.lift".to_owned(),
+        shown: None,
         table: ParamTable::new(vec![]).map_err(|error| Error::params("lift", error))?,
         inputs: vec![],
         returns: Returns::Signal,
@@ -1301,6 +1348,7 @@ fn bare(
         name: name.to_owned(),
         kind,
         identity: format!("tests.{name}"),
+        shown: None,
         table: ParamTable::new(vec![]).map_err(|error| Error::params(name, error))?,
         inputs: vec![],
         returns: Returns::Signal,

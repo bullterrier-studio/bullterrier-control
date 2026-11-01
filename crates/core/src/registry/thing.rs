@@ -53,8 +53,8 @@ struct Inner {
 pub(super) enum Identity {
     /// A Rust type, and its path.
     Type(TypeId, &'static str),
-    /// A callback's identity.
-    Defined(String),
+    /// A callback's identity, and how to show it if not as itself ([`Declared::shown`]).
+    Defined(String, Option<String>),
 }
 
 impl Identity {
@@ -68,7 +68,7 @@ impl PartialEq for Identity {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Type(one, _), Self::Type(other, _)) => one == other,
-            (Self::Defined(one), Self::Defined(other)) => one == other,
+            (Self::Defined(one, _), Self::Defined(other, _)) => one == other,
             _ => false,
         }
     }
@@ -79,7 +79,7 @@ impl fmt::Display for Identity {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Type(_, path) => formatter.write_str(path),
-            Self::Defined(identity) => formatter.write_str(identity),
+            Self::Defined(identity, shown) => formatter.write_str(shown.as_ref().unwrap_or(identity)),
         }
     }
 }
@@ -208,6 +208,7 @@ impl Thing {
             name,
             kind,
             identity,
+            shown,
             table,
             inputs,
             returns,
@@ -215,7 +216,7 @@ impl Thing {
         let parts = Parts {
             name: Cow::Owned(name),
             kind,
-            identity: Identity::Defined(identity),
+            identity: Identity::Defined(identity, shown),
             table: Cow::Owned(table),
             inputs,
             returns,

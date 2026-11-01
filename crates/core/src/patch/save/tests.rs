@@ -98,6 +98,7 @@ fn thing(
         name: name.to_owned(),
         kind,
         identity: identity.to_owned(),
+        shown: None,
         table: ParamTable::new(params).map_err(|error| error.to_string())?,
         inputs: inputs.to_vec(),
         returns: Returns::Signal,

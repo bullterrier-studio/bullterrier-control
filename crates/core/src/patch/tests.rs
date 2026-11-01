@@ -80,6 +80,7 @@ fn thing(
         name: name.to_owned(),
         kind,
         identity: format!("tests.{name}"),
+        shown: None,
         table: ParamTable::new(params).map_err(|error| error.to_string())?,
         inputs: inputs.to_vec(),
         returns,

@@ -6,6 +6,7 @@ An architecture test of the extension's own interface. The calling rules and the
 """
 
 import inspect
+import re
 import subprocess
 import sys
 import threading
@@ -124,6 +125,13 @@ def test_two_functions_made_by_one_factory_do_not_replace_each_other(mine):
         register(mine, make(2.0), params=Nothing, table=NOTHING)
     register(mine, first, params=Nothing, table=NOTHING)  # the very same function again is a reload
     assert mine.get("made")().sample(0.0).tolist() == 1.0
+
+
+def test_the_taken_name_error_shows_the_function_without_its_address(mine):
+    register(mine, make(1.0), params=Nothing, table=NOTHING)
+    shown = re.escape(f"{__name__}.make.<locals>.made")
+    with pytest.raises(ValueError, match=rf"the name is taken by the source defined as {shown}$"):
+        register(mine, make(2.0), params=Nothing, table=NOTHING)
 
 
 def test_a_module_defined_again_replaces_what_it_registered_as_reloading_does(mine):

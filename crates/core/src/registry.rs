@@ -23,7 +23,7 @@
 //! // a thing whose body is a callback: how the Python package registers its own
 //! let level = Thing::custom(
 //!     About { doc: "A signal that holds 0.5.".into(), ..Default::default() },
-//!     Declared { name: "level".into(), kind: Kind::Source, identity: "example.level".into(),
+//!     Declared { name: "level".into(), kind: Kind::Source, identity: "example.level".into(), shown: None,
 //!         table: ParamTable::new(vec![])?, inputs: vec![], returns: Returns::Signal },
 //!     |_call| Ok(Output::Signal(Signal::constant(0.5)?)),
 //! )?;
@@ -137,8 +137,15 @@ impl Kind {
         }
     }
 
-    /// How many signals a thing of this kind takes.
-    const fn signals(self) -> usize {
+    /// How many signals a thing of this kind takes: one for a shaper, none for a source or an operation.
+    ///
+    /// ```
+    /// use bullterrier_control::registry::Kind;
+    ///
+    /// assert_eq!([Kind::Source, Kind::Shaper, Kind::Operation].map(Kind::signals), [0, 1, 0]);
+    /// ```
+    #[must_use]
+    pub const fn signals(self) -> usize {
         match self {
             Self::Shaper => 1,
             Self::Source | Self::Operation => 0,
@@ -329,7 +336,7 @@ pub struct About {
 /// use bullterrier_control::params::ParamTable;
 /// use bullterrier_control::registry::{About, Declared, Kind, Output, Returns, Thing};
 ///
-/// let declared = Declared { name: "pick".into(), kind: Kind::Operation, identity: "mine.pick".into(),
+/// let declared = Declared { name: "pick".into(), kind: Kind::Operation, identity: "mine.pick".into(), shown: None,
 ///     table: ParamTable::new(vec![])?, inputs: vec![(InputKind::Events, true)], returns: Returns::Events };
 /// let pick = Thing::custom(About::default(), declared, |_call| Ok(Output::Events(vec![])))?;
 /// assert!(pick.help().starts_with("operation pick(*, events, **values) -> events"));
@@ -341,12 +348,16 @@ pub struct Declared {
     pub name: String,
     /// Its kind.
     pub kind: Kind,
-    /// Who defined it, as the error for a taken name shows it: registering a thing of the same kind and identity
+    /// Who defined it: registering a thing of the same kind and identity
     /// under its name again replaces it (a module reloaded); a thing of another identity, or a Rust thing (identified
     /// by its type, never by text), is refused. It must tell apart every thing that may be registered: a Python
     /// function's `module.qualname` does not tell apart two functions one factory makes (`make.<locals>.made`), so
-    /// the second would replace the first unless each is given an identity of its own.
+    /// the second would replace the first unless each is given an identity of its own (and a [`shown`](Self::shown)
+    /// text, so an error does not print what tells them apart).
     pub identity: String,
+    /// How an error shows who defined it, if not by its `identity` (which may carry what no reader needs, such as a
+    /// memory address that tells two functions apart): `None` shows the identity. It is never compared.
+    pub shown: Option<String>,
     /// Its parameters.
     pub table: ParamTable,
     /// The inputs it takes, each with whether it is required, in the order it declares them.
@@ -364,7 +375,7 @@ pub struct Declared {
 /// # let empty = ParamTable::new(vec![])?;
 /// # let thing = |name: &str, identity: &str| Thing::custom(
 /// #     About::default(),
-/// #     Declared { name: name.into(), kind: Kind::Source, identity: identity.into(), table: empty.clone(),
+/// #     Declared { name: name.into(), kind: Kind::Source, identity: identity.into(), shown: None, table: empty.clone(),
 /// #         inputs: vec![], returns: Returns::Signal },
 /// #     |_call| Ok(Output::Signal(Signal::constant(1.0)?)),
 /// # );

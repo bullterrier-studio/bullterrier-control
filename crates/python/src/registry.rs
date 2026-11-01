@@ -163,6 +163,7 @@ impl PyRegistry {
             name: name.clone(),
             kind,
             identity: identity(function)?,
+            shown: shown(function)?,
             table: table.get().table().clone(),
             inputs: declared_inputs(inputs)?,
             returns,
@@ -280,6 +281,14 @@ fn identity(function: &Bound<'_, PyAny>) -> PyResult<String> {
     } else {
         format!("{module}.{qualname}")
     })
+}
+
+/// How an error shows who defined `function`: its module and qualified name, when [`identity`] adds to them what only
+/// tells two functions apart (an address). `None` when the identity is that already.
+fn shown(function: &Bound<'_, PyAny>) -> PyResult<Option<String>> {
+    let module = function.getattr("__module__")?.str()?.to_string();
+    let qualname: String = function.getattr("__qualname__")?.extract()?;
+    Ok(qualname.contains("<locals>").then(|| format!("{module}.{qualname}")))
 }
 
 /// The body of the thing `label` whose Python function is `function`: called with the checked call, it attaches to
@@ -426,7 +435,7 @@ impl PyThing {
     fn call_of(&self, signals: &Bound<'_, PyTuple>, values: Option<&Bound<'_, PyDict>>) -> PyResult<(Call, Given)> {
         let py = signals.py();
         let label = self.label();
-        let wanted = usize::from(self.thing.kind() == Kind::Shaper);
+        let wanted = self.thing.kind().signals();
         let read: Option<Vec<_>> = signals
             .iter()
             .map(|one| one.cast::<SignalBase>().ok().map(signal::signal))
