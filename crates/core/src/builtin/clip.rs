@@ -5,7 +5,7 @@
 //! crosses.
 
 use crate::formats::Problem;
-use crate::{Error, FromValues, Interpolation, Shaper, Signal, maximum, minimum};
+use crate::{Error, Shaper, Signal, maximum, minimum};
 
 /// The range a clipped signal stays inside.
 #[derive(Clone, Debug, PartialEq, crate::Params)]
@@ -48,14 +48,8 @@ impl Shaper for Params {
 
     /// `input` raised to `low`, then lowered to `high`.
     fn shape(&self, input: &Signal, (): ()) -> Result<Signal, Error> {
-        Ok(minimum(&maximum(input, &holding(self.low)?), &holding(self.high)?))
+        Ok(minimum(&maximum(input, &Signal::constant(self.low)?), &Signal::constant(self.high)?))
     }
-}
-
-/// A signal that holds `value` at every time. Made as a one-sample series: a built-in's file names no other built-in,
-/// and `Signal::constant` shares its name with the built-in `constant` (`tests/test_layering.py` reads paths).
-fn holding(value: f64) -> Result<Signal, Error> {
-    Signal::from_values(&[value], 1.0, FromValues::default(), Interpolation::Hold)
 }
 
 /// `high` must not lie below `low`: the range the output stays inside is empty otherwise.
@@ -77,6 +71,7 @@ mod tests {
     use super::*;
     use crate::Params as _;
     use crate::formats::check_problems;
+    use crate::{FromValues, Interpolation};
 
     fn check(id: &str, given: &serde_json::Value, expected: &'static [(&'static str, &'static str)]) {
         match Params::parse(given) {
@@ -152,7 +147,7 @@ mod tests {
 
     #[test]
     fn a_high_below_low_is_refused_naming_high() -> Result<(), Error> {
-        let signal = holding(0.5)?;
+        let signal = Signal::constant(0.5)?;
         let refused = signal.clip(params(1.0, 0.5));
         assert!(
             matches!(&refused, Err(Error::Params { shaper, problems, .. })

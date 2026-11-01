@@ -252,8 +252,7 @@ mod tests {
 
     /// Points from strictly positive gaps, values and eases: times are the running sums of the gaps.
     fn points() -> impl Strategy<Value = Vec<Keyframe>> {
-        // `prop_oneof!`, not `sample::select`: a path naming another built-in fails the layering scan
-        let ease = prop_oneof![Just(Ease::Linear), Just(Ease::Hold), Just(Ease::Out), Just(Ease::InOut), Just(Ease::Overshoot)];
+        let ease = prop::sample::select(vec![Ease::Linear, Ease::Hold, Ease::Out, Ease::InOut, Ease::Overshoot]);
         prop::collection::vec((0.001..100.0_f64, -1e3..1e3_f64, ease), 1..8).prop_map(|steps| {
             let mut t = 0.0;
             steps

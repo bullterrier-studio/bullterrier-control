@@ -314,18 +314,24 @@ def test_the_rust_extension_imports_nothing_from_the_package(module, leaf):
 # --- the Rust core's built-ins -------------------------------------------------------------------------------------
 
 CORE_CRATE = ROOT / "crates" / "core"
-# a name in a path: before `::` (`beta::run`, `super::`), after it (`super::beta`, `b::beta`), or in a `::{...}` use
-# group. However a built-in file reaches another (by `super`, `crate::builtin`, a glob, an alias), it names that
-# module in a path; a test module's `use super::*` names none.
-BEFORE_OR_AFTER_PATH = re.compile(r"\b(\w+)\s*(?=::)|(?<=::)\s*(\w+)")
-USE_GROUP = re.compile(r"::\s*\{([^{}]*)\}")
+# a built-in's module named in a path: before `::` (`beta::run`), or after a segment that reaches the built-ins
+# (`super`, `builtin`, `lib` or an alias made with `as`: `super::beta`, `b::beta`, `super::{beta}`). However a
+# built-in file reaches another (by `super`, `crate::builtin`, a glob, an alias), it names that module so; an item of
+# a type or another module (`Signal::constant`, `sample::select`) and a test module's `use super::*` name none.
+PATH_STEP = re.compile(r"\b(\w+)\s*(?=::\s*(\w+))")
+USE_GROUP = re.compile(r"\b(\w+)\s*::\s*\{([^{}]*)\}")
+ALIAS = re.compile(r"\bas\s+(\w+)")
 
 
 def references_to_other_builtins(code: str, others: set[str]) -> list[str]:
     """The built-ins of `others` that the Rust built-in `code` (comments and strings blanked out) names in a path,
     sorted: the ways one built-in file could reach another."""
-    named = {name for pair in BEFORE_OR_AFTER_PATH.findall(code) for name in pair}
-    named |= {name for group in USE_GROUP.findall(code) for name in re.findall(r"\w+", group)}
+    reaching = {"super", "builtin", "lib", *ALIAS.findall(code)}
+    steps = PATH_STEP.findall(code)
+    named = {before for before, _ in steps} | {after for before, after in steps if before in reaching}
+    named |= {
+        name for before, group in USE_GROUP.findall(code) if before in reaching for name in re.findall(r"\w+", group)
+    }
     return sorted(named & others)
 
 
@@ -389,6 +395,9 @@ def test_a_copy_of_the_core_in_which_one_builtin_refers_to_another_is_caught(tmp
         pytest.param("/* crate::builtin::slew */\nfn f() {}\n", [], id="a block comment is none"),
         pytest.param('const NAME: &str = "builtin::slew";\n', [], id="a string is none"),
         pytest.param("use super::slewing;\n", [], id="a name containing a built-in's is none"),
+        pytest.param("let out = lib::slew(&signal, p)?;\n", ["slew"], id="a lib function"),
+        pytest.param("let held = Signal::follow(0.5)?;\n", [], id="an item of a type named like a built-in is none"),
+        pytest.param("let ease = prop::sample::slew(&[1]);\n", [], id="an item of another module is none"),
     ],
 )
 def test_the_builtin_reference_check_flags_a_path_to_another_builtin_and_only_that(source, found, rust_code):
