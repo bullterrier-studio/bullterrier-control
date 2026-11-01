@@ -12,31 +12,39 @@ use super::Signal;
 use super::node::{Constant, Next, Node, Read};
 use crate::Error;
 
-/// How many callbacks may run one inside another on a thread (a `from_fn` reading a signal whose `from_fn` reads
-/// another, ...). Each level is a read on the thread's stack: measured, release, about 0.5 KiB a Rust callback and
-/// 2.9 KiB a Python `compute`.
-pub(crate) const NESTED: usize = 64;
+/// How many callbacks may run one inside another on a thread, of every kind together: a `from_fn`, a recurrence
+/// (`Signal::rendered`), a thing's body (`Thing::custom`), and so a Python `compute`, `run` or thing body. Each
+/// level is a walk or a call on the thread's stack, which no loop can take over (user code is between two levels).
+///
+/// The cap is a count standing for bytes: the smallest thread stack it must fit is 256 KiB (a Python thread on macOS
+/// gets 512 KiB). Measured in a release build on macOS arm64, a level takes about 815 B for a Rust `from_fn`,
+/// 3,150 B for a Python `compute` and 4,000 B for a Python thing body (the largest), and a thread needs about 8 KiB
+/// before the first: 8 KiB + 48 x 4,000 B = 196 KiB, leaving about 60 KiB of the 256 for the caller's own frames
+/// (64 levels would leave 6 KiB). A callback that recurses through C (a deep `repr`, numpy internals) takes more a
+/// level and is not covered.
+pub(crate) const NESTED: usize = 48;
 
 thread_local! {
     /// How many callbacks are running on this thread, one inside another.
     static CALLBACKS: Cell<usize> = const { Cell::new(0) };
 }
 
-/// What `call` gives, counted as one more callback running on this thread; refused with [`Error::Depth`] if
-/// [`NESTED`] are running.
-pub(super) fn callback<T>(call: impl FnOnce() -> Result<T, Error>) -> Result<T, Box<Error>> {
+/// What `call` (user code) gives, counted as one more callback running on this thread; refused with
+/// [`Error::Depth`] if [`NESTED`] are running. Every callback the crate calls goes through here.
+pub(crate) fn callback<T>(call: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
     let running = CALLBACKS.get();
     if running >= NESTED {
-        return Err(Box::new(Error::Depth {
+        return Err(Error::Depth {
             message: format!(
-                "callbacks that read signals nest more than {NESTED} deep (a callback reading a signal whose \
-                 callback reads another, ...)"
+                "callbacks nest more than {NESTED} deep on one thread (a compute reading a signal whose compute \
+                 reads another, a body calling a thing whose body calls another, ...: one reading its own signal or \
+                 calling its own thing?)"
             ),
-        }));
+        });
     }
     CALLBACKS.set(running + 1);
     let _done = Counted;
-    call().map_err(Box::new)
+    call()
 }
 
 /// One running callback, counted down when it returns or unwinds.

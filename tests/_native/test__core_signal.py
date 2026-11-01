@@ -648,7 +648,7 @@ def chain(depth):
 
 
 def test_a_chain_of_python_signals_reads_while_shallow_and_a_deep_one_is_refused_without_crashing():
-    assert chain(50).sample(2.0).tolist() == 2.0
+    assert chain(40).sample(2.0).tolist() == 2.0
     with pytest.raises(SignalError, match="deep"):
         chain(5000).sample(2.0)
 

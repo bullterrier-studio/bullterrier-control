@@ -25,7 +25,7 @@ import numpy as np
 
 from bullterrier_control import Patch, Signal, lib
 from bullterrier_control.errors import SignalError
-from bullterrier_control.plugin import Params, shaper
+from bullterrier_control.plugin import Params, Whole, param, shaper, source
 
 STACK, LINK, STEPS, SAVES = int(sys.argv[1]), sys.argv[2], int(sys.argv[3]), sys.argv[4] == "saves"
 TIMES = np.array([0.0, 0.5, 1.0])
@@ -39,6 +39,20 @@ class IdentityParams(Params):
 def identity(signal: Signal, params: IdentityParams) -> Signal:
     \"\"\"Its input as it is: a call that adds no node of its own.\"\"\"
     return signal
+
+
+class NestParams(Params):
+    \"\"\"How many bodies to nest.\"\"\"
+
+    levels: Whole = param(
+        0, doc="How many calls of itself the body makes, one inside another.", unit="count", min=0, max=1000
+    )
+
+
+@source(params=NestParams)
+def nest(params: NestParams) -> Signal:
+    \"\"\"A constant 0.5, made inside `levels` calls of itself, each inside the last.\"\"\"
+    return lib.constant(value=0.5) if params.levels == 0 else nest(levels=params.levels - 1)
 
 
 class Link(Signal):
@@ -150,6 +164,7 @@ CHAINS = [
     pytest.param("signal.pipe(identity)", 2000, True, id="a Python shaper that adds no node"),
     pytest.param("signal + 0.0", 2000, False, id="a sum"),
     pytest.param("Link(signal)", 400, False, id="Python computes, each reading the one before"),
+    pytest.param("nest(levels=step)", 200, False, id="Python bodies, each calling a thing inside the last"),
     pytest.param(
         "Link(signal) if step % 1000 == 0 else signal + 0.0",
         200_000,

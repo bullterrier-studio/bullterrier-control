@@ -1911,3 +1911,80 @@ fn keyed(inputs: Vec<Input>) -> BTreeMap<String, Input> {
         .map(|input| (input.kind().name().to_owned(), input))
         .collect()
 }
+
+/// A source `nest` whose body, called with `levels` above 0, calls `nest` again with one level fewer, and at 0 reads
+/// `innermost` at time 0 (inside every body that called it), giving that value as a constant.
+fn nesting(innermost: Signal) -> Result<Thing, Error> {
+    let itself: Arc<Mutex<Option<Thing>>> = Arc::default();
+    let inner = Arc::clone(&itself);
+    let about = About::default();
+    let declared = Declared {
+        name: "nest".to_owned(),
+        kind: Kind::Source,
+        identity: "tests.nest".to_owned(),
+        shown: None,
+        table: ParamTable::new(vec![number("levels", 0.0, ParamUnit::Count, (0.0, 1000.0))])
+            .map_err(|error| Error::params("nest", error))?,
+        inputs: vec![],
+        returns: Returns::Signal,
+    };
+    let nest = Thing::custom(about, declared, move |call| {
+        let again = inner.lock().ok().and_then(|again| again.clone());
+        match (call.values["levels"].as_f64(), again) {
+            (Some(levels), Some(again)) if levels > 0.0 => again.call(&Call {
+                values: json!({"levels": levels - 1.0}),
+                ..Call::default()
+            }),
+            _ => Ok(Output::Signal(Signal::constant(innermost.at(0.0)?)?)),
+        }
+    })?;
+    if let Ok(mut again) = itself.lock() {
+        *again = Some(nest.clone());
+    }
+    Ok(nest)
+}
+
+#[test]
+fn bodies_and_callbacks_nest_at_most_48_deep_together() {
+    // (bodies one inside another, callbacks one inside another inside the innermost body, refused): a body and a
+    // `from_fn` count as one level each, against one count; run on a large stack, as a debug build's levels are large
+    let rows = [
+        (48, 0, false),
+        (49, 0, true),
+        (24, 24, false),
+        (25, 24, true),
+        (24, 25, true),
+        (0, 48, false),
+        (0, 49, true),
+    ];
+    for (bodies, callbacks, refused) in rows {
+        let read = std::thread::Builder::new()
+            .stack_size(16 << 20)
+            .spawn(move || -> Result<f64, Error> {
+                let mut innermost = Signal::constant(0.5)?;
+                for _ in 0..callbacks {
+                    let input = innermost;
+                    innermost = Signal::from_fn(move |times, out| input.read_into(times, out));
+                }
+                if bodies == 0 {
+                    return innermost.at(0.0);
+                }
+                // the outermost body is level 1: `levels` counts the ones inside it
+                let nest = nesting(innermost)?;
+                signal(nest.call(&Call {
+                    values: json!({"levels": f64::from(bodies - 1)}),
+                    ..Call::default()
+                }))?
+                .at(0.0)
+            })
+            .map_err(|error| error.to_string())
+            .and_then(|thread| thread.join().map_err(|_| "crashed".to_owned()))
+            .and_then(|read| read.map_err(|error| error.to_string()));
+        let expected = if refused {
+            read.as_ref().is_err_and(|message| message.contains("deep"))
+        } else {
+            read == Ok(0.5)
+        };
+        assert!(expected, "{bodies} bodies, {callbacks} callbacks: {read:?}");
+    }
+}

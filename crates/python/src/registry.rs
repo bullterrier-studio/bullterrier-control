@@ -26,7 +26,6 @@ use bullterrier_control::formats::Event;
 use bullterrier_control::inputs::InputKind;
 use bullterrier_control::registry::{About, Call, Declared, Kind, Output, Registry, Returns, Thing};
 
-use crate::callback::Nested;
 use crate::data;
 use crate::error::{parameter_error, raised, unknown_name};
 use crate::formats::{PyEvent, PySeries, type_name};
@@ -322,7 +321,6 @@ fn body(
 ) -> impl Fn(&Call) -> Result<Output, Error> + Send + Sync + 'static {
     move |call| {
         Python::attach(|py| {
-            let _nested = Nested::enter(py)?;
             let mut arguments = call
                 .signals
                 .iter()

@@ -41,6 +41,7 @@ use recorded::Recorded;
 use rendered::Rendered;
 pub use rendered::Rendering;
 use series::SeriesNode;
+pub(crate) use walk::callback;
 
 /// How many nodes deep a signal's graph may be, counting the signal and its deepest input: reading and dropping a
 /// graph recurse this deep. An operator that would go deeper gives a signal refusing every read with

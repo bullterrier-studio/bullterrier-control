@@ -14,6 +14,7 @@ use super::{
 use crate::formats::Event;
 use crate::inputs::InputKind;
 use crate::params::{ParamTable, Values};
+use crate::signal::callback;
 use crate::{Error, Params, Signal};
 
 /// The body of a thing: called with a checked call and its parameters as the table read them.
@@ -222,7 +223,7 @@ impl Thing {
             inputs,
             returns,
         };
-        Self::checked(about, parts, Box::new(move |call, _| run(call)))
+        Self::checked(about, parts, Box::new(move |call, _| callback(|| run(call))))
     }
 
     /// What the Rust type `T` declares as a thing of `kind` called `name`.
