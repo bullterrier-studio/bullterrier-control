@@ -108,6 +108,7 @@ mod tests {
                 ("gate", Kind::Shaper),
                 ("hold", Kind::Shaper),
                 ("latch", Kind::Source),
+                ("noise", Kind::Source),
                 ("normalise", Kind::Operation),
                 ("quantize", Kind::Operation),
                 ("remap", Kind::Shaper),
