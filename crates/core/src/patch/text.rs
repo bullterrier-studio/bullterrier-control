@@ -1,11 +1,15 @@
-//! A patch's TOML text decoded into the entries [`Patch::parse`](super::Patch::parse) reads, in file order.
+//! A patch's TOML text: decoded into the entries [`Patch::parse`](super::Patch::parse) reads, in file order, and
+//! written from a patch ([`Patch::to_toml`](super::Patch::to_toml)). The one place that knows TOML's syntax.
+
+use std::fmt::Write as _;
 
 use serde_json::{Map, Number, Value};
 use toml::de::{DeTable, DeValue};
 
-use super::PatchError;
 use super::repr::cut;
+use super::{FORMAT, Given, Patch, PatchError, VERSION};
 use crate::formats::Problem;
+use crate::inputs::Input;
 
 /// A TOML text decoded: its top-level keys and values in file order, and a problem for each value TOML holds and a
 /// patch cannot (each such value is `null` in `entries`, so it is reported once, here).
@@ -113,4 +117,147 @@ fn json(path: &str, value: &DeValue<'_>, spoiled: &mut Vec<Problem>) -> Value {
         rule,
     });
     Value::Null
+}
+
+/// `patch` as TOML text that decodes and reads back as it, with the registry it holds the things of: the header,
+/// then each node in order (`use`, `signal`, its inputs in the order its thing declares them, its parameters in the
+/// order its table declares them), a blank line before each. A number is written as what it is (a decimal as a
+/// decimal, a whole number as a whole one), each decimal in the shortest form that reads back as the same bits.
+pub(super) fn write(patch: &Patch) -> String {
+    let mut text = format!("format = {}\nversion = {VERSION}\n", quoted(FORMAT));
+    for (name, node) in &patch.nodes {
+        let _ = write!(text, "\n[{}]\nuse = {}\n", key(name), quoted(node.uses()));
+        if let Some(reference) = &node.signal {
+            let _ = writeln!(text, "signal = {}", quoted(&reference.to_string()));
+        }
+        for (kind, given) in &node.inputs {
+            let value = match given {
+                Given::Data(input) => data(input),
+                Given::Reference(reference) => quoted(&reference.to_string()),
+            };
+            let _ = writeln!(text, "{} = {value}", key(kind.name()));
+        }
+        for param in node.thing.table().params() {
+            if let Some(value) = node.values.get(&param.name) {
+                let _ = writeln!(text, "{} = {}", key(&param.name), json_value(value));
+            }
+        }
+    }
+    text
+}
+
+/// `input` as a TOML value, in the shape a bundle writes it (`docs/formats.md`); a field that is not set is left out.
+fn data(input: &Input) -> String {
+    match input {
+        Input::Points(points) => list(points.iter().map(|point| {
+            table(&[
+                ("t", decimal(point.t)),
+                ("value", decimal(point.value)),
+                ("ease", quoted(&point.ease.to_string())),
+            ])
+        })),
+        Input::Events(events) => list(events.iter().map(|event| {
+            let mut fields = vec![("t", decimal(event.t())), ("strength", decimal(event.strength()))];
+            fields.extend(event.duration().map(|duration| ("duration", decimal(duration))));
+            fields.extend(event.label().map(|label| ("label", quoted(label))));
+            fields.extend(event.pitch().map(|pitch| ("pitch", decimal(pitch))));
+            table(&fields)
+        })),
+        Input::Grid(grid) => table(&[
+            ("beats", list(grid.beats().iter().copied().map(decimal))),
+            ("meter", grid.meter().to_string()),
+            ("first_downbeat", grid.first_downbeat().to_string()),
+        ]),
+        Input::Values(values) => list(values.iter().copied().map(decimal)),
+        Input::Series(series) => {
+            let mut fields = vec![
+                ("start", decimal(series.start())),
+                ("rate", decimal(series.rate())),
+                ("values", list(series.values().iter().copied().map(decimal))),
+                ("unit", quoted(series.unit().as_str())),
+            ];
+            fields.extend(series.scaling().map(|scaling| ("scaling", quoted(scaling))));
+            table(&fields)
+        }
+    }
+}
+
+/// `value` as a TOML value: a parameter's (a number, a switch or text), or anything JSON holds but `null`, which no
+/// patch holds (reading refuses it, a table never gives it) and TOML cannot write: it is written as `null`, which is
+/// not TOML, so that the text is refused when it is read rather than read as something else.
+fn json_value(value: &Value) -> String {
+    match value {
+        Value::Null => "null".to_owned(),
+        Value::Bool(switch) => switch.to_string(),
+        // a whole number's text is exact; a decimal's is written as `decimal` writes it
+        Value::Number(number) => match number.as_f64() {
+            Some(float) if number.is_f64() => decimal(float),
+            _ => number.to_string(),
+        },
+        Value::String(text) => quoted(text),
+        Value::Array(items) => list(items.iter().map(json_value)),
+        Value::Object(fields) => {
+            let fields: Vec<(&str, String)> = fields
+                .iter()
+                .map(|(name, value)| (name.as_str(), json_value(value)))
+                .collect();
+            table(&fields)
+        }
+    }
+}
+
+/// `number` (finite) as a TOML decimal: the shortest text that reads back as the same bits, always with a point or
+/// an exponent (`1.0`, `-0.0`, `1e-320`, `1e308`), never as a whole number.
+fn decimal(number: f64) -> String {
+    format!("{number:?}")
+}
+
+/// `items` as a TOML array on one line.
+fn list(items: impl Iterator<Item = String>) -> String {
+    format!("[{}]", items.collect::<Vec<_>>().join(", "))
+}
+
+/// `fields` as a TOML inline table on one line.
+fn table(fields: &[(&str, String)]) -> String {
+    if fields.is_empty() {
+        return "{}".to_owned();
+    }
+    let fields: Vec<String> = fields
+        .iter()
+        .map(|(name, value)| format!("{} = {value}", key(name)))
+        .collect();
+    format!("{{ {} }}", fields.join(", "))
+}
+
+/// `name` as a TOML key: bare when it may be (ASCII letters, digits, `_` and `-`), else quoted.
+fn key(name: &str) -> String {
+    let bare = !name.is_empty()
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-');
+    if bare { name.to_owned() } else { quoted(name) }
+}
+
+/// `text` as a TOML basic string: in double quotes, with the quote, the backslash and every control character TOML
+/// does not take as it is (all below U+0020 and U+007F) escaped; any other character as it is.
+fn quoted(text: &str) -> String {
+    let mut written = String::with_capacity(text.len() + 2);
+    written.push('"');
+    for character in text.chars() {
+        match character {
+            '"' => written.push_str("\\\""),
+            '\\' => written.push_str("\\\\"),
+            '\n' => written.push_str("\\n"),
+            '\t' => written.push_str("\\t"),
+            '\r' => written.push_str("\\r"),
+            '\u{8}' => written.push_str("\\b"),
+            '\u{c}' => written.push_str("\\f"),
+            '\u{0}'..='\u{1f}' | '\u{7f}' => {
+                let _ = write!(written, "\\u{:04X}", u32::from(character));
+            }
+            _ => written.push(character),
+        }
+    }
+    written.push('"');
+    written
 }

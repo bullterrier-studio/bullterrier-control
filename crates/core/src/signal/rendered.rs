@@ -4,9 +4,9 @@
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use super::Signal;
 use super::node::{Node, Read};
 use super::series::SAMPLE_ROUNDING;
+use super::{Origin, Signal};
 use crate::Error;
 
 /// Samples a first render makes at least, so that small reads share one render.
@@ -188,6 +188,10 @@ impl Node for Rendered {
 
     fn depth(&self) -> usize {
         self.depth
+    }
+
+    fn origin(&self) -> Origin<'_> {
+        Origin::Rendered
     }
 }
 

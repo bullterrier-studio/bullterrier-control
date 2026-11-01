@@ -2,8 +2,8 @@
 
 use std::fmt;
 
-use super::Signal;
 use super::node::{Node, Read};
+use super::{Origin, Signal};
 use crate::registry::Recipe;
 
 /// A signal as it is, with how the registry made it: it reads as `inner`. A read recurses through it into `inner`,
@@ -19,7 +19,7 @@ pub(crate) struct Recorded {
 impl Recorded {
     /// `inner` with `recipe`, and its depth.
     pub(crate) fn new(recipe: Recipe, inner: Signal) -> Self {
-        let through_inner = inner.0.depth() + usize::from(inner.0.recipe().is_some());
+        let through_inner = inner.0.depth() + usize::from(inner.recipe().is_some());
         let through_recipe = recipe.signal.as_ref().map_or(0, |signal| signal.0.depth() + 1);
         Self {
             depth: through_inner.max(through_recipe),
@@ -50,7 +50,7 @@ impl Node for Recorded {
         self.depth
     }
 
-    fn recipe(&self) -> Option<&Recipe> {
-        Some(&self.recipe)
+    fn origin(&self) -> Origin<'_> {
+        Origin::Thing(&self.recipe)
     }
 }

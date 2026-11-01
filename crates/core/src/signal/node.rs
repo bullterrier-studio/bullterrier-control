@@ -3,8 +3,8 @@
 use std::fmt;
 use std::sync::Arc;
 
+use super::Origin;
 use crate::Error;
-use crate::registry::Recipe;
 
 /// What a node's read gives: its error boxed, so a frame of a read (which recurses as deep as the graph) holds a
 /// pointer, not an [`Error`], for each `?`.
@@ -20,10 +20,8 @@ pub(crate) trait Node: fmt::Debug {
     /// recurse this deep, so `Signal` refuses to build a graph deeper than its `MAX_DEPTH`.
     fn depth(&self) -> usize;
 
-    /// How the registry made this node's signal, if it did: only a recorded node has a recipe.
-    fn recipe(&self) -> Option<&Recipe> {
-        None
-    }
+    /// How this node's signal was made; only a recorded node was made by a thing (and holds its recipe).
+    fn origin(&self) -> Origin<'_>;
 }
 
 /// The same value at every time.
@@ -35,8 +33,13 @@ impl Node for Constant {
         out.fill(self.0);
         Ok(())
     }
+
     fn depth(&self) -> usize {
         1
+    }
+
+    fn origin(&self) -> Origin<'_> {
+        Origin::Values
     }
 }
 
@@ -75,6 +78,10 @@ impl Node for FromFn {
     fn depth(&self) -> usize {
         1
     }
+
+    fn origin(&self) -> Origin<'_> {
+        Origin::Callback
+    }
 }
 
 /// A signal that cannot be read: every read is its error. What an operator gives where it cannot return an error.
@@ -88,5 +95,9 @@ impl Node for Refused {
 
     fn depth(&self) -> usize {
         1
+    }
+
+    fn origin(&self) -> Origin<'_> {
+        Origin::Operator // only an operator makes one
     }
 }

@@ -35,7 +35,7 @@ pub use error::Error;
 pub use params::{Choice, Params};
 pub use patch::Patch;
 pub use registry::{Operation, Registry, Shaper, Source};
-pub use signal::{FromValues, Interpolation, MAX_DEPTH, Rendering, Signal, maximum, minimum};
+pub use signal::{FromValues, Interpolation, MAX_DEPTH, Origin, Rendering, Signal, maximum, minimum};
 
 /// The signal the shaper called `name` of [`Registry::builtin`] makes of `input` with `params` (an object of the
 /// shaper's parameters by name; one left out takes its default): its [`Thing::call`](registry::Thing::call).
