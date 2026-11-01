@@ -25,6 +25,7 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | R3 | Rust core: the signal graph | L | done |
 | R4a | Rust core: the inputs; pydantic leaves | S | done |
 | R4b | Rust core: registry, `lib`, patches | M | done |
+| R4c | Rust core: the graph walks by loop, not recursion | S | done |
 | R5 | Rust core: the built-in sources, shapers and operations | L | |
 | R6 | Rust core: cleanup, the public crate | S | |
 | C5 | First release (after R6: it ships the Rust core) | S | |
@@ -185,14 +186,17 @@ The Python suite runs unchanged against the Rust core throughout.
   read, built and sampled with no Python (the `toml` crate), and a graph made through the registry saves as a patch
   (`Patch.from_signals`, `to_toml`, `save`). `gen_api` reads ranges from the core's table. Decisions and accepted
   differences: [design-decisions.md](design-decisions.md), "The registry and patches in Rust".
+- **R4c Iterative walk (done).** A graph is read and dropped by loops on the heap, not by recursion, so `MAX_DEPTH` (1000)
+  bounds memory and time, not stack, on every target; callbacks nested more than 48 deep per thread are refused; the
+  smallest supported thread stack is 256 KiB. Decisions and numbers: [design-decisions.md](design-decisions.md), "The graph
+  walks by loop, not recursion (batch R4c)".
 - **R5 Built-ins.** Every other source, shaper and operation ported (17). R4 leaves it: `Source` and `Shaper` with input
   data (`type Inputs`, and the `lib::` signature of a source with inputs: api.md rule 2) for `envelope`, `lfo`, `keyframes`,
   `latch`, `steps` and `hold`; the `PARAMS` list beside the registration (all 21 declared, four run) and the
   hand-kept pins in `builtin.rs`, to derive; then `Params.__getattr__` goes (no Python body is left to read a field);
   bundle-built graphs (`series.<name>`) cannot be saved, which a source that reads a series would fix.
 - **R6 Cleanup.** No Python duplicate left, crate documentation, final speed and memory measured against R0's baseline
-  (R4b measured no slowdown of the slews; a Python-bodied built-in call is about 3 µs slower until R5), the debug-build
-  stack depth of a 1000-node chain read.
+  (R4b measured no slowdown of the slews; a Python-bodied built-in call is about 3 µs slower until R5).
 
 ## R0.5 Code-first API (done)
 

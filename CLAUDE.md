@@ -192,7 +192,11 @@ a `lib::` function) checks, runs, names and records the recipe (`Signal::recipe`
 `PARAMS` and registers those whose code (not a comment or a string) has such an `impl` in `Registry::builtin()` (a
 source is also a `lib::` function). A signal is `Arc<dyn Node>` with `Node`
 sealed; code outside the crate adds nodes with `Signal::from_fn` and `Signal::rendered`; no Rust lock is held while a
-callback into Python runs. No hidden tunables (rule 5): a number is a `Params`
+callback into Python runs. A node implements `start` and `finish` and never reads an input itself: the one loop in
+`signal/walk.rs` does (a scan test fails otherwise), and drops go through a per-thread queue, so a graph of any depth
+(`MAX_DEPTH`, 1000, a memory bound) is read and dropped on any stack. Callbacks (`from_fn`, `run`, a Python `compute`
+or body) are the one recursion and are capped at 48 nested per thread (`Error::Depth`); the smallest supported thread
+stack is 256 KiB. `Signal`'s `Debug` prints a node label and the depth only (`Node::label`). No hidden tunables (rule 5): a number is a `Params`
 field, trivial, or a cited constant. No `unwrap`, `expect`, `panic!`, `todo!` or printing (clippy fails them): return an
 `Error`; an error in the core is a bug in the caller, mapped to `ValueError`. `pub` only for what the bindings use, else
 `pub(crate)`. A NaN in the input comes through (`sample` reports it as `SignalError`); the kernel never panics on it. A

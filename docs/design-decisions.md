@@ -614,14 +614,12 @@ Rulings:
   the graph is Rust. A shaper is called through `bullterrier_control::shape(name, &Signal, &Value)`; Python calls one through the registry.
 
 Design:
-- **`MAX_DEPTH = 1000`.** A graph deeper than this is `Error::Signal` (an operator past it gives a signal that refuses
-  every read). *Reason:* reading and dropping a graph recurse; 1000 levels measured at about 380 KB of stack in a debug
-  build (a 2 MiB thread) and 80 KB in release (wasm's 1 MiB). A longer sum is a balanced tree. A callback node counts as
-  depth 1.
-- **Nested Python callbacks are capped at 100 per thread** (`SignalError`). *Reason:* a `compute` that reads its own
-  signal would recurse through Rust and Python until the stack ends; about 2.5 KB of stack a level was measured. The cap
-  does not bound the product of the two limits (100 Python levels, each over a Rust graph up to 1000 deep, can exceed a
-  2 MiB stack), and Python-owned reference cycles that pass through a Rust graph (`self.x = self + 1`) are not collected.
+- **`MAX_DEPTH = 1000`.** A graph deeper than this is `Error::Depth` (an operator past it gives a signal that refuses
+  every read). *Reason:* a bound on the memory and time of one read, not on stack ("The graph walks by loop, not
+  recursion (batch R4c)"). A longer sum is a balanced tree. A callback node counts as depth 1.
+- **Nested callbacks are capped at 48 per thread** (`SignalError` in Python), whatever kind ("The graph walks by loop, not
+  recursion (batch R4c)"). Python-owned reference cycles that pass through a Rust graph (`self.x = self + 1`) are not
+  collected.
 - **GIL and lock rule.** `sample` releases the GIL, so a pure-Rust read lets other Python threads run. No Rust lock is
   held while calling Python: a `Rendered` locks briefly to clone or install its history, and renders (which may call
   Python) outside the lock. Two reads that need more history both render; the longer result is kept. *Cost:* duplicate
@@ -815,6 +813,52 @@ Cost: ten independent slews through the registry take the same time as before R4
 the first run of a process); a `lib.slew` call costs 2.2 µs (it was 5.0 µs), a cached read 2.0 µs, parsing a 100-node
 patch 0.4 ms (it was 2.1 ms). A Python-bodied built-in call costs about 3 µs more than before (it goes through the Rust
 door and back); the 17 that remain in Python are ported in R5.
+
+## The graph walks by loop, not recursion (batch R4c)
+
+- **The problem.** A graph is read and dropped by recursion, and `MAX_DEPTH`, a limit in nodes, was a promise about bytes of
+  stack: the cost of a level was about 80 B for a sum in a release build, 380 B in a debug build.
+  A chain of 999 slews crashed a 256 KiB thread, and a debug build overflowed a 2 MiB one on 1000. The same limit meant a
+  different number of bytes on every target and build.
+- **A node reads in two steps, one loop reads the inputs.** A node has `start(times, out)`, which writes its values or names
+  the inputs it needs (`Next`), and `finish(times, inputs, out)`, which combines them. `walk::read`
+  (`crates/core/src/signal/walk.rs`) is the only code that reads an input: a depth-first loop over three stacks on the heap
+  (frames, grids, buffers), reading, rendering and allocating in the order the recursive read did. The values are bit for bit
+  the old ones (a differential over 2000 seeded graphs, every node kind, compared the bits of every value). A scan test
+  (`signal/walked.rs`) fails if any other file under `signal/` names a read of a signal, or an `impl Node` sits in a file it
+  does not scan, because exposing only `start` and `finish` does not stop a node holding a `Signal` and calling it.
+- **A drop is a loop too.** Every last handle of a node goes to a per-thread queue: the first drop on a thread runs the loop,
+  and a drop inside it only queues. The queue is a `const` thread local in `ManuallyDrop` with no destructor, so it is never
+  torn down: a graph another thread local holds is still dropped by the loop when the thread ends, whichever goes first (the
+  first cut recursed there: 999 sums on a 64 KiB thread died in a thread-local destructor). A second thread local frees the
+  queue's buffer at thread end. No node declares what it holds, so none can declare it wrongly.
+- **Not `stacker`** (grow the stack on demand). *Reason:* it needs a C compiler and assembler at build time, brings 7 crates,
+  was unverified on Windows and Linux, drops CPython 3.14's stack guard on the segments it grows, and cannot grow on
+  wasm32 (a graph trapped at about 4,400 deep in node). Its cost, measured in the same harness: a read 2.7 ns a node more
+  (as the loop's), a drop 26 to 80% more (the loop's is about the old).
+- **Not a per-node stack budget** (count each node by its weight). *Reason:* it is a table of measured weights per target,
+  right until a node or a compiler changes.
+- **The one cap that remains: callbacks.** A `from_fn`, a recurrence's `run`, a thing's body, and so a Python `compute`,
+  `run` or body, is user code that may read a signal or call a thing: a new walk on the thread's stack, with user frames
+  between two levels, which no loop can take over. Callbacks nested more than 48 deep on a thread, of every kind together,
+  are refused with `Error::Depth` (`SignalError` in Python). The count stands for bytes: measured in a release build on
+  macOS arm64, a level takes about 815 B for a Rust `from_fn`, 3,150 B for a Python `compute` and 4,000 B for a Python
+  body, and a thread needs about 8 KiB before the first, so 8 KiB + 48 x 4,000 B = 196 KiB fits 256 KiB with about 60 KiB for
+  the caller. 64 levels left 6 KiB. Not measured on Linux or Windows; a callback that recurses through C (a deep `repr`,
+  numpy internals) takes more a level and is not covered.
+- **The smallest supported thread stack is 256 KiB.** A Python thread on macOS gets 512 KiB by default. musl's 128 KiB is not
+  supported: nested Python callbacks do not fit 128 KiB or 64 KiB (64 nested crashed both). Graphs of Rust nodes (a sum, a
+  slew) walk on 32 KiB.
+- **`MAX_DEPTH` stays at 1000 as a time and memory bound.** A read holds a frame (64 B for a sum) for each node on the way
+  down, and a recurrence a grid and a buffer of at least 1024 samples each; a 100,000-deep chain of slews takes 1.7 GB
+  (16.9 KB a level). The limit was raised to 100,000 for the experiment only, on a 64 KiB thread: sums, recurrences and
+  slews read and dropped. On wasm32 a graph of Rust nodes needs no depth budget (99,999 sums read and dropped in node);
+  only the callback cap applies, the same on every target.
+- **Cost against the recursive read** (release, macOS arm64, median of 15 interleaved runs at a load near 6 to 8; runs at
+  higher load discarded): a read costs about 2.7 ns a node more (100 sums at one time: 615 to 884 ns; at 1000 times,
+  +3%); a drop +16% for one sum, +30% for 10, -9% for 100; a Python compute read, noise to +5%; on wasm a read of 10 to 100 nodes about
+  twice. Not measured on a quiet machine since the drop queue took every last handle, nor with many threads dropping at once.
+- The wheel check of the deepest chains on a 256 KiB thread is in "Resource gates (R4c, owner, 2026-11-01)".
 
 ## Resource gates (R4c, owner, 2026-11-01)
 

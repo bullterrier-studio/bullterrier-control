@@ -61,7 +61,9 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
    every public item, and carries these examples as doctests.
 10. **Concurrency** (implemented): no hand-written atomics. The only shared mutable state is the history cache of a
     stateful signal. A Rust lock is never held while calling into Python. A graph is at most `MAX_DEPTH` (1000) nodes
-    deep.
+    deep (a bound on memory and time: reading and dropping loop, whatever the thread's stack). Callbacks (`from_fn`, a
+    recurrence's `run`, a thing's body, a Python `compute`) nested more than 48 deep on a thread are refused
+    (`SignalError`); the smallest thread stack supported is 256 KiB.
 
 ## 1. A curve from measured values
 
