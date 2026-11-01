@@ -100,10 +100,12 @@ mod tests {
             things,
             [
                 ("beats", Kind::Operation),
+                ("clip", Kind::Shaper),
                 ("constant", Kind::Source),
                 ("delay", Kind::Shaper),
                 ("every", Kind::Operation),
                 ("follow", Kind::Shaper),
+                ("gate", Kind::Shaper),
                 ("hold", Kind::Shaper),
                 ("latch", Kind::Source),
                 ("normalise", Kind::Operation),
