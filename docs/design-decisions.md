@@ -878,15 +878,6 @@ door and back); the 17 that remain in Python are ported in R5.
 - **`Signal::retimed(map)`** reads its input at the times `map` gives. `delay` and `hold` are built on it. *Reason:* a
   `from_fn` reading its input is a nested walk, capped at 48; `retimed` hands the times to the one loop, so its `map` is a
   callback that reads no signal and a chain of 999 delays reads.
-- **`Signal::mapped(f)`** replaces each value by `f(value)` at the same times. `remap` is built on it, its ease parsed
-  once when the shaper is made. *Reason:* the walk reads the input in place and `f` runs over it, so a chain of 999
-  reads on a small stack. `f` is still counted as a callback (once a read): it may read a signal it holds, a walk of
-  its own; uncounted, 100 000 such nested reads overflowed a 256 KiB stack.
-- **A callback's core error reaches the reader as it is.** `Signal::from_fn`, `retimed` and `rendered` return a core
-  `Error` a callback fails with unwrapped (`Error::from_callback`); any other error is the source of an `Error::Node`.
-  *Reason:* the kind is decided where the error is made. `noise` refuses a time too far for its position with
-  `Error::Signal`, which the Python `noise` raised as `SignalError`; wrapped as a `Node` it reached Python as a
-  `ValueError`, and the bindings would have had to look inside every `Node` to put it right.
 - **libm for exp.** `follow` calls `libm::exp` (the `libm` crate, MIT, pure Rust, pinned exact), not std's. *Reason:*
   std's `exp` calls the platform's math library, so the same signal could differ by an ulp between targets (rule 6
   allows float tolerance across platforms, but the core's easing and hashing already give the same bits everywhere, and a
@@ -902,6 +893,45 @@ door and back); the 17 that remain in Python are ported in R5.
 - **A retiming adds 2 samples per read time to `MOST_HELD`** (2^26 across stacked shapers), which the Python `compute`
   bodies never counted. 3 600 000 times through 9 delays read; through 10, `SignalError`. *Reason:* the R4c rule applied
   to memory always allocated, now counted. Intended.
+
+## The last built-ins in Rust (batch R5b)
+
+`clip`, `gate`, `remap`, `noise`, `steps`, `keyframes`, `lfo` and `envelope` run in Rust: all 21 built-ins. The Python
+`builtin` package is left empty, for R5c to delete with its entry point.
+
+- **`Signal::mapped(f)`** replaces each value by `f(value)` at the same times. `remap` is built on it, its ease parsed
+  once when the shaper is made. *Reason:* the walk reads the input in place and `f` runs over it, so a chain of 999
+  reads on a small stack. `f` is still counted as a callback (once a read): it may read a signal it holds, a walk of
+  its own; uncounted, 100 000 such nested reads overflowed a 256 KiB stack.
+- **A callback's core error reaches the reader as it is.** `Signal::from_fn`, `retimed` and `rendered` return a core
+  `Error` a callback fails with unwrapped (`Error::from_callback`); any other error is the source of an `Error::Node`.
+  *Reason:* the kind is decided where the error is made. `noise` refuses a time too far for its position with
+  `Error::Signal`, which the Python `noise` raised as `SignalError`; wrapped as a `Node` it reached Python as a
+  `ValueError`, and the bindings would have had to look inside every `Node` to put it right.
+- **`lib::` for a source with several inputs** (`steps`: `values`, optional `grid`): `type Inputs` is a struct whose
+  field names are the input kinds (`build.rs` refuses another name), and its `lib::` function takes them in rule 2's
+  order. *Reason:* one rule for one input or several, and the names a patch uses.
+- **Empty data is refused when made.** `steps` without values and `keyframes` without points are refused by the
+  trait call itself, not only by the door's input check. *Reason:* a direct `Source::source` call skips the door, and
+  an empty slice must not reach an index. Parameters outside their table stay a caller's precondition on a direct call.
+- **One `cadence::Per`** (`second` or `beat`) for `steps` and `lfo`: one choice, so their schema and `help()` cannot
+  drift.
+- **libm for `sin` and `exp`.** `lfo` calls `libm::sin`, `envelope` `libm::exp`, as `follow` does. *Reason:* the same
+  bits on every target. The cost, against the numpy bodies: `libm::sin` and `np.sin` differ by 1 ulp of sin at 4 % of
+  arguments, each the correctly rounded one about half the time; `libm::exp` and `np.exp` differ by 1 ulp at 10 %, and
+  there numpy's is the closer in 99 % (numpy's is near-correctly rounded here, libm's faithful). Both stay within rule
+  6's float tolerance.
+- **`envelope` drops two clamps** (`max(since - attack, 0)` and `max(since - end, 0)`): numpy's `where` evaluates both
+  branches and needed them; Rust evaluates only the taken one, where the difference is already at least +0.0.
+- **Ported against the Python bodies** (the harness of R5a): `clip` 371 cases, `gate` 387, `remap` 483, `noise` 518 and
+  `keyframes` 435 bit-identical; `steps` 419 identical and 3 that differ in wording only; `lfo` 999: 872 identical, 3
+  wording, 124 sine cases whose outputs differ by `libm::sin` alone (in the wave 0.5 + 0.5 sin at most 1.11e-16);
+  `envelope` 586: the 187 linear cases identical, 108 exponential ones differing by `libm::exp` alone (1 to 3 ulp, at
+  most 2.3e-13 on a sum of 20 000 events). Each explained difference was reproduced by the old formula with the libm
+  function swapped in, bit for bit. `follow` differs from its R4b body in 7 of 320 cases, by the R5a `libm::exp`.
+  `clip`'s cases fed by an envelope now differ by that `exp` too (10 of 371). No sign of zero differs.
+- **Wording:** a `per = "beat"` without a grid now names the thing (`source 'lfo': lfo: per: 'beat' needs a grid`, was
+  `cadence: per: ...`); the type (`ParameterError`) and the path (`per`) are unchanged.
 
 ## Resource gates (R4c, owner, 2026-11-01)
 

@@ -27,8 +27,8 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | R4b | Rust core: registry, `lib`, patches | M | done |
 | R4c | Rust core: the graph walks by loop, not recursion | S | done |
 | R5a | Rust core: inputs on every kind; nine built-ins with data | M | done |
-| R5b | Rust core: the eight built-ins left in Python | M | |
-| R5c | Rust core: derive the hand-kept lists; Python's last field reader goes | S | |
+| R5b | Rust core: the eight built-ins left in Python | M | done |
+| R5c | Rust core: derive the hand-kept lists; the empty Python `builtin` package goes | S | |
 | R6 | Rust core: cleanup, the public crate | S | |
 | C5 | First release (after R6: it ships the Rust core) | S | |
 
@@ -197,11 +197,16 @@ The Python suite runs unchanged against the Rust core throughout.
   `every`, `thin`, `shift`, `beats`, `quantize` and `normalise` run in Rust (13 of 21), each bit-identical to its old
   Python body in a differential harness. Decisions: [design-decisions.md](design-decisions.md), "Built-ins with data in Rust
   (batch R5a)".
-- **R5b The rest.** `clip`, `gate`, `remap`, `noise`, `steps`, `keyframes`, `lfo` and `envelope` ported; `lib::` for a
-  source whose inputs are a struct of several (`steps`).
-- **R5c Derived lists.** The `PARAMS` list beside the registration and the hand-kept pins in `builtin.rs`, derived; then
-  `Params.__getattr__` goes (no Python body is left to read a field); bundle-built graphs (`series.<name>`) cannot be
-  saved, which a source that reads a series would fix.
+- **R5b The rest (done).** `clip`, `gate`, `remap`, `noise`, `steps`, `keyframes`, `lfo` and `envelope` run in Rust
+  (all 21), each matching its old Python body in the differential harness; `Signal::mapped`; `lib::` for a source whose
+  inputs are a struct of several (`steps`); `sin` and `exp` are `libm`'s. The Python `builtin` package is left empty.
+  Decisions: [design-decisions.md](design-decisions.md), "The last built-ins in Rust (batch R5b)".
+- **R5c Cleanup.** The `PARAMS` list beside the registration and the hand-kept pins in `builtin.rs` (and the lists of
+  "Adding a source or shaper", step 1, in CLAUDE.md), derived. The empty Python `builtin` package goes with its entry
+  point, its import-linter contracts, `Params(builtin=...)` and `Params.__getattr__` (no Python body is left to read a
+  field). The Python helpers no built-in uses any more (`counter`, `Positions`, `between`, `plugin.matching`): kept as
+  author API or removed. Bundle-built graphs (`series.<name>`) cannot be saved, which a source that reads a series would
+  fix.
 - **R6 Cleanup.** No Python duplicate left, crate documentation, final speed and memory measured against R0's baseline
   (R4b measured no slowdown of the slews; a Python-bodied built-in call is about 3 µs slower until R5).
 

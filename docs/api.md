@@ -10,8 +10,7 @@ to. Implemented: the formats (`Event::new`, `Series::new`, `Grid::new`, `Bundle:
 `minimum`, `from_fn`, `rendered`), the inputs (R4a: `InputKind::check`, `Input::from_*`, `Keyframe`, `matching`), the registry and its traits (R4b:
 `Registry`, `Thing`, `Source`, `Shaper`, `Operation`, `Signal::pipe`, `Signal::recipe`; R5a: `type Inputs` on all three
 kinds, `Signal::pipe_with`), patches (R4b: `Patch::from_toml`,
-`build`, `from_signals`, `to_toml`), the built-ins the core runs (R4b, R5a: the sources `constant` and `latch`, the shapers `slew`, `follow`, `delay`
-and `hold`, the operations `select`, `every`, `thin`, `shift`, `beats`, `quantize` and `normalise`) and the primitives (`Ease`, `hashing::uniform`,
+`build`, `from_signals`, `to_toml`), the built-ins (R4b, R5a, R5b: all 21, with `Signal::retimed` and `Signal::mapped`) and the primitives (`Ease`, `hashing::uniform`,
 `scaling::between`, `rounding`, `cadence::positions`). Their rustdoc examples (`crates/core/src/`) run with
 `cargo test --doc -p bullterrier-control`.
 
@@ -116,8 +115,8 @@ glow.sample([0.0, 0.05, 0.1, 0.2, 0.3, 1.0])  # climbs 5 a second, falls 2 a sec
 ```
 
 ```rust
-// `slew` and `follow` are implemented (`Signal::slew`, `Signal::follow`); `clip` comes with R5b
-use bullterrier_control::builtin::slew;
+// implemented (`Signal::slew`, `Signal::clip`)
+use bullterrier_control::builtin::{clip, slew};
 
 let glow = energy
     .slew(slew::Params { rise: 0.2, fall: 0.5, ..Default::default() })?
@@ -254,7 +253,7 @@ louder.sample([0.5, 1.2, 2.5])  # the flare while it is above the ramp (1, e^-0.
 ```
 
 ```rust
-// implemented, for any signals (`lfo` and `envelope` come with R5b)
+// implemented, for any signals
 use bullterrier_control::maximum;
 
 let look = &flare * 0.5 + &lfo * 0.25;
