@@ -337,17 +337,26 @@ golden file, sleep, mock of our own code) is worse than none: delete it. Reviewe
   largest strength; a gate's output is two-valued; a slew-limited signal never moves faster than its limit; reading at time t
   twice gives the same value.
 - Expected values come from an independent oracle (standard, hand computation, brute-force reference), never the code's formula.
-- A test that builds chains or graphs bounds their size; the core's test binary caps its memory at 4 GiB (an allocation past
-  it aborts the run).
+- A test that builds chains or graphs bounds their size; `poe rust-test` runs every Rust test binary and doctest under the
+  memory cap of `tools/run_capped.py`, not an allocator in the binary.
 - Every checker/validator gets a known-good and a known-bad input. Seeds pin determinism. No sleeps, live network or wall-clock
   assertions.
-- Proptest's `crates/core/proptest-regressions/` files are committed: each is a seed that replays a failure found once,
-  not a golden output.
+- Proptest's regression files (`crates/core/proptest-regressions/`, and `crates/core/tests/proptest-regressions/` for the
+  tests of `tests/it/`, one file per module) are committed: each is a seed that replays a failure found once, not a golden
+  output.
 - Tests run in random order (pytest-randomly; rerun with `-p randomly --randomly-seed=N`, disable with `-p no:randomly`); none
   may depend on another.
 - **Mutation-check your tests:** break the code on purpose (a sign, a boundary, an ignored argument) and see a test fail.
   Surviving mutants on core behaviour are review findings. Use `PYTHONDONTWRITEBYTECODE=1` and clear `__pycache__` between mutants.
 - Refactors prove behaviour is preserved by comparing outputs before and after, in the report, not committed.
+
+**Rust tests: one binary, black-box by default.** A test goes in `crates/core/tests/it/` (one integration binary: `main.rs`,
+a `mod` per area, helpers in `common/`) and uses `bullterrier_control::..` public paths only. It stays inline (`#[cfg(test)]`
+next to its code) only when no public route reaches what it checks: a private kernel (`slew::run`) or a `pub(crate)` item.
+Never widen an item to `pub`, or change visibility, to move a test out. Architecture scans (`tests/it/architecture.rs`) read
+`src/` through `CARGO_MANIFEST_DIR`. A file `tests/<name>.rs` is another binary: only with a reason in `pyproject.toml`
+(`rust-test-layout` gate). Run one area `cargo test -p bullterrier-control --test it signal::`, one inline test
+`cargo test -p bullterrier-control --lib builtin::slew::`.
 
 **Tests describe behaviour, not implementation:** they must survive any behaviour-preserving refactor.
 - Never import underscore names, read production constants or private attributes, or call private functions. Worth testing means

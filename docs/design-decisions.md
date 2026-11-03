@@ -789,7 +789,7 @@ Rulings:
   requires its registry, and Python's `Patch.from_signals(signals)` passes the package's. *Reason:* a `params` and a `table`
   that disagree registered silently, and a default registry names the wrong one for every plugin.
 - **The privacy rule.** The `patch` module names only public items of the other modules, checked by a scan of its source
-  (`patch/privacy.rs`, with known-bad rows), and Python's `patch` imports only `registry`, `formats`, `errors` and `_native`
+  (`tests/it/architecture.rs`, with known-bad rows), and Python's `patch` imports only `registry`, `formats`, `errors` and `_native`
   (an import contract). *Reason:* API first: a patch that needed an internal would show the public API is not enough. Cost:
   two small helpers are repeated in the patch module (quoting a value, writing the problems), and the scan sees paths, not
   methods.
@@ -826,7 +826,7 @@ door and back); the 17 that remain in Python are ported in R5.
   (`crates/core/src/signal/walk.rs`) is the only code that reads an input: a depth-first loop over three stacks on the heap
   (frames, grids, buffers), reading, rendering and allocating in the order the recursive read did. The values are bit for bit
   the old ones (a differential over 2000 seeded graphs, every node kind, compared the bits of every value). A scan test
-  (`signal/walked.rs`) fails if any other file under `signal/` names a read of a signal, or an `impl Node` sits in a file it
+  (`tests/it/architecture.rs`) fails if any other file under `signal/` names a read of a signal, or an `impl Node` sits in a file it
   does not scan, because exposing only `start` and `finish` does not stop a node holding a `Signal` and calling it.
 - **A drop is a loop too.** Every last handle of a node goes to a per-thread queue: the first drop on a thread runs the loop,
   and a drop inside it only queues. The queue is a `const` thread local in `ManuallyDrop` with no destructor, so it is never
@@ -973,10 +973,9 @@ script or a note does not run for the next contributor.
   its inputs, so a derive over any type holding a signal (`Recipe`, `Output`) is bounded per level. Before, each node wrote
   its own, and one printing its signals doubled per level. Test: the deepest chain of every node kind formats in at most 48
   bytes a level.
-- **The core's test binary caps its memory at 4 GiB.** Its global allocator (`#[cfg(test)]`) is the `cap` crate's, a
-  dev-dependency (MIT OR Apache-2.0, no dependencies, one file), so the core keeps `forbid(unsafe_code)`; an allocation past
-  the cap is refused, which aborts the binary ("memory allocation of N bytes failed"). A whole run peaks near 140 MB. Test:
-  the binary runs itself with the cap lowered to 64 MiB in the child, which asks for twice that.
+- **Rust tests run under `tools/run_capped.py`, not an allocator in the binary.** `poe rust-test` caps the memory of the
+  whole process group, so every binary and doctest is covered (the `cap` allocator covered the core's unit tests only) and the
+  core needs no dev-dependency for it. A whole run peaks near 140 MB; the runner's tests kill a known-bad allocation.
 - **The installed wheel walks the deepest chains on a 256 KiB thread.** `tools/check_installed.py`, run by CI's `build` on
   every platform's wheel and on the sdist, grows each chain of `CHAINS` to the deepest the package accepts and walks it on a
   thread of 256 KiB, each in its own Python, so a crash is a failure naming the chain; `tests/test_depth_stack.py` runs the
@@ -987,5 +986,12 @@ script or a note does not run for the next contributor.
   gate on contents just checked, and a slow loop gets worked around. *Consequence:* nothing is skipped that was not
   checked; an edit, a commit during the run or any uncommitted file means no record, and CI checks everything again.
   *Not seen by the record:* state outside the tree (installed cargo tools, the advisory database, the built extension).
-- **Not guarded:** doctests (binaries of their own) and the test binaries of the bindings and macros crates (uncapped), and
-  memory on the Python side (no incident yet: a watchdog comes the day one happens).
+- **Not guarded:** memory on the Python side (no incident yet: a watchdog comes the day one happens).
+- **The core's tests are one integration binary, black-box by default** (2026-11-03). Every `tests/*.rs` is an executable of its
+  own, which macOS scans on first launch (12 s measured, more under load), so `tests/it/main.rs` holds a module per area and
+  `rust-test-layout` fails on a stray binary. A test is in `tests/it/` unless no public route reaches what it checks (a
+  private kernel such as `slew::run`, a `pub(crate)` item): then it stays inline. *Reason:* a test through the public
+  contract survives a refactor of the internals, and widening an item to `pub` to move a test out would make the API
+  larger for the tests' sake. *Cost:* a helper two sides need (`check_problems`) exists twice, `formats/test_support.rs` for
+  the inline tests and `tests/it/common/problems.rs`; proptest keeps the seeds of a moved test in
+  `tests/proptest-regressions/`.
