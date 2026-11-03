@@ -143,9 +143,11 @@ rust-deny = { cmd = "cargo deny --offline --locked check bans licenses sources",
 # The core is pure Rust so that it also runs in a browser (WebAssembly): only the core crate, which has no Python in it
 rust-wasm = { cmd = "cargo check -p bullterrier-control --target wasm32-unknown-unknown --locked --quiet", help = "Check that the core builds for the browser (wasm32-unknown-unknown)" }
 stubtest = { cmd = "uv run python -m mypy.stubtest --mypy-config-file pyproject.toml bullterrier_control._native._core", help = "Check the stub _core.pyi against the built extension" }
-rust-test = { cmd = "cargo test --workspace --locked --quiet", help = "Run the Rust tests" }
+rust-test = { cmd = "uv run python tools/run_capped.py -- cargo test --workspace --locked --quiet --no-fail-fast", help = "Run the Rust tests under the memory cap, every binary even after one fails" }
+# A crate's Rust integration tests are one binary (tests/it/main.rs); tools/check_rust_test_layout.py, the table [tool.rust-tests.own-binaries]
+rust-test-layout = { cmd = "uv run python tools/check_rust_test_layout.py", help = "Check that the Rust integration tests are one binary per crate (tests/it/)" }
 dead-code = { cmd = "vulture src", help = "Find dead code in src (vulture)" }
-check = { sequence = ["uv run python tools/pre_push.py start", "ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, { ref = "lint-workflows" }, { ref = "dead-code" }, { ref = "rust-doc" }, "deptry .", { ref = "rust-tools" }, { ref = "rust-shear" }, { ref = "rust-deny" }, { ref = "rust-wasm" }, { ref = "build-check" }, "mypy", { ref = "stubtest" }, { ref = "rust-test" }, { ref = "test" }, "uv run python tools/pre_push.py pass"], default_item_type = "cmd", help = "The full gate, Python and Rust (format, lint, workflows, dead code, docs, dependencies, distributions, types, tests); stops at the first failure; a pass on a clean tree is remembered, so pushing exactly that tree does not repeat it" }
+check = { sequence = ["uv run python tools/pre_push.py start", "ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, { ref = "lint-workflows" }, { ref = "dead-code" }, { ref = "rust-doc" }, "deptry .", { ref = "rust-tools" }, { ref = "rust-test-layout" }, { ref = "rust-shear" }, { ref = "rust-deny" }, { ref = "rust-wasm" }, { ref = "build-check" }, "mypy", { ref = "stubtest" }, { ref = "rust-test" }, { ref = "test" }, "uv run python tools/pre_push.py pass"], default_item_type = "cmd", help = "The full gate, Python and Rust (format, lint, workflows, dead code, docs, dependencies, distributions, types, tests); stops at the first failure; a pass on a clean tree is remembered, so pushing exactly that tree does not repeat it" }
 # Redraw the gallery (docs/gallery/ and docs/gallery.md) from the patches in examples/gallery/; needs matplotlib (uv sync)
 gallery = { cmd = "uv run python tools/gallery.py", help = "Redraw docs/gallery/ and docs/gallery.md from examples/gallery/" }
 # Rewrite lib.pyi and _chain.py (the typed functions of `lib`, the chain methods of `Signal`) from the built-ins;
@@ -165,6 +167,15 @@ types = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "c
 header-max-length = 72
 body-max-line-length = 100
 scope-pattern = "^[a-z0-9][a-z0-9/_-]*$"
+
+# Read by tools/run_capped.py: the memory cap (MB, summed over a command's whole process group) the poe tasks that run
+# tests go through, so a runaway test fails the gate instead of freezing the machine
+[tool.run-capped]
+cap-mb = 4000
+
+# Read by tools/check_rust_test_layout.py: the Rust test files that are binaries of their own (path -> why they need a
+# process to themselves). Empty: every integration test is a module of tests/it/.
+[tool.rust-tests.own-binaries]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
