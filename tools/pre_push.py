@@ -16,18 +16,26 @@ A gate that already passed on exactly the pushed tree is not repeated. `uv run p
 tree of `HEAD` in the git folder (never committed) only if the working tree was clean and `HEAD`'s tree was the same at
 both moments, so the record names contents that were checked in full. A push whose tip has that tree skips the gate;
 any other tree runs it. CI checks everything again.
+
+One gate runs per checkout: `start` also records the PID of the `poe` process running the gate, and refuses to begin
+while a live `poe` process holds that record (two gates in one checkout share its build folder and double the memory
+they take). A record left by a gate that died names a dead process, or one that is no longer `poe`, and is ignored.
+Where `ps` is missing (Windows) nothing is recorded and nothing is refused.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
 
-STARTED, PASSED = (
+STARTED, PASSED, RUNNING = (
     "gate-started",
     "gate-passed",
-)  # files in the git folder: the tree a running gate began on, the tree that passed
+    "gate-running",
+)  # files in the git folder: the tree a running gate began on, the tree that passed, the PID of the `poe` running one
+POE = re.compile(r"\bpoe(thepoet)?\b")
 
 
 def must_run(remote_ref: str) -> bool:
@@ -73,10 +81,40 @@ def _clean_tree() -> bool:
     return _git("status", "--porcelain") == ""
 
 
+def _process(pid: int) -> tuple[int, str] | None:
+    """(parent PID, command line) of process `pid`, None when it is not running."""
+    row = subprocess.run(  # noqa: S603  fixed argv; the PID is a number
+        ["ps", "-o", "ppid=,command=", "-p", str(pid)],  # noqa: S607  ps is a system tool
+        capture_output=True,
+        encoding="utf-8",
+        check=False,
+    ).stdout.split(None, 1)
+    return (int(row[0]), row[1]) if len(row) == 2 else None
+
+
+def _gate_owner() -> int | None:
+    """The PID of the `poe` process running this step: the nearest ancestor whose command line names poe."""
+    pid = os.getppid()
+    while (found := _process(pid)) is not None:
+        if POE.search(found[1]):
+            return pid
+        pid = found[0]
+    return None
+
+
 def record_gate_start() -> None:
     """Note the tree a gate begins on: that of `HEAD` if the working tree is clean, nothing if not or outside a
-    repository. The first step of `uv run poe check`."""
-    path = _record_path(STARTED)
+    repository, and the PID of the `poe` running the gate. Exit with a message when another gate is running here.
+    The first step of `uv run poe check`."""
+    path, running = _record_path(STARTED), _record_path(RUNNING)
+    if running is not None and shutil.which("ps"):
+        holder = int(running.read_text(encoding="utf-8")) if running.exists() else None
+        found = _process(holder) if holder else None
+        if found is not None and POE.search(found[1]):
+            sys.exit(f"gate: another gate is already running in this checkout (pid {holder}); wait for it or stop it")
+        owner = _gate_owner()
+        if owner is not None:
+            running.write_text(str(owner), encoding="utf-8")
     if path is not None:
         path.write_text((_tree_of("HEAD") if _clean_tree() else None) or "", encoding="utf-8")
 
@@ -90,6 +128,8 @@ def record_gate_pass() -> None:
         return
     began, now = started.read_text(encoding="utf-8"), _tree_of("HEAD")
     started.unlink()
+    if (running := _record_path(RUNNING)) is not None:
+        running.unlink(missing_ok=True)
     if began and began == now and _clean_tree():
         passed.write_text(began, encoding="utf-8")
         print(f"gate: passed on tree {began[:12]}; a push of exactly this tree will not repeat it")

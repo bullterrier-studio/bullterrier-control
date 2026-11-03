@@ -4,6 +4,8 @@ push that changes only documentation."""
 
 import importlib.util
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -202,3 +204,59 @@ def test_a_push_of_a_newer_tree_than_the_one_that_passed_runs_the_gate(git_repo,
     monkeypatch.setattr(shutil, "which", lambda _name: None)
     assert pre_push.main() == 1
     assert "uv is not on the PATH" in capsys.readouterr().out
+
+
+# One gate per checkout --------------------------------------------------------------------------------------------
+
+needs_ps = pytest.mark.skipif(sys.platform == "win32", reason="the gate lock names processes with ps")
+
+
+@pytest.fixture
+def process():
+    """`process(name)` starts a process that sleeps with `name` in its command line, as `uv run poe check` has `poe`."""
+    started = []
+
+    def start(name: str) -> subprocess.Popen:
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", name])
+        started.append(child)
+        return child
+
+    yield start
+    for child in started:
+        child.kill()
+        child.wait()
+
+
+@needs_ps
+@pytest.mark.parametrize(
+    ("holder", "refused"),
+    [
+        pytest.param("poe", True, id="a live poe holds the record: the second gate is refused"),
+        pytest.param("something-else", False, id="a live process that is not poe (a reused PID) is ignored"),
+    ],
+)
+def test_a_gate_does_not_begin_while_a_live_poe_holds_the_record(git_repo, monkeypatch, process, holder, refused):
+    git_repo.commit("chore: start", {"start.txt": "start"})
+    monkeypatch.chdir(git_repo.path)
+    pid = process(holder).pid
+    (git_repo.path / ".git" / "gate-running").write_text(str(pid), encoding="utf-8")
+
+    if refused:
+        with pytest.raises(SystemExit, match=f"already running.*{pid}"):
+            pre_push.record_gate_start()
+    else:
+        pre_push.record_gate_start()
+
+
+@needs_ps
+def test_a_record_of_a_dead_gate_is_ignored_and_a_finished_gate_leaves_none(git_repo, monkeypatch, process):
+    git_repo.commit("chore: start", {"start.txt": "start"})
+    monkeypatch.chdir(git_repo.path)
+    record = git_repo.path / ".git" / "gate-running"
+    gate = process("poe")
+    record.write_text(str(gate.pid), encoding="utf-8")
+    gate.kill()
+    gate.wait()
+    pre_push.record_gate_start()
+    pre_push.record_gate_pass()
+    assert not record.exists()
