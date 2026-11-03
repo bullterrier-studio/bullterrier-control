@@ -203,6 +203,3 @@ impl Node for Rendered {
         "rendered"
     }
 }
-
-#[cfg(test)]
-mod tests;

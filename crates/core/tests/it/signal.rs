@@ -6,8 +6,8 @@ use std::fmt;
 
 use proptest::prelude::*;
 
-use crate::formats::{Series, SeriesOptions, Unit};
-use crate::{Error, FromValues, Interpolation, MAX_DEPTH, Signal, maximum, minimum};
+use bullterrier_control::formats::{Series, SeriesOptions, Unit};
+use bullterrier_control::{Error, FromValues, Interpolation, MAX_DEPTH, Signal, maximum, minimum};
 
 /// A signal that is its own time, written as a plugin author would write one.
 fn echo() -> Signal {
@@ -835,13 +835,13 @@ fn a_sum_of_a_hundred_thousand_terms_is_refused_and_dropped_without_overflowing_
 
 #[test]
 fn every_way_of_making_a_signal_says_how_it_was_made() -> Result<(), Error> {
-    use crate::Origin;
-    use crate::builtin::slew;
+    use bullterrier_control::Origin;
+    use bullterrier_control::builtin::slew;
 
     let level = Signal::constant(0.5)?;
     let steps = Signal::from_values(&[0.0, 1.0], 10.0, FromValues::default(), Interpolation::Hold)?;
     let slewed = steps.slew(slew::Params::default())?;
-    let rendered = Signal::rendered(&level, crate::Rendering::default(), |inputs| {
+    let rendered = Signal::rendered(&level, bullterrier_control::Rendering::default(), |inputs| {
         Ok::<_, Unreachable>(inputs.to_vec())
     })?;
     // (how it was made, the signal, how it says it was made)
@@ -871,6 +871,7 @@ fn every_way_of_making_a_signal_says_how_it_was_made() -> Result<(), Error> {
             Origin::Values => "values",
             Origin::Callback => "callback",
             Origin::Rendered => "rendered",
+            _ => "unlisted",
         };
         assert_eq!(made, expected, "{row}");
     }
@@ -910,11 +911,11 @@ fn read_through(input: Signal) -> Signal {
 }
 
 /// One sample a render, enough for a read at time 0.
-const ONCE: crate::Rendering = crate::Rendering { rate: 10.0, limit: 1 };
+const ONCE: bullterrier_control::Rendering = bullterrier_control::Rendering { rate: 10.0, limit: 1 };
 
 #[test]
 fn the_deepest_graph_of_each_kind_is_read_and_dropped_on_a_small_thread_stack() {
-    use crate::builtin::slew;
+    use bullterrier_control::builtin::slew;
 
     // (the kind of link, how many links: the deepest the library accepts over a constant)
     type Link = fn(Signal) -> Result<Signal, Error>;

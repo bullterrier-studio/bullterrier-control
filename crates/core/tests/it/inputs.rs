@@ -8,12 +8,11 @@ use std::fmt::Debug;
 use proptest::prelude::*;
 use serde_json::{Value, json};
 
-use super::{Input, InputKind, Keyframe, matching};
-use crate::Error;
-use crate::easing::Ease;
-use crate::formats::{
-    Event, EventOptions, Grid, Series, SeriesOptions, Unit, check_problems, list_of_floats, object_of_floats,
-};
+use crate::common::problems::{check_problems, list_of_floats, object_of_floats};
+use bullterrier_control::Error;
+use bullterrier_control::easing::Ease;
+use bullterrier_control::formats::{Event, EventOptions, Grid, Series, SeriesOptions, Unit};
+use bullterrier_control::inputs::{Input, InputKind, Keyframe, matching};
 
 type Outcome = Result<(), Box<dyn StdError>>;
 

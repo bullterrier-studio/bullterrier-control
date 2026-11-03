@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use proptest::prelude::*;
 
-use crate::{Error, FromValues, Interpolation, MAX_DEPTH, Rendering, Signal};
+use bullterrier_control::{Error, FromValues, Interpolation, MAX_DEPTH, Rendering, Signal};
 
 /// How long a thread test waits for an answer before it calls the read hung.
 const HUNG: Duration = Duration::from_secs(20);

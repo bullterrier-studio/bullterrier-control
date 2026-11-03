@@ -31,4 +31,4 @@ pub(crate) use field::{Number, Object, check, decode, finite, push, push_with, r
 pub(crate) use grid::RawGrid;
 pub(crate) use series::RawSeries;
 #[cfg(test)]
-pub(crate) use test_support::{check_problems, list_of_floats, object_of_floats};
+pub(crate) use test_support::check_problems;

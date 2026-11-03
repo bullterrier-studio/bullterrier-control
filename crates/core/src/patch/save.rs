@@ -17,9 +17,6 @@ use crate::registry::Recipe;
 use crate::registry::Registry;
 use crate::registry::Thing;
 
-#[cfg(test)]
-mod tests;
-
 /// Where a signal is: its recipe's place in memory, which every handle of the same signal shares (a recipe lives in
 /// the signal's node, and the signals held by the caller keep every node alive while saving).
 type Place = *const Recipe;

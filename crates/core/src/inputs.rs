@@ -38,8 +38,6 @@
 
 mod items;
 mod keyframe;
-#[cfg(test)]
-mod tests;
 
 use std::cmp::Ordering;
 use std::fmt;

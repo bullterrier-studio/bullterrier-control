@@ -10,30 +10,31 @@ use std::convert::Infallible;
 use proptest::prelude::*;
 use serde_json::{Value, json};
 
-use super::{Built, Patch, PatchError, patch_schema};
-use crate::Error;
-use crate::Signal;
-use crate::formats::Bundle;
-use crate::formats::Event;
-use crate::formats::FormatError;
-use crate::formats::Problem;
-use crate::formats::Series;
-use crate::formats::SeriesOptions;
-use crate::formats::Unit;
-use crate::inputs::Input;
-use crate::inputs::InputKind;
-use crate::params::Kind as ParamKind;
-use crate::params::Param;
-use crate::params::ParamTable;
-use crate::params::ParamUnit;
-use crate::registry::About;
-use crate::registry::Call;
-use crate::registry::Declared;
-use crate::registry::Kind;
-use crate::registry::Output;
-use crate::registry::Registry;
-use crate::registry::Returns;
-use crate::registry::Thing;
+use bullterrier_control::Error;
+use bullterrier_control::Patch;
+use bullterrier_control::Signal;
+use bullterrier_control::formats::Bundle;
+use bullterrier_control::formats::Event;
+use bullterrier_control::formats::FormatError;
+use bullterrier_control::formats::Problem;
+use bullterrier_control::formats::Series;
+use bullterrier_control::formats::SeriesOptions;
+use bullterrier_control::formats::Unit;
+use bullterrier_control::inputs::Input;
+use bullterrier_control::inputs::InputKind;
+use bullterrier_control::params::Kind as ParamKind;
+use bullterrier_control::params::Param;
+use bullterrier_control::params::ParamTable;
+use bullterrier_control::params::ParamUnit;
+use bullterrier_control::patch::{Built, PatchError, patch_schema};
+use bullterrier_control::registry::About;
+use bullterrier_control::registry::Call;
+use bullterrier_control::registry::Declared;
+use bullterrier_control::registry::Kind;
+use bullterrier_control::registry::Output;
+use bullterrier_control::registry::Registry;
+use bullterrier_control::registry::Returns;
+use bullterrier_control::registry::Thing;
 
 type Outcome = Result<(), Box<dyn std::error::Error>>;
 
@@ -450,7 +451,7 @@ fn each_node_says_what_it_uses_and_gives_without_building_anything() -> Outcome 
 
 #[test]
 fn each_node_says_what_it_is_built_from_and_with_which_values() -> Outcome {
-    use super::{Given, Reference};
+    use bullterrier_control::patch::{Given, Reference};
     type Row<'a> = (&'a str, Option<Reference>, Vec<(InputKind, Given)>, Value);
     let patch = parse(&patch_of(&[
         (

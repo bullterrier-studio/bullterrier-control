@@ -61,13 +61,9 @@
 //!   [`Patch::parse`].
 
 mod build;
-#[cfg(test)]
-mod privacy;
 mod read;
 mod repr;
 mod save;
-#[cfg(test)]
-mod tests;
 mod text;
 
 use std::fmt;

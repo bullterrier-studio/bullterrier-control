@@ -170,10 +170,10 @@ OFFENCES = {
         "rust-lint",
         CORE,
         replaced(
-            "#[cfg(test)]\nmod tests {",
+            "#[cfg(test)]\nmod builtin_table;",
             "/// Probe.\n#[must_use]\n#[allow(unsafe_code)]\npub fn probe(value: &u8) -> u8 {\n"
             "    // SAFETY: a reference is valid to read.\n    unsafe { *std::ptr::from_ref(value) }\n}\n\n"
-            "#[cfg(test)]\nmod tests {",
+            "#[cfg(test)]\nmod builtin_table;",
         ),
         ["allow(unsafe_code)", "forbid", CORE],
     ),
