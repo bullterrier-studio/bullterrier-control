@@ -40,6 +40,7 @@ def workspace(tmp_path_factory) -> Path:
     for name in WORKSPACE_FILES:
         shutil.copy(ROOT / name, root)
     shutil.copytree(ROOT / "crates", root / "crates")
+    shutil.copytree(ROOT / "tools", root / "tools", ignore=shutil.ignore_patterns("__pycache__"))
     return root
 
 
@@ -50,6 +51,9 @@ def cargo_env(tmp_path_factory) -> dict[str, str]:
         **os.environ,
         "PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")]),
         "CARGO_TARGET_DIR": str(tmp_path_factory.mktemp("target")),
+        # `uv run` (the rust-test task) uses this environment as it is: no sync, no build of the copy
+        "UV_PROJECT_ENVIRONMENT": sys.prefix,
+        "UV_NO_SYNC": "1",
         "CARGO_NET_OFFLINE": "true",
         "CARGO_TERM_COLOR": "never",
         "NO_COLOR": "1",
