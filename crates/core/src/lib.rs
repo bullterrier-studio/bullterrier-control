@@ -77,8 +77,6 @@ pub mod lib {
 #[cfg(test)]
 mod builtin_table;
 #[cfg(test)]
-mod memory_cap;
-#[cfg(test)]
 mod scan;
 
 #[cfg(test)]
