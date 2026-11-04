@@ -3,16 +3,15 @@
 The programmatic API is the product. A patch file is a serialisation of the same graph, built only through this API
 (task 10, last, as the extra it is). Each task below is shown in Python, which exists today, and in Rust, the language
 of the core. The Python blocks run as tests (`tests/test_api_doc.py`); a `# array([...])` comment is the result of the
-`.sample(...)` call above it. The Rust blocks marked **implemented** exist and are the real signatures; the others are the target API that R6 builds
-to. Implemented: the formats (`Event::new`, `Series::new`, `Grid::new`, `Bundle::from_json`), the parameters
+`.sample(...)` call above it. Every Rust block is a doctest of the crate (`cargo test --doc -p bullterrier-control`), except
+the declarations of a parameter struct and a trait. Implemented: the formats (`Event::new`, `Series::new`, `Grid::new`, `Bundle::from_json`), the parameters
 (`#[derive(Params)]` structs, `ParamTable`, `ParamUnit`; a thing's table is `Thing::table`) and the signal graph (R3):
 `Signal` (`constant`, `from_series`, `from_values`, `sample`, `sample_into`, `at`, `+ - *` and negation, `maximum`,
 `minimum`, `from_fn`, `rendered`), the inputs (R4a: `InputKind::check`, `Input::from_*`, `Keyframe`, `matching`), the registry and its traits (R4b:
 `Registry`, `Thing`, `Source`, `Shaper`, `Operation`, `Signal::pipe`, `Signal::recipe`; R5a: `type Inputs` on all three
 kinds, `Signal::pipe_with`), patches (R4b: `Patch::from_toml`,
 `build`, `from_signals`, `to_toml`), the built-ins (R4b, R5a, R5b: all 21 run in Rust, with `Signal::retimed` and `Signal::mapped`; R5c: none in Python) and the primitives (`Ease`, `hashing::uniform`,
-`scaling::between`, `rounding`, `cadence::positions`). Their rustdoc examples (`crates/core/src/`) run with
-`cargo test --doc -p bullterrier-control`.
+`scaling::between`, `rounding`, `cadence::positions`).
 
 ## Principles
 
@@ -28,7 +27,7 @@ Shapers are taught as methods (`energy.slew(...)`). `btc.lib.<name>` is the same
 (`lib.slew(signal, rise=0.2)`), typed by a generated stub. What a thing is (its description, parameters, units, ranges
 and summary) comes from the registry: `registry.get("slew")`.
 
-## Rules the Rust API follows (target)
+## Rules the Rust API follows
 
 Decided by the owner on 2026-10-29. They clarify the earlier decision that parameters are structs with `Default`.
 
@@ -178,8 +177,16 @@ flare.sample([0.5, 0.75, 1.0, 1.25])  # 1 at a kick, e^-1 a quarter second later
 ```
 
 ```rust
-let kicks = btc::events(&[0.5, 1.0, 1.5], Events { label: Some("kick".into()), ..Default::default() })?;
-let flare = btc::lib::envelope(&kicks, Envelope { decay: 0.25, ..Default::default() })?;
+// implemented (doctest of the `lib` module)
+use bullterrier_control::builtin::envelope;
+use bullterrier_control::formats::{Event, EventOptions};
+use bullterrier_control::lib;
+
+let kicks = [0.5, 1.0, 1.5]
+    .map(|t| Event::new(t, EventOptions { label: Some("kick".into()), ..Default::default() }))
+    .into_iter()
+    .collect::<Result<Vec<_>, _>>()?;
+let flare = lib::envelope(&kicks, envelope::Params { decay: 0.25, ..Default::default() })?;
 ```
 
 ## 5. Keyframes with easing
@@ -196,7 +203,8 @@ ramp.sample([1.0, 2.5, 7.0])  # 0.9 * (3 * 0.2^2 - 2 * 0.2^3) = 0.0936, then hal
 ```
 
 ```rust
-let ramp = btc::lib::keyframes(&[Keyframe::at(0.0, 0.0).ease(Ease::InOut), Keyframe::at(5.0, 0.9)])?;
+// implemented (doctest of the `lib` module)
+let ramp = lib::keyframes(&[Keyframe::at(0.0, 0.0).ease(Ease::InOut), Keyframe::at(5.0, 0.9)])?;
 ```
 
 Every input is checked by the Rust core, once, where it enters. Keyframes must start at 0 or later and strictly
@@ -276,10 +284,11 @@ wobble.sample([0.125, 0.375, 1.1, 1.3])  # beat 0.25 and 0.75, then beat 2.25 an
 ```
 
 ```rust
-use bullterrier_control::cadence;
+// implemented (doctest of the `lib` module)
+use bullterrier_control::cadence::Per;
 
-let grid = Grid::new(beat_times, 4, 0)?; // run as the doctest of `Grid::new`
-let wobble = btc::lib::lfo(Lfo { rate: 1.0, per: cadence::Per::Beat, ..Default::default() }, Some(&grid))?;
+let grid = Grid::new(vec![0.0, 0.5, 1.0, 1.4, 1.8], 4, 0)?;
+let wobble = lib::lfo(lfo::Params { rate: 1.0, per: Per::Beat, ..Default::default() }, Some(&grid))?;
 ```
 
 ## 8. Seeded noise
@@ -297,7 +306,9 @@ assert (drift.sample(times) != btc.lib.noise(rate=4, seed=8, shape="smooth").sam
 ```
 
 ```rust
-let drift = btc::lib::noise(Noise { rate: 4.0, seed: 7, shape: NoiseShape::Smooth, ..Default::default() })?;
+// implemented (doctest of the `lib` module)
+let params = noise::Params { rate: 4.0, seed: 7, shape: noise::Shape::Smooth, ..Default::default() };
+let drift = lib::noise(params)?;
 ```
 
 ## 9. Your own shaper (a plugin)

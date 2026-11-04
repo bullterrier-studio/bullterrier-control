@@ -10,7 +10,7 @@ import pytest
 
 PAGE = Path(__file__).resolve().parents[1] / "docs" / "api.md"
 TEXT = PAGE.read_text(encoding="utf-8") if PAGE.is_file() else ""
-RUST_NOTE = "The Rust blocks marked **implemented** exist and are the real signatures"
+RUST_NOTE = "Every Rust block is a doctest of the crate"
 # the ten tasks of the draft, in order: a deleted example (or a section without its Python or Rust side) fails
 TASKS = [
     "A curve from measured values",
@@ -48,7 +48,7 @@ def test_every_task_has_an_example_in_each_language(title, language):
     assert blocks(language, sections().get(title, ""))
 
 
-def test_the_page_says_once_above_the_first_rust_block_which_rust_blocks_exist():
+def test_the_page_says_once_above_the_first_rust_block_that_they_are_doctests():
     assert TEXT.count(RUST_NOTE) == 1
     assert TEXT.index(RUST_NOTE) < TEXT.index("```rust")
 
