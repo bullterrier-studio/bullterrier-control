@@ -179,7 +179,7 @@ separate ramp. Changed:
 
 - **`lfo` and `steps` share one module, `cadence`, for the position of a read.** *Reason:* "rate times seconds, or times
   beats of a grid" and the rule that `per="beat"` needs a grid are one decision; two copies would drift. It sits in the
-  layer of `signal`, `params` and `easing`, below `plugin`, which re-exports `counter`.
+  layer of `signal`, `params` and `easing`, below `plugin`, which re-exported `counter` (removed in R6).
 - **A time out of reach is a `SignalError`, whichever way it is out.** *Reason:* a `Grid` refuses a position it cannot
   compute with a `FormatError`, but the contract says a signal gives a finite value or a `SignalError` at any time, so
   `cadence` re-raises it as one; an overflowing `rate * t` is refused the same way, so no source sees a non-finite position.
@@ -206,7 +206,7 @@ separate ramp. Changed:
   is defined, deterministic and never casts out of range.
 - **`noise` has no `per="beat"`.** *Reason:* a random value per beat is a `steps` of random `values`; tempo-synced noise
   waits for a consumer that needs it.
-- **`lfo` and `noise` put 0..1 on `low`..`high` through one function, `scaling.between`.** *Reason:* the exact-range
+- **`lfo` and `noise` put 0..1 on `low`..`high` through one function, `scaling.between`** (the Python module went in R6; the Rust function stays)**. *Reason:* the exact-range
   promise (see C2c) is one decision, extracted when `noise` became the second consumer.
 - **A step edge sits where `rate * t` reaches a whole number, to within float rounding.** *Reason:* `rate * (k / rate)`
   can round just below `k` (rate 7, t = 61/7 reads step 60), so a read at a "frame time" may land on the step before. No
@@ -961,6 +961,23 @@ door and back); the 17 that remain in Python are ported in R5.
 - **`_core.Registry(builtin=True|False)` is kept:** `True` holds the core's built-ins (the package's registry), `False`
   is empty (`isolated()`, `table()`'s copy, a failed load's rollback). Internal; the flag has nothing to do with the
   removed package.
+
+## Cleanup and the public crate (batch R6)
+
+- **Removed from the Python package:** `counter`, `Positions`, `between` and `matching` (the `cadence` and `scaling` modules,
+  the `Counter` class and the two bindings). *Reason:* nothing but `plugin`'s re-export and their own tests used them; every
+  built-in runs in Rust on the Rust twins (`cadence::positions`, `scaling::between`, `inputs::matching`), whose tests in
+  `tests/it/` cover the same rules. A plugin that needs one comes back with its first consumer. `curve`, `EASES`,
+  `uniform`, `at_least` and `more_than` stay: a plugin author reaches for easing, seeded draws and time-boundary decisions.
+- **Bundle-built graphs still cannot be saved** (`series.<name>` becomes a source-less leaf). *Reason:* a source that reads
+  a series is a feature with no consumer yet; the refusal names the way out (keep the patch that read the series).
+- **Every Rust block of `docs/api.md` is a doctest** (the crate root and the `lib` module carry them); no block is a target
+  any more. The crate keeps `publish = false` and version `0.0.0` until C5.
+- **Measured, report only** (this machine, 2026-11-04, the extension `uv sync` builds, the R0 script: 4-minute song at 30 fps,
+  1000 events): `envelope` 1.2 ms, `slew(envelope)` 26 ms, `follow(envelope)` 27 ms, ten slews with an `lfo` mix 284 ms (R0
+  Python 2267-4124 ms, after R3 541-1064 ms), a cached slew read per frame 1.2 us (15-28 us, then 1.4-1.7 us). Peak memory of
+  the whole process, Python and numpy included: 62 MB (no earlier figure exists: this is the baseline). *Not a test:* a
+  wall-clock assertion is flaky by nature.
 
 ## Resource gates (R4c, owner, 2026-11-01)
 

@@ -29,7 +29,7 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | R5a | Rust core: inputs on every kind; nine built-ins with data | M | done |
 | R5b | Rust core: the eight built-ins left in Python | M | done |
 | R5c | Rust core: derive the hand-kept lists; the empty Python `builtin` package goes | S | done |
-| R6 | Rust core: cleanup, the public crate | S | |
+| R6 | Rust core: cleanup, the public crate | S | done |
 | C5 | First release (after R6: it ships the Rust core) | S | |
 
 C2a went first: it added the inputs mechanism every later source uses. C2b, C2c and C2d then depend only on C2a and can
@@ -206,9 +206,10 @@ The Python suite runs unchanged against the Rust core throughout.
   `parameters`/`builtins` are gone. Against the Python bodies no ported built-in is slower: a `lib` call takes 0.2 to
   0.9 of the time, `lfo` and `envelope` read in half the time. Decisions: [design-decisions.md](design-decisions.md),
   "The Python built-ins go (batch R5c)".
-- **R6 Cleanup.** Crate documentation; final speed and memory measured against R0's baseline. The Python helpers no
-  built-in uses any more (`counter`, `Positions`, `between`, `plugin.matching`): kept as author API or removed.
-  Bundle-built graphs (`series.<name>`) cannot be saved, which a source that reads a series would fix.
+- **R6 Cleanup (done).** Crate documentation with a runnable quick start; every Rust block of `docs/api.md` is a doctest;
+  `counter`, `Positions`, `between` and `plugin.matching` removed (the Rust twins stay); speed and memory measured
+  against R0 (ten slews with an `lfo` mix 284 ms against 2267-4124 ms in Python; 62 MB peak). Decisions:
+  [design-decisions.md](design-decisions.md), "Cleanup and the public crate (batch R6)".
 
 ## R0.5 Code-first API (done)
 
@@ -242,6 +243,9 @@ publishing on TestPyPI and PyPI, `uv run poe release 0.1.0rc1`, then `0.1.0`.
   labels and series names producers and consumers share (`kick`, `snare`, `hat`, section labels, band names, and C3b's
   `beat`, `downbeat`, `sub`), so the producer and every consumer do not each decide them. The format does not validate
   them.
+
+- **A source that reads a series**, when a consumer needs to save a graph built from a bundle's `series.<name>` (today a patch
+  that reads one cannot be saved from the graph; keep the patch).
 
 ## Not in v1
 
