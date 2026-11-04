@@ -148,12 +148,22 @@ rust-deny = { cmd = "cargo deny --offline --locked check bans licenses sources",
 # The core is pure Rust so that it also runs in a browser (WebAssembly): only the core crate, which has no Python in it,
 # and the bindings crate that gives it to JavaScript
 rust-wasm = { cmd = "cargo check -p bullterrier-control -p bullterrier-control-wasm --target wasm32-unknown-unknown --locked --quiet", help = "Check that the core and the WebAssembly bindings build for the browser (wasm32-unknown-unknown)" }
+# Not in `fast`: a release build, then the glue (`wasm-bindgen`, pinned in Cargo.toml) for Node and for the browser into the
+# ignored pkg/, then Node runs tests/wasm against what the native extension answers (tests/wasm/oracle.py).
+# tests/tools/test_wasm_gate.py shows the task failing.
+wasm-test = { sequence = [
+    "cargo build -p bullterrier-control-wasm --target wasm32-unknown-unknown --release --locked --quiet",
+    "wasm-bindgen --target nodejs --out-dir pkg/node ${CARGO_TARGET_DIR:-target}/wasm32-unknown-unknown/release/bullterrier_control_wasm.wasm",
+    "wasm-bindgen --target web --out-dir pkg/web ${CARGO_TARGET_DIR:-target}/wasm32-unknown-unknown/release/bullterrier_control_wasm.wasm",
+    "uv run python tests/wasm/oracle.py pkg/oracle.json",
+    "node --max-old-space-size=2048 --test tests/wasm/",  # a runaway test dies at 2 GB of JavaScript heap, not at the machine's
+], default_item_type = "cmd", help = "Build the WebAssembly package (Node and browser), run it in Node and compare it with the native extension" }
 stubtest = { cmd = "uv run python -m mypy.stubtest --mypy-config-file pyproject.toml bullterrier_control._native._core", help = "Check the stub _core.pyi against the built extension" }
 rust-test = { cmd = "uv run python tools/run_capped.py -- cargo test --workspace --locked --quiet --no-fail-fast", help = "Run the Rust tests under the memory cap, every binary even after one fails" }
 # A crate's Rust integration tests are one binary (tests/it/main.rs); tools/check_rust_test_layout.py, the table [tool.rust-tests.own-binaries]
 rust-test-layout = { cmd = "uv run python tools/check_rust_test_layout.py", help = "Check that the Rust integration tests are one binary per crate (tests/it/)" }
 dead-code = { cmd = "vulture src", help = "Find dead code in src (vulture)" }
-check = { sequence = ["uv run python tools/pre_push.py start", "ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, { ref = "lint-workflows" }, { ref = "dead-code" }, { ref = "rust-doc" }, "deptry .", { ref = "rust-tools" }, { ref = "rust-test-layout" }, { ref = "rust-shear" }, { ref = "rust-deny" }, { ref = "rust-wasm" }, { ref = "build-check" }, "mypy", { ref = "stubtest" }, { ref = "rust-test" }, { ref = "test" }, "uv run python tools/pre_push.py pass"], default_item_type = "cmd", help = "The full gate, Python and Rust (format, lint, workflows, dead code, docs, dependencies, distributions, types, tests); stops at the first failure; a pass on a clean tree is remembered, so pushing exactly that tree does not repeat it" }
+check = { sequence = ["uv run python tools/pre_push.py start", "ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, { ref = "lint-workflows" }, { ref = "dead-code" }, { ref = "rust-doc" }, "deptry .", { ref = "rust-tools" }, { ref = "rust-test-layout" }, { ref = "rust-shear" }, { ref = "rust-deny" }, { ref = "rust-wasm" }, { ref = "build-check" }, "mypy", { ref = "stubtest" }, { ref = "rust-test" }, { ref = "wasm-test" }, { ref = "test" }, "uv run python tools/pre_push.py pass"], default_item_type = "cmd", help = "The full gate, Python and Rust (format, lint, workflows, dead code, docs, dependencies, distributions, types, tests); stops at the first failure; a pass on a clean tree is remembered, so pushing exactly that tree does not repeat it" }
 # Redraw the gallery (docs/gallery/ and docs/gallery.md) from the patches in examples/gallery/; needs matplotlib (uv sync)
 gallery = { cmd = "uv run python tools/gallery.py", help = "Redraw docs/gallery/ and docs/gallery.md from examples/gallery/" }
 # Rewrite lib.pyi and _chain.py (the typed functions of `lib`, the chain methods of `Signal`) from the built-ins;
@@ -193,6 +203,7 @@ addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config", "--
 xfail_strict = true
 markers = [
     "typecheck: type-checks the package with mypy; `poe check-min-deps` leaves it out",
+    "gate: proves a gate that needs Node and the wasm-bindgen command fails on a known-bad input; CI runs it on Linux only",
 ]
 # Every warning fails the test that raised it: a leaked file or process (ResourceWarning), a deprecated call, and, when
 # PYTHONWARNDEFAULTENCODING=1 is set (`poe test` sets it), text IO that relies on the locale's encoding (EncodingWarning,

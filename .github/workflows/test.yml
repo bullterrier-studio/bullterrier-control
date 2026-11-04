@@ -45,6 +45,12 @@ jobs:
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: ${{ steps.cargo-tools.outputs.specs }}
+      # the WebAssembly package is tested in Node (`poe wasm-test`, which the gate proof below runs too), on Linux only
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: runner.os == 'Linux'
+        with:
+          node-version: "26"
+          package-manager-cache: false
       # every crate Cargo.lock names, for every platform and target: the dev-dependencies and the cargo-deny gate's
       # metadata too, which building the extension does not download. The gates and tests below run cargo offline.
       - name: Fetch the locked crates (cargo fetch)
@@ -53,6 +59,17 @@ jobs:
         run: uv sync --locked
       - name: Rust tests (cargo test)
         run: uv run --locked poe rust-test
+      - name: WebAssembly package (build, run in Node, compare with the native extension)
+        if: runner.os == 'Linux'
+        run: uv run --locked poe wasm-test
       # -ra lists every skipped or expected-failing test with its reason; --durations shows what makes the run slow
-      - name: Tests (pytest; skips and the 10 slowest tests are listed)
+      - name: Tests (pytest, gate proofs included; skips and the 10 slowest tests are listed)
+        if: runner.os == 'Linux'
         run: uv run --locked poe test -ra --durations=10
+      # the same options and environment as `poe test`, which also runs the gate proofs (they need Node)
+      - name: Tests (pytest without the gate proofs; skips and the 10 slowest tests are listed)
+        if: runner.os != 'Linux'
+        shell: bash
+        env:
+          PYTHONWARNDEFAULTENCODING: "1" # text IO without an encoding warns, and a warning fails the test
+        run: uv run --locked pytest -q -n auto -m 'not gate' -ra --durations=10

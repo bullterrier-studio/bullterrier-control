@@ -18,5 +18,8 @@ dist/
 
 # Rust: the build folder, and the extension an editable install (`uv sync`) builds into the source tree
 target/
+
+# the WebAssembly package `poe wasm-test` builds (pkg/node, pkg/web) and the native extension's answers it is compared with
+pkg/
 src/bullterrier_control/_native/_core*.so
 src/bullterrier_control/_native/_core*.pyd
