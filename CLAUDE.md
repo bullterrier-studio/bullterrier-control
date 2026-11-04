@@ -26,6 +26,7 @@ uv run poe check                     # the whole gate, before you report or merg
 | write a signal that needs history | `rendered.py` (`Rendered`); in Rust `Signal::rendered` |
 | read or write a file | `formats/` (`load`, `save`, `Bundle`); `docs/formats.md` |
 | write, read or save a patch (sources, shapers and operations as data) | `patch.py` (`Patch`, `load_patch`; the rules are `crates/core/src/patch.rs`); `docs/formats.md`, "Patch"; `examples/glow.toml` |
+| use the core from a browser or Node | `crates/wasm/src/lib.rs`, `tests/wasm/`; README, "In the browser and Node"; `uv run poe wasm-test` builds `pkg/` and compares it with the native extension |
 | see what a source or shaper looks like | `docs/gallery.md`; `uv run poe gallery` redraws it from `examples/gallery/` |
 | see a worked example with numbers | `docs/examples.md` and `examples/` |
 | find what is planned | `docs/roadmap.md`: work goes in small batches, each planned before it starts |
@@ -100,7 +101,7 @@ errors     BullterrierControlError > InvalidError > FormatError | ParameterError
 
 **Rust core:** `crates/core` (pure Rust: no PyO3, no numpy, safe code, builds for `wasm32-unknown-unknown`; one
 `src/builtin/<name>.rs` per built-in, found by `build.rs`; `signal.rs` and `signal/` the graph; `easing`, `cadence`, `hashing`, `scaling`, `rounding` the primitives; `inputs.rs` the one place that says what each input (`points`, `events`, `grid`, `values`, `series`) is and checks it, with `Error::Input` listing up to 100 problems; `registry.rs` and `registry/` the `Registry` (a value, not a global), its `Thing`s, the `Source`, `Shaper` and `Operation` traits and the `Recipe` a signal made by a thing carries; `patch.rs` and `patch/` reading, building and saving a patch, using only public items of the other modules, which `patch/privacy.rs` scans for), `crates/macros` (the `Params` and `Choice` derives; the core
-re-exports them; they only write code) and `crates/python` (PyO3 bindings building
+re-exports them; they only write code) and `crates/wasm` (the WebAssembly bindings: `Patch`, `Built`, `things`; names no shaper, passes arguments to the core unchanged and names each error as Python does; `poe wasm-test`), `crates/python` (PyO3 bindings building
 `bullterrier_control._native._core`; generic, names no shaper; `signal.rs` is the `SignalBase` handle, `callback.rs` the nodes that call Python). The formats are `crates/core/src/formats/` (rules, JSON
 reading and writing, schema); the bindings are `crates/python/src/{formats,params,inputs,data,error,registry,patch}.rs` (`registry.rs`: `Registry` and `Thing`, and a Python function registered as a callback thing; `patch.rs`: `Patch`, `Node`; `inputs.rs`: `Keyframe`, `check_input`; `data.rs` reads the package's own objects as their file data, and an exception a user's object raises while an input is read reaches the caller unchanged; formats and parameters turn it into a refusal message). They read a Python object with
 their own deserializer over Python objects (`data.rs`), so a NaN reaches the core and is listed with every other problem,

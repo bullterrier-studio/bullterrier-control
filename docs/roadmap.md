@@ -31,6 +31,7 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | R5c | Rust core: derive the hand-kept lists; the empty Python `builtin` package goes | S | done |
 | R6 | Rust core: cleanup, the public crate | S | done |
 | C6 | Time shapers for animation: `repeat`, `integrate`, `spring` | M | done |
+| W1 | WebAssembly package: the core in Node and the browser | M | done |
 | C5 | First release (after R6: it ships the Rust core) | S | |
 
 C2a went first: it added the inputs mechanism every later source uses. C2b, C2c and C2d then depend only on C2a and can
@@ -239,6 +240,14 @@ unit=Unit.RATIO))`).
 
 Done when: every example in `docs/api.md` runs as a test (Python now; the Rust column becomes doctests as R1 to R5 land);
 `lib` completes its keywords in an IDE and mypy checks them; the stub's drift test passes; the gate is green.
+
+## W1 WebAssembly package
+
+`crates/wasm` (`bullterrier-control-wasm`) gives the core to JavaScript: `Patch.fromToml`, `patch.build(bundleJson?)`,
+`built.names()`, `built.sample(name, Float64Array)` and `things()`; errors are `Error`s named as Python names them. `poe
+wasm-test` builds it for Node and the browser, samples every example patch from Python and from Node and expects equal
+values, bit for bit. Not on npm yet (C5 decides). Decisions: [design-decisions.md](design-decisions.md), "WebAssembly
+package (batch W1)".
 
 ## C5 First release
 

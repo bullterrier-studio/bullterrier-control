@@ -1034,3 +1034,35 @@ script or a note does not run for the next contributor.
   larger for the tests' sake. *Cost:* a helper two sides need (`check_problems`) exists twice, `formats/test_support.rs` for
   the inline tests and `tests/it/common/problems.rs`; proptest keeps the seeds of a moved test in
   `tests/proptest-regressions/`.
+
+## WebAssembly package (batch W1)
+
+- **A crate of its own, `crates/wasm`** (`bullterrier-control-wasm`, `cdylib` + `rlib`, `publish = false`), beside the PyO3
+  bindings. *Reason:* the core stays free of wasm-bindgen (`deny.toml` bans it except for this crate); the bindings are thin: an
+  argument goes to the core unchanged, so the core's checks are the only checks and every language gets the same errors.
+- **Surface:** `Patch.fromToml(text)`, `patch.build(bundleJson?)`, `built.names()`, `built.sample(name, times)`, `things()`.
+  *Reason:* a patch is how a look travels as data, and a page needs the signals of one; sources and shapers are not bound one
+  by one (the crate names no shaper), so a new built-in appears in JavaScript with no change here. `sample` reads signal
+  nodes; an events or series node is an `InvalidError` (as the command line refuses it), an unknown node an `UnknownNameError`.
+- **Error names are the Python classes'** (`FormatError`, `ParameterError`, `SignalError`, `InvalidError`, `UnknownNameError`,
+  `BullterrierControlError` for a kind the bindings do not name), set as the `Error`'s `name`; a patch error is named for what
+  Python raises for it (a text that is not a patch, a bundle path it cannot serve: `FormatError`; a thing that refuses its
+  call: that error's own kind). A value of the wrong JavaScript type (`fromToml(3)`, times that are not a `Float64Array`) is a
+  `TypeError`: wasm-bindgen would otherwise read it as an empty string or array.
+- **Two targets, no npm publish yet.** `--target nodejs` is what the tests load, `--target web` what a page loads; the tests
+  also load the web build (`initSync`) and compare it. *Reason:* the browser build is the one that matters and must not be
+  untested; a package on npm is a release (C5) and needs a name, a licence file and a `package.json`, none of which exist yet.
+- **Exact equality, no tolerance.** Every example patch (`examples/*.toml`, `examples/gallery/*.toml`, found by glob, so a new
+  shaper's gallery patch joins the corpus) is sampled by Python (the oracle, `tests/wasm/oracle.py`) and by Node every 0.0371 s
+  over 64 s (and before 0), and the values must be equal bit for bit (`Object.is`: -0 is not 0). *Measured* on Apple silicon, 2026-11-04: all
+  equal, 0 differences. *Reason:* the core uses `libm` for transcendentals and plain `f64` arithmetic, so no platform
+  difference is expected; if one appears on a platform, the measured tolerance is recorded here, not guessed.
+- **`things()` is the registry's description as JSON** (`bt-control list --json`'s data), compared with Python's whole. *Reason:*
+  a page can build a control panel from it; parameters, units and ranges stay declared once.
+- **Tool pins:** `wasm-bindgen = "=X"` (crate, exact) in `[workspace.dependencies]` and the same `X` for the command in
+  `[workspace.metadata.tools]` (installed from crate `wasm-bindgen-cli`); `rust-tools` fails when the command is not the crate
+  version in `Cargo.lock` (glue of another version fails only when a browser runs it). `node` (26 in CI) is a system tool.
+- **Gate:** `rust-wasm` also checks the bindings for `wasm32-unknown-unknown`; `wasm-test` (in `check`, not in the fast loop) builds
+  release, runs `wasm-bindgen` for both targets into the ignored `pkg/`, the oracle, and `node --test tests/wasm/`. CI runs it
+  on Linux only. `tests/tools/test_wasm_gate.py` shows it failing for a defect in the glue and for a different expectation. No
+  SIMD flag: control is scalar maths.

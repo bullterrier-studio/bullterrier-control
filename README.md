@@ -47,7 +47,7 @@ is up to you. Music software calls this automation or modulation, animation tool
 
 [What is it for?](#what-is-it-for) | [What gap does it fill?](#what-gap-does-it-fill) | [Install](#install) |
 [Quick start](#quick-start) | [Sources, shapers and operations](#sources-shapers-and-operations) |
-[Patch files](#patch-files) | [Concepts](#concepts) | [Formats](#formats) | [Status](#status) | [Development](#development) |
+[Patch files](#patch-files) | [In the browser and Node](#in-the-browser-and-node) | [Concepts](#concepts) | [Formats](#formats) | [Status](#status) | [Development](#development) |
 [Works with](#works-with) | [License](#license)
 
 ## What is it for?
@@ -281,6 +281,20 @@ bt-control list --json               # the same as data for another tool: inputs
 `bt-control list --json` describes each parameter as JSON Schema (`minimum`, `maximum`, `unit`, `cyclic` for a phase that
 wraps), the shape `bullterrier-image` gives its parameters, so a tool can check a pipeline before it runs. The patch format
 is in [docs/formats.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/formats.md), its schema in [schemas/patch-1.schema.json](https://github.com/bullterrier-studio/bullterrier-control/blob/main/schemas/patch-1.schema.json).
+
+## In the browser and Node
+
+The Rust core builds as a WebAssembly package (`uv run poe wasm-test` builds it into `pkg/node` and `pkg/web`; not on npm yet).
+It reads a patch and samples its signal nodes, and gives the same values as Python, bit for bit.
+
+```js
+import { Patch, things } from "./pkg/node/bullterrier_control_wasm.js"; // browser: pkg/web, after `await init()`
+
+const glow = Patch.fromToml(patchText).build(bundleJson).sample("glow", Float64Array.of(0.5, 0.75, 1.0, 1.5));
+// Float64Array [1, 0.3679, 0.1353, 1]; built.names() lists the nodes, things() describes every source, shaper and operation as JSON
+```
+
+An error is an `Error` named as in Python (`FormatError`, `ParameterError`, `SignalError`, `InvalidError`, `UnknownNameError`).
 
 ## Concepts
 
