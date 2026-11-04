@@ -979,6 +979,28 @@ door and back); the 17 that remain in Python are ported in R5.
   the whole process, Python and numpy included: 62 MB (no earlier figure exists: this is the baseline). *Not a test:* a
   wall-clock assertion is flaky by nature.
 
+## Time shapers (batch C6)
+
+- **Three shapers, found by reading what the ecosystem's animation side needs** (`vector` and `image` take plain numbers per
+  frame and have no time): `repeat` (loop or ping-pong a curve), `integrate` (a phase that speeds up with loudness) and
+  `spring` (a bounce after a hit). *Reason:* none could be made from the existing parts: `keyframes` hold their last value,
+  a signal has no running sum, and `envelope` times `lfo` is not retriggered by each event, so the wave does not start on
+  the hit.
+- **`repeat`, not `loop`.** *Reason:* `loop` is a Rust keyword and the generator writes `pub mod <name>` and `Signal::<name>`.
+- **`repeat` per beat counts from where time 0 falls** (`beat_at(0)`), not from beat 0. *Reason:* wrapping from beat 0 reads
+  the input's future before the first beat (a negative position); counting from time 0 keeps the folded time never later
+  than the time read, as the causality contract needs. A time inside the first stretch is returned as it is (no trip
+  through beats and back), so it equals the input exactly.
+- **`integrate` uses the trapezoid rule, the output starting at 0.** *Reason:* exact for inputs that are straight lines
+  between samples, and a constant `c` gives `c * t`; the first sample adds nothing. Overflow is a `SignalError` at read.
+- **`spring` solves each step exactly for an input held over it** (the 2x2 matrix of the damped oscillator, with `cos`/`sin`,
+  `1`/`t` or `cosh`/`sinh` by damping, `libm`'s). *Reason:* unconditionally stable, so every `frequency` and `damping` is
+  valid at every `rate` (rate 10 with 100 Hz is finite), and no sub-stepping count exists as a hidden tunable. Output `i`
+  is the response after the input held its value `i` for the last `1 / rate` seconds, so a jump shows one sample late.
+  `damping` runs 0 to 10 (cosh and sinh stay finite there at the largest step).
+- **`spring` is checked against the textbook step responses** (closed forms in the tests, not the stepping), plus: never
+  overshoots from damping 1, continuous across 1, linear in the input, causal.
+
 ## Resource gates (R4c, owner, 2026-11-01)
 
 Unbounded memory, unbounded output and stack overflow are impossible by design where the design can make them so, and caught

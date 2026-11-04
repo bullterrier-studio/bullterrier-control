@@ -30,6 +30,7 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | R5b | Rust core: the eight built-ins left in Python | M | done |
 | R5c | Rust core: derive the hand-kept lists; the empty Python `builtin` package goes | S | done |
 | R6 | Rust core: cleanup, the public crate | S | done |
+| C6 | Time shapers for animation: `repeat`, `integrate`, `spring` | M | done |
 | C5 | First release (after R6: it ships the Rust core) | S | |
 
 C2a went first: it added the inputs mechanism every later source uses. C2b, C2c and C2d then depend only on C2a and can
@@ -210,6 +211,13 @@ The Python suite runs unchanged against the Rust core throughout.
   `counter`, `Positions`, `between` and `plugin.matching` removed (the Rust twins stay); speed and memory measured
   against R0 (ten slews with an `lfo` mix 284 ms against 2267-4124 ms in Python; 62 MB peak). Decisions:
   [design-decisions.md](design-decisions.md), "Cleanup and the public crate (batch R6)".
+
+## C6 Time shapers (done)
+
+What music-driven animation needs beyond C3a ([design-decisions.md](design-decisions.md), "Time shapers (batch C6)"):
+- `repeat`: the first `length` of a signal again and again, or forward and backward, in seconds or beats of a grid.
+- `integrate`: the running area under a signal (trapezoid rule): a speed becomes a position or a phase.
+- `spring`: follows its input like a mass on a spring (frequency, damping ratio): overshoots and rings below damping 1.
 
 ## R0.5 Code-first API (done)
 

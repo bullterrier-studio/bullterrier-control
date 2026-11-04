@@ -33,7 +33,7 @@ is up to you. Music software calls this automation or modulation, animation tool
 <table>
   <tr>
     <td width="33%" valign="top"><b>Read at any moment</b><br>A signal has a value at every time. <code>sample(times)</code> takes a number or an array of seconds, in any order, and returns values in the same shape. No clock, no frames.</td>
-    <td width="33%" valign="top"><b>Sources, shapers and operations</b><br>Keyframes, LFOs, envelopes, steps, noise and latches make signals; slew, follow, gate, hold, remap, delay and clip shape them; select, thin, quantize and more prepare events and series. Signals combine with <code>+</code>, <code>-</code>, <code>*</code>, <code>minimum</code> and <code>maximum</code>.</td>
+    <td width="33%" valign="top"><b>Sources, shapers and operations</b><br>Keyframes, LFOs, envelopes, steps, noise and latches make signals; slew, follow, spring, integrate, repeat, gate, hold, remap, delay and clip shape them; select, thin, quantize and more prepare events and series. Signals combine with <code>+</code>, <code>-</code>, <code>*</code>, <code>minimum</code> and <code>maximum</code>.</td>
     <td width="33%" valign="top"><b>Deterministic</b><br>The same inputs and seed give the same values, whatever the order or number of earlier reads. Noise is the same on every machine.</td>
   </tr>
   <tr>
@@ -218,6 +218,9 @@ unit and range. A shaper of your own goes into a chain with `signal.pipe(btc.lib
 | `hold` | shaper | Takes the input's value at each event and keeps it until the next |
 | `remap` | shaper | Puts a 0 to 1 input onto a range, bent by an ease |
 | `delay` | shaper | Shows its input a fixed time late |
+| `repeat` | shaper | Plays the first stretch of its input again and again, or forward and backward, in seconds or beats |
+| `integrate` | shaper | Adds its input up over time: a speed becomes a position or a phase |
+| `spring` | shaper | Follows its input like a mass on a spring: it overshoots and rings, or glides in |
 | `clip` | shaper | Follows its input but never leaves a range |
 
 **Operations** make data from data: they prepare events and series before they become signals. They are in `btc.lib` too,
@@ -307,7 +310,7 @@ bt-control schema                    # the JSON Schema of a bundle, for tools in
 
 Pre-alpha, not yet on PyPI. The formats, patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`)
 and the core exist, with the sources `constant`, `keyframes`, `envelope`, `latch`,
-`lfo`, `steps` and `noise`, the shapers `clip`, `delay`, `follow`, `gate`, `hold`, `remap` and `slew`, and the operations
+`lfo`, `steps` and `noise`, the shapers `clip`, `delay`, `follow`, `gate`, `hold`, `integrate`, `remap`, `repeat`, `slew` and `spring`, and the operations
 `beats`, `every`, `normalise`, `quantize`, `select`, `shift` and `thin`.
 
 ## Development
