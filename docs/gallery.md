@@ -278,6 +278,29 @@ high = 0.8
 ease = "in-out"
 ```
 
+### `repeat`
+
+A signal that plays the first `length` of its input again and again, or forward and backward.
+
+![repeat](gallery/repeat.png)
+
+```toml
+# repeat: the first two seconds of a slow sweep, played forward and backward
+format = "bullterrier-control/patch"
+version = 1
+
+# a rising sweep for the shaper to work on; the picture shows it beside the result
+[input]
+use = "keyframes"
+points = [{ t = 0, value = 0, ease = "in-out" }, { t = 2, value = 1 }]
+
+[repeat]
+use = "repeat"
+signal = "input"
+length = 2
+mode = "ping-pong"
+```
+
 ### `slew`
 
 A signal that follows its input but climbs and falls no faster than `rise` and `fall` allow.

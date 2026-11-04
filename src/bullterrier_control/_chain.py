@@ -4,8 +4,9 @@ registered under its name. A plugin's shaper is applied with `signal.pipe(lib.<n
 
 from abc import abstractmethod
 from collections.abc import Mapping, Sequence
+from typing import Literal
 
-from .formats import Event
+from .formats import Event, Grid
 
 
 class Chain[S]:
@@ -89,6 +90,28 @@ class Chain[S]:
                 y1, x2, y2). 'linear' keeps the shape.
         """
         return self._apply("remap", low=low, high=high, ease=ease)
+
+    def repeat(
+        self,
+        *,
+        grid: Grid | Mapping[str, object] | None = None,
+        mode: Literal["wrap", "ping-pong"] = "wrap",
+        length: float = 16.0,
+        per: Literal["second", "beat"] = "second",
+    ) -> S:
+        """A signal that plays the first `length` of its input again and again, or forward and backward.
+
+        Args:
+            grid: optional. A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly
+                increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
+            mode: default 'wrap'. How the input is played again: 'wrap' (restarts after `length`) or 'ping-pong'
+                (forward, then backward).
+            length: seconds, 0.001 to 3600, default 16.0. How much of the input repeats: seconds, or beats if `per` is
+                'beat', 0.001 to 3600. Raising it repeats a longer stretch, so the repeat is slower.
+            per: default 'second'. What `length` counts in: 'second' (free-running) or 'beat' (follows the tempo of the
+                `grid`, which it needs).
+        """
+        return self._apply("repeat", grid=grid, mode=mode, length=length, per=per)
 
     def slew(self, *, rise: float = 0.1, fall: float = 0.1, rate: float = 1000.0) -> S:
         """A signal that follows its input but climbs and falls no faster than `rise` and `fall` allow.

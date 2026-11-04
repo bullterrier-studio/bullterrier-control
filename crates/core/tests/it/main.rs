@@ -20,6 +20,7 @@ mod builtin_noise;
 mod builtin_normalise;
 mod builtin_quantize;
 mod builtin_remap;
+mod builtin_repeat;
 mod builtin_select;
 mod builtin_shift;
 mod builtin_steps;
