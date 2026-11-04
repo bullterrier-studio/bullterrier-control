@@ -160,6 +160,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::cast_precision_loss, reason = "a sample index far below 2^52")]
     fn a_step_gets_the_textbook_response_whether_it_rings_arrives_or_glides() {
         // rate 100: output n after the step (the step at sample 1) has had n steps of 0.01 s
         for damping in [0.0, 0.2, 0.7, 1.0, 1.5, 4.0] {
@@ -209,9 +210,10 @@ mod tests {
 
     #[test]
     fn nothing_follows_nothing_and_a_nan_poisons_what_follows_it() {
-        assert!(run(&[], &Params::default()).is_empty());
+        assert_eq!(run(&[], &Params::default()), Vec::<f64>::new());
         let out = run(&[1.0, f64::NAN, 1.0], &Params::default());
-        assert!(out[0] == 1.0 && out[1].is_nan() && out[2].is_nan(), "{out:?}");
+        assert_eq!(out[0], 1.0);
+        assert!(out[1].is_nan() && out[2].is_nan(), "{out:?}");
     }
 
     #[test]

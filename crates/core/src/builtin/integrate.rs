@@ -53,6 +53,7 @@ impl Shaper for Params {
 /// The trapezoid sums of `inputs`: 0 first, then each output the one before plus the mean of the two inputs it lies
 /// between times a sample's length. Output *i* depends on inputs 0 to *i* only. A NaN input makes every later output
 /// NaN, for `sample` to report.
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "the signature `recurrence::over` takes")]
 fn run(inputs: &[f64], params: &Params) -> Vec<f64> {
     let step = 1.0 / params.rate;
     let mut area = 0.0;
@@ -61,7 +62,7 @@ fn run(inputs: &[f64], params: &Params) -> Vec<f64> {
         .iter()
         .map(|&now| {
             if let Some(then) = before {
-                area += 0.5 * (then + now) * step;
+                area += f64::midpoint(then, now) * step;
             }
             before = Some(now);
             area
@@ -99,9 +100,10 @@ mod tests {
 
     #[test]
     fn nothing_adds_up_to_nothing_and_a_nan_poisons_what_follows_it() {
-        assert!(run(&[], &Params::default()).is_empty());
+        assert_eq!(run(&[], &Params::default()), Vec::<f64>::new());
         let out = run(&[1.0, f64::NAN, 1.0], &Params { rate: 1000.0 });
-        assert!(out[0] == 0.0 && out[1].is_nan() && out[2].is_nan(), "{out:?}");
+        assert_eq!(out[0], 0.0);
+        assert!(out[1].is_nan() && out[2].is_nan(), "{out:?}");
     }
 
     #[test]
@@ -123,9 +125,9 @@ mod tests {
         ) {
             let params = Params { rate };
             let out = run(&inputs, &params);
-            prop_assert_eq!(out[0], 0.0);
+            prop_assert_eq!(out[0].to_bits(), 0.0_f64.to_bits());
             for index in 1..inputs.len() {
-                let mean = (inputs[index - 1] + inputs[index]) / 2.0;
+                let mean = f64::midpoint(inputs[index - 1], inputs[index]);
                 prop_assert!(((out[index] - out[index - 1]) * rate - mean).abs() <= 1e-9 * (1.0 + out[index].abs() * rate), "{index}");
             }
             let longer: Vec<f64> = inputs.iter().chain(&extra).copied().collect();

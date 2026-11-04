@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from hypothesis import given
+from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from bullterrier_control import Grid, ParameterError, lib
@@ -51,6 +51,9 @@ def test_beats_of_the_grid_set_the_length(grid, length, mode, times, expected):
     time=st.floats(min_value=0.0, max_value=1000.0),
 )
 def test_a_wrap_repeats_every_length_and_a_ping_pong_every_two(length, time):
+    # a wrap jumps back to 0 at each multiple of its length: keep away from the jump, where a rounding of
+    # time + length across it is a different value, not a defect
+    assume(1e-6 < time % length < length - 1e-6)
     wrap = lib.repeat(CLOCK, length=length)
     swing = lib.repeat(CLOCK, length=length, mode="ping-pong")
     assert wrap.sample([time + length]).tolist() == pytest.approx(wrap.sample([time]).tolist(), abs=1e-9 * (1 + time))
