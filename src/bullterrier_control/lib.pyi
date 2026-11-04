@@ -306,6 +306,19 @@ def slew(signal: Signal, /, *, rise: float = 0.1, fall: float = 0.1, rate: float
             sample. Raising it is more exact and slower.
     """
 
+def spring(signal: Signal, /, *, frequency: float = 2.0, damping: float = 0.5, rate: float = 1000.0) -> Signal:
+    """A signal that follows its input like a mass on a spring: it overshoots and rings, or glides in without overshoot.
+
+    Args:
+        frequency: hertz, 0.01 to 100, default 2.0. Swings a second of the spring when it is not damped, 0.01 to 100;
+            raising it makes the output arrive and ring faster.
+        damping: ratio, 0 to 10, default 0.5. How strongly the swing is held back, 0 to 10: 0 never stops, below 1
+            overshoots and rings (smaller rings longer), 1 arrives as fast as it can without overshoot, above 1 glides
+            in slowly. Raising it calms the output.
+        rate: hertz, 10 to 48000, default 1000.0, advanced. Internal samples per second; the output is exact to one
+            sample. Raising it is more exact and slower.
+    """
+
 def steps(
     *,
     values: Sequence[float],

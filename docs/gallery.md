@@ -345,3 +345,27 @@ signal = "input"
 rise = 1.2
 fall = 0.6
 ```
+
+### `spring`
+
+A signal that follows its input like a mass on a spring: it overshoots and rings, or glides in without overshoot.
+
+![spring](gallery/spring.png)
+
+```toml
+# spring: a staircase followed by a spring that overshoots and rings after each jump
+format = "bullterrier-control/patch"
+version = 1
+
+# a staircase with jumps, for a shaper to work on; the picture shows it beside the result
+[input]
+use = "steps"
+values = [0.1, 0.9, 0.3, 1.0, 0.0, 0.7]
+rate = 1.5
+
+[spring]
+use = "spring"
+signal = "input"
+frequency = 1.5
+damping = 0.25
+```

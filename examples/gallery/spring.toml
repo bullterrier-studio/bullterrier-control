@@ -1,0 +1,15 @@
+# spring: a staircase followed by a spring that overshoots and rings after each jump
+format = "bullterrier-control/patch"
+version = 1
+
+# a staircase with jumps, for a shaper to work on; the picture shows it beside the result
+[input]
+use = "steps"
+values = [0.1, 0.9, 0.3, 1.0, 0.0, 0.7]
+rate = 1.5
+
+[spring]
+use = "spring"
+signal = "input"
+frequency = 1.5
+damping = 0.25
