@@ -267,6 +267,7 @@ RENAMED = {  # a way the core crate can drift from the public names -> its edits
         ),
         (CORE, 'name = "bullterrier-control"\n', 'name = "bullterrier-control-core"\n'),
         ("crates/python/Cargo.toml", "bullterrier-control.workspace", "bullterrier-control-core.workspace"),
+        ("crates/wasm/Cargo.toml", "bullterrier-control.workspace", "bullterrier-control-core.workspace"),
     ],
     "the library renamed": [(CORE, 'name = "bullterrier_control"\n', 'name = "btc_core"\n')],
 }
