@@ -253,6 +253,27 @@ signal = "input"
 events = [{ t = 0.5 }, { t = 1.3 }, { t = 2.2 }, { t = 3.1 }]
 ```
 
+### `integrate`
+
+A signal that adds up its input over time: the area under it so far.
+
+![integrate](gallery/integrate.png)
+
+```toml
+# integrate: a speed that rises and falls added up into a position that never goes back
+format = "bullterrier-control/patch"
+version = 1
+
+# a speed that rises, then falls back to rest, for the shaper to work on; the picture shows it beside the result
+[input]
+use = "keyframes"
+points = [{ t = 0, value = 0, ease = "in-out" }, { t = 2, value = 1, ease = "in-out" }, { t = 4, value = 0 }]
+
+[integrate]
+use = "integrate"
+signal = "input"
+```
+
 ### `remap`
 
 A signal that puts its input, taken as 0 to 1, onto the range from `low` to `high`, bent by an ease.

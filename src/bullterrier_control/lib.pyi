@@ -122,6 +122,14 @@ def hold(signal: Signal, /, *, events: Sequence[Event | Mapping[str, object]]) -
             into time order).
     """
 
+def integrate(signal: Signal, /, *, rate: float = 1000.0) -> Signal:
+    """A signal that adds up its input over time: the area under it so far.
+
+    Args:
+        rate: hertz, 10 to 48000, default 1000.0, advanced. Internal samples per second; the output is exact to one
+            sample. Raising it is more exact and slower.
+    """
+
 def keyframes(*, points: Sequence[Keyframe | Mapping[str, object]]) -> Signal:
     """A signal that passes through the given values at the given times, easing from each point to the next.
 

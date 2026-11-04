@@ -78,6 +78,15 @@ class Chain[S]:
         """
         return self._apply("hold", events=events)
 
+    def integrate(self, *, rate: float = 1000.0) -> S:
+        """A signal that adds up its input over time: the area under it so far.
+
+        Args:
+            rate: hertz, 10 to 48000, default 1000.0, advanced. Internal samples per second; the output is exact to one
+                sample. Raising it is more exact and slower.
+        """
+        return self._apply("integrate", rate=rate)
+
     def remap(self, *, low: float = 0.0, high: float = 1.0, ease: str = "linear") -> S:
         """A signal that puts its input, taken as 0 to 1, onto the range from `low` to `high`, bent by an ease.
 

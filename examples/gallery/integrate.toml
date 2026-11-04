@@ -1,0 +1,12 @@
+# integrate: a speed that rises and falls added up into a position that never goes back
+format = "bullterrier-control/patch"
+version = 1
+
+# a speed that rises, then falls back to rest, for the shaper to work on; the picture shows it beside the result
+[input]
+use = "keyframes"
+points = [{ t = 0, value = 0, ease = "in-out" }, { t = 2, value = 1, ease = "in-out" }, { t = 4, value = 0 }]
+
+[integrate]
+use = "integrate"
+signal = "input"
