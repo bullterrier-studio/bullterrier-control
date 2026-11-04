@@ -223,6 +223,12 @@ OFFENCES = {
         replaced("[dependencies]\n", '[dependencies]\npyo3-ffi = "0.30"\n'),
         ["banned", "pyo3-ffi", "bullterrier-control"],
     ),
+    "wasm-bindgen in the pure-Rust core": (
+        "rust-deny",
+        CORE_MANIFEST,
+        replaced("[dependencies]\n", "[dependencies]\nwasm-bindgen.workspace = true\n"),
+        ["banned", "wasm-bindgen", "bullterrier-control"],
+    ),
     "a licence outside the allow-list": (
         "rust-deny",
         CORE_MANIFEST,
@@ -234,6 +240,12 @@ OFFENCES = {
         CORE,
         appended("\nuse std::os::unix::ffi::OsStrExt;\n"),
         ["unix", CORE],
+    ),
+    "an API the browser build of the WebAssembly bindings lacks": (
+        "rust-wasm",
+        "crates/wasm/src/lib.rs",
+        appended("\nuse std::os::unix::ffi::OsStrExt;\n"),
+        ["unix", "crates/wasm/src/lib.rs"],
     ),
     "a failing Rust test": (
         "rust-test",

@@ -1,9 +1,9 @@
-# The Rust core of bullterrier-control: `crates/core` (pure Rust: the shapers) and `crates/python` (the bindings that
-# build `bullterrier_control._native._core`; maturin builds it, see [tool.maturin] in pyproject.toml). Rust settings
-# live here, except what a tool cannot read from this file: rust-toolchain.toml, rustfmt.toml, deny.toml.
+# The Rust core of bullterrier-control: `crates/core` (pure Rust: the shapers), `crates/python` (the bindings that
+# build `bullterrier_control._native._core`; maturin builds it, see [tool.maturin] in pyproject.toml) and `crates/wasm`
+# (the WebAssembly bindings). Rust settings live here, except what a tool cannot read from this file: rust-toolchain.toml, rustfmt.toml, deny.toml.
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/macros", "crates/python"]
+members = ["crates/core", "crates/macros", "crates/python", "crates/wasm"]
 
 [workspace.package]
 version = "0.0.0"  # never published on its own: the Python package's version (pyproject.toml) is the release's
@@ -36,6 +36,8 @@ serde_path_to_error = "0.1"
 syn = "3"
 # toml: a patch file is TOML; only the parser (no serde, no writer), which keeps the file order through its spans
 toml = { version = "1", default-features = false, features = ["parse"] }
+# wasm-bindgen: the WebAssembly glue; exactly the version of the `wasm-bindgen` command below (generated glue must match it)
+wasm-bindgen = "=0.2.130"
 
 # Warnings, not errors, so a newer compiler's new lint never breaks a user's install; the gate (`poe check`) runs clippy
 # and rustdoc with `-D warnings`, so every one fails it.
@@ -62,3 +64,4 @@ undocumented_unsafe_blocks = "warn"
 [workspace.metadata.tools]
 cargo-shear = "1.14.0"
 cargo-deny = "0.20.2"
+wasm-bindgen = "0.2.130"  # the command (crate wasm-bindgen-cli); `rust-tools` ties it to the crate version in Cargo.lock

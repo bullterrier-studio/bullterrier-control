@@ -59,8 +59,13 @@ build-backend = "maturin"
 manifest-path = "crates/python/Cargo.toml"
 python-source = "src"
 module-name = "bullterrier_control._native._core"
-# the sdist builds the extension on its own: it needs the pinned toolchain too
-include = [{ path = "rust-toolchain.toml", format = "sdist" }]
+# the sdist builds the extension on its own: it needs the pinned toolchain too, and maturin ships only the crates the
+# extension depends on while the workspace names every member, so the WebAssembly crate is shipped as well
+include = [
+    { path = "rust-toolchain.toml", format = "sdist" },
+    { path = "crates/wasm/Cargo.toml", format = "sdist" },
+    { path = "crates/wasm/src/**/*.rs", format = "sdist" },
+]
 
 # `uv sync` and `uv run` rebuild the extension when one of these changes (by default uv looks at pyproject.toml only)
 [tool.uv]
@@ -140,8 +145,9 @@ rust-doc = { cmd = "cargo doc --workspace --no-deps --locked --quiet", env = { R
 rust-tools = { cmd = "uv run python tools/rust_tools.py check", help = "Check that the cargo tools the gate runs are installed at the versions Cargo.toml pins" }
 rust-shear = { cmd = "cargo shear", help = "Find Rust dependencies no code uses (cargo-shear)" }
 rust-deny = { cmd = "cargo deny --offline --locked check bans licenses sources", help = "Check the Rust dependencies offline: banned crates, licences, sources (deny.toml)" }
-# The core is pure Rust so that it also runs in a browser (WebAssembly): only the core crate, which has no Python in it
-rust-wasm = { cmd = "cargo check -p bullterrier-control --target wasm32-unknown-unknown --locked --quiet", help = "Check that the core builds for the browser (wasm32-unknown-unknown)" }
+# The core is pure Rust so that it also runs in a browser (WebAssembly): only the core crate, which has no Python in it,
+# and the bindings crate that gives it to JavaScript
+rust-wasm = { cmd = "cargo check -p bullterrier-control -p bullterrier-control-wasm --target wasm32-unknown-unknown --locked --quiet", help = "Check that the core and the WebAssembly bindings build for the browser (wasm32-unknown-unknown)" }
 stubtest = { cmd = "uv run python -m mypy.stubtest --mypy-config-file pyproject.toml bullterrier_control._native._core", help = "Check the stub _core.pyi against the built extension" }
 rust-test = { cmd = "uv run python tools/run_capped.py -- cargo test --workspace --locked --quiet --no-fail-fast", help = "Run the Rust tests under the memory cap, every binary even after one fails" }
 # A crate's Rust integration tests are one binary (tests/it/main.rs); tools/check_rust_test_layout.py, the table [tool.rust-tests.own-binaries]
