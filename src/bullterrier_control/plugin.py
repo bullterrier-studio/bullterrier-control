@@ -19,17 +19,15 @@ point of the group `bullterrier_control.sources` in its `pyproject.toml`:
     my_package = "my_package.sources"
 """
 
-from .cadence import Positions, counter
 from .easing import EASES, curve
 from .errors import FormatError, InvalidError, ParameterError
 from .formats import Event, Grid, Series, Unit
 from .hashing import uniform
-from .inputs import Keyframe, matching
+from .inputs import Keyframe
 from .params import Finite, Params, Switch, Text, Whole, param
 from .registry import operation, shaper, source
 from .rendered import Rendered
 from .rounding import at_least, more_than
-from .scaling import between
 from .signal import Constant, Signal, maximum, minimum
 
 __all__ = [
@@ -43,7 +41,6 @@ __all__ = [
     "Keyframe",
     "ParameterError",
     "Params",
-    "Positions",
     "Rendered",
     "Series",
     "Signal",
@@ -52,10 +49,7 @@ __all__ = [
     "Unit",
     "Whole",
     "at_least",
-    "between",
-    "counter",
     "curve",
-    "matching",
     "maximum",
     "minimum",
     "more_than",

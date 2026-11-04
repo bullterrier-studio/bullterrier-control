@@ -15,7 +15,6 @@ __all__ = [
     "TOLERANCE",
     "Bundle",
     "Constant",
-    "Counter",
     "Ease",
     "Event",
     "Grid",
@@ -31,10 +30,8 @@ __all__ = [
     "Thing",
     "Unit",
     "at_least",
-    "between",
     "bundle_schema",
     "check_input",
-    "counter",
     "dumps",
     "ease",
     "from_series",
@@ -340,14 +337,8 @@ TOLERANCE: float
 class Ease:
     def __call__(self, progress: ArrayLike) -> NDArray[np.float64]: ...
 
-@final
-class Counter:
-    def __call__(self, times: ArrayLike) -> NDArray[np.float64]: ...
-
 def ease(name: str) -> Ease: ...
 def uniform(seed: int, index: ArrayLike) -> NDArray[np.float64]: ...
-def between(low: float, high: float, fraction: ArrayLike) -> NDArray[np.float64]: ...
-def counter(rate: float, per: Literal["second", "beat"], grid: Grid | None) -> Counter: ...
 @overload
 def at_least(value: float, bound: float) -> bool: ...
 @overload

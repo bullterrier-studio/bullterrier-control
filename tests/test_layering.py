@@ -7,9 +7,9 @@ import only the layers below it:
     plugin     the author API: the names a package of sources and shapers uses
     registry   the table of sources and shapers, and the queries over it
     rendered | inputs   a signal that needs history, rendered once | the data a source takes besides parameters
-    signal | params | easing | cadence | hashing | scaling | rounding
+    signal | params | easing | hashing | rounding
                what a signal is and how it is read | how a source or shaper declares its parameters | how progress is
-               reshaped (easing curves) | where a read falls in a cycle | a seeded hash | how 0 to 1 is put on a range |
+               reshaped (easing curves) | a seeded hash |
                when a time counts as a bound
     _chain     the chain methods `Signal` inherits, one per built-in shaper (generated); `signal` imports it
     formats    the formats' file input and output and `events` (the classes are the Rust extension's)
@@ -42,7 +42,7 @@ LINT_IMPORTS = Path(sys.executable).with_name("lint-imports")  # `uv run lint-im
 
 LAYERS = (
     "Layers: app > lib | patch | plotting > plugin > registry > rendered | inputs > signal | params | easing"
-    " | cadence | hashing | scaling | rounding > _chain > formats > _native > errors"
+    " | hashing | rounding > _chain > formats > _native > errors"
 )
 PATCH_DOOR = "Patch imports only registry, formats, errors and _native"
 CONTRACTS = [LAYERS, PATCH_DOOR]

@@ -1,5 +1,5 @@
-"""The extension's primitives (`ease` and `EASES`, `uniform`, `between`, `counter`, `at_least`, `more_than`,
-`TOLERANCE`): what the package's easing, hashing, scaling, cadence and rounding modules are built on.
+"""The extension's primitives (`ease` and `EASES`, `uniform`, `at_least`, `more_than`,
+`TOLERANCE`): what the package's easing, hashing and rounding modules are built on.
 
 An architecture test of the extension's own interface; every expected number is worked out by hand or taken from
 the algorithm's published reference.
@@ -8,9 +8,8 @@ the algorithm's published reference.
 import numpy as np
 import pytest
 
-from bullterrier_control import Grid
 from bullterrier_control._native import _core  # noqa: PLC2701  architecture: the boundary the package's helpers are
-from bullterrier_control.errors import InvalidError, ParameterError, SignalError
+from bullterrier_control.errors import InvalidError
 
 # ---- ease ----
 
@@ -105,41 +104,6 @@ def test_uniform_takes_the_indices_of_any_integer_dtype_as_the_same_whole_number
         assert _core.uniform(5, np.arange(3, dtype=dtype)).tolist() == expected.tolist()
     assert _core.uniform(5, np.array([[2], [0]])).tolist() == [[expected[2]], [expected[0]]]
     assert _core.uniform(5, np.array([], dtype=np.int64)).shape == (0,)
-
-
-# ---- between ----
-
-
-def test_between_puts_a_fraction_on_the_range_exactly_inside_it():
-    on_range = _core.between(0.3, 0.9, np.array([[0.0, 1.0], [0.5, 2.0]]))
-    assert on_range.shape == (2, 2)
-    assert on_range[0].tolist() == [0.3, 0.9]  # 0.3 + 0.6 * 1 is 0.9000000000000001 in floats: kept inside
-    assert on_range[1].tolist() == pytest.approx([0.6, 0.9], abs=1e-15)
-    assert _core.between(1.0, 0.0, 0.25).tolist() == 0.75  # low above high inverts it
-
-
-# ---- counter ----
-
-
-def test_a_counter_counts_cycles_per_second_or_per_beat_of_a_grid():
-    # beats 0.5 s, then 0.6 s, then 0.7 s long: halfway through each beat is a whole cycle further at 2 a beat
-    grid = Grid(beats=[0.0, 0.5, 1.1, 1.8], meter=4, first_downbeat=0)
-    assert _core.counter(2.0, "beat", grid)(np.array([0.25, 0.8, 1.45])).tolist() == [1.0, 3.0, 5.0]
-    per_second = _core.counter(3.0, "second", grid)(np.array([[0.0, 0.5], [2.0, 4.0]]))
-    assert per_second.tolist() == [[0.0, 1.5], [6.0, 12.0]]
-
-
-@pytest.mark.parametrize(
-    ("made", "error", "named"),
-    [
-        pytest.param(lambda: _core.counter(1.0, "beat", None), ParameterError, "per", id="per beat without a grid"),
-        pytest.param(lambda: _core.counter(1.0, "minute", None), ValueError, "minute", id="an unknown unit"),  # type: ignore[arg-type]  # the wrong value is the case
-        pytest.param(lambda: _core.counter(1e308, "second", None)(10.0), SignalError, "finite", id="an overflow"),
-    ],
-)
-def test_a_counter_refuses_what_it_cannot_count(made, error, named):
-    with pytest.raises(error, match=named):
-        made()
 
 
 # ---- at_least, more_than ----

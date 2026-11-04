@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from bullterrier_control import Event, Grid, ParameterError, Series, Unit, registry
-from bullterrier_control.inputs import INPUTS, matching
+from bullterrier_control.inputs import INPUTS
 from bullterrier_control.plugin import EASES, Constant, Keyframe, Params, Signal, source
 
 
@@ -386,33 +386,6 @@ def test_a_bad_series_is_refused_as_a_parameter_error_naming_each_path(given, na
     for path in named:
         reports(refused.value, path)
     assert [path for path, _ in refused.value.problems] == named
-
-
-LABELLED = (
-    Event(t=0.5, label="kick"),
-    Event(t=0.7, label="snare"),
-    Event(t=0.9),
-    Event(t=1.1, label="kick", strength=0.4),
-)
-
-
-@pytest.mark.parametrize(
-    ("label", "times"),
-    [
-        pytest.param("", [0.5, 0.7, 0.9, 1.1], id="no label: every event, the unlabelled one too"),
-        pytest.param("kick", [0.5, 1.1], id="a label: only the events carrying it"),
-        pytest.param("snare", [0.7], id="another label"),
-        pytest.param("hat", [], id="a label nothing has: none"),
-    ],
-)
-def test_matching_keeps_the_events_with_the_label_in_their_order(label, times):
-    kept = matching(LABELLED, label)
-    assert type(kept) is tuple
-    assert [event.t for event in kept] == times
-
-
-def test_matching_keeps_every_other_field_of_the_events():
-    assert matching(LABELLED, "kick")[1] == Event(t=1.1, label="kick", strength=0.4)
 
 
 @pytest.mark.parametrize("name", INPUTS.keys())

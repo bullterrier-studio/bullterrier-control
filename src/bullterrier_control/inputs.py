@@ -23,7 +23,6 @@ Promises:
 - `values`: a non-empty list or tuple of finite numbers (no bool, no text). Checked, it is a `tuple[float, ...]`.
 - `series`: a `Series` or a mapping parsed into one; a bad one is a `ParameterError` (not a `FormatError`) naming
   `series.<field>`.
-- `matching(events, label)`: the events a `label` parameter picks, shared by everything that has one.
 """
 
 from collections.abc import Callable, Mapping
@@ -32,18 +31,12 @@ from types import MappingProxyType
 from typing import NamedTuple
 
 from ._native import _core
-from .formats import Event
 
-__all__ = ["INPUTS", "Input", "Keyframe", "matching"]
+__all__ = ["INPUTS", "Input", "Keyframe"]
 
 Keyframe = _core.Keyframe
 """One point of a keyframed signal: the value at a time in seconds, and the ease of the segment that starts here
 (ignored on the last point). `Keyframe(t=0, value=1, ease="in-out")` or `Keyframe.parse(mapping)`; frozen."""
-
-
-def matching(events: tuple[Event, ...], label: str) -> tuple[Event, ...]:
-    """The events whose label is `label`, in their order; every event, unlabelled ones too, when `label` is empty."""
-    return tuple(event for event in events if label in ("", event.label))
 
 
 class Input(NamedTuple):

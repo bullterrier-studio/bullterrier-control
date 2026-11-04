@@ -1,10 +1,8 @@
 //! The core's primitives for Python, each over numpy arrays of any shape (the result has the input's shape, 0-d for a
-//! number): `ease` (and `EASES`), `uniform`, `between`, `counter`, `at_least` and `more_than` (and `TOLERANCE`).
+//! number): `ease` (and `EASES`), `uniform`, `at_least` and `more_than` (and `TOLERANCE`).
 
-use bullterrier_control::cadence::{Per, positions};
 use bullterrier_control::easing::Ease;
-use bullterrier_control::formats::Grid;
-use bullterrier_control::{Error, hashing, rounding, scaling};
+use bullterrier_control::{hashing, rounding};
 use numpy::{PyArrayDyn, PyArrayMethods, PyUntypedArray};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -12,7 +10,6 @@ use pyo3::types::{PyBool, PyDict, PyTuple};
 
 use crate::data::{float64s, shaped, shown};
 use crate::error;
-use crate::formats::PyGrid;
 
 /// Adds the constants to `module`: `EASES`, the names of the named easing curves in their order, and `TOLERANCE`, the
 /// seconds within which a time is the bound it is compared with.
@@ -76,62 +73,6 @@ pub(crate) fn uniform<'py>(seed: u64, index: &Bound<'py, PyAny>) -> PyResult<Bou
         .map(|&index| hashing::uniform(seed, index))
         .collect();
     shaped(py, values, &copy.getattr("shape")?)
-}
-
-/// Each of `fraction` (0 to 1) as a value from `low` to `high`, kept exactly inside them; `low` above `high` inverts
-/// it.
-#[pyfunction]
-pub(crate) fn between<'py>(low: f64, high: f64, fraction: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    let (fractions, shape) = float64s(fraction)?;
-    let values = fractions
-        .iter()
-        .map(|&fraction| scaling::between(low, high, fraction))
-        .collect();
-    shaped(fraction.py(), values, &shape)
-}
-
-/// Where each time falls in a periodic source: called with times (finite, from 0 up), it gives `rate * t` per second
-/// or `rate * grid.beat_at(t)` per beat. A position that is not a finite number is a `SignalError`.
-#[pyclass(frozen, module = "bullterrier_control._native._core", name = "Counter")]
-pub(crate) struct Counter {
-    rate: f64,
-    per: Per,
-    grid: Option<Grid>,
-}
-
-#[pymethods]
-impl Counter {
-    fn __call__<'py>(&self, times: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-        let py = times.py();
-        let (times, shape) = float64s(times)?;
-        let counted =
-            positions(self.rate, self.per, self.grid.as_ref(), &times).map_err(|error| error::raised(py, error))?;
-        shaped(py, counted, &shape)
-    }
-}
-
-/// The counter of `rate` cycles or steps per `"second"` or per `"beat"` of `grid` (ignored per second). Per beat
-/// without a grid is a `ParameterError` naming `per`.
-#[pyfunction]
-pub(crate) fn counter(py: Python<'_>, rate: f64, per: &str, grid: Option<&Bound<'_, PyGrid>>) -> PyResult<Counter> {
-    let per = match per {
-        "second" => Per::Second,
-        "beat" => Per::Beat,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "per must be 'second' or 'beat' (got {other:?})"
-            )));
-        }
-    };
-    let counter = Counter {
-        rate,
-        per,
-        grid: grid.map(|grid| grid.get().0.clone()),
-    };
-    // the core decides which counters it can count with: one that counts no times is refused as one that counts any
-    positions(counter.rate, counter.per, counter.grid.as_ref(), &[])
-        .map_err(|error: Error| error::raised(py, error))?;
-    Ok(counter)
 }
 
 /// Whether `value` reaches `bound`, or is short of it by no more than `TOLERANCE`: two numbers give a `bool`, else

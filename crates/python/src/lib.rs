@@ -36,7 +36,7 @@ mod _core {
     #[pymodule_export]
     use super::patch::{PyNode, PyPatch, PyReference, patch_schema};
     #[pymodule_export]
-    use super::primitives::{Counter, PyEase, at_least, between, counter, ease, more_than, uniform};
+    use super::primitives::{PyEase, at_least, ease, more_than, uniform};
     #[pymodule_export]
     use super::registry::{PyRegistry, PyThing};
     #[pymodule_export]

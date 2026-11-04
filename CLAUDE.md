@@ -91,7 +91,7 @@ plotting   plot: signals drawn as a PNG (matplotlib, an optional extra, imported
 plugin     the author API: everything a plugin's source, shaper or operation needs
 registry   the package's one registry (the core's `Registry`; `Registered` is the core's `Thing`), `table()`; `@source`, `@shaper`, `@operation` (they check a Python function's shape, the core checks the rest); entry-point loading
 rendered   Rendered: a signal that needs history, rendered on a grid and read by holding the latest sample  |  inputs   `INPUTS`, Keyframe: the Rust core's input rules, named for Python
-signal     Signal (a handle over the Rust graph), Constant, from_series, from_values, minimum, maximum  |  params   Params, param: a plugin's declaration, built into the core's `ParamTable`  |  easing   `curve`: named and Bezier eases  |  cadence   `counter`: a read's position in cycles or steps, per second or beat  |  hashing   `uniform`: seeded random numbers by index  |  scaling   `between`: 0..1 onto `low`..`high`, exactly inside  |  rounding   decisions at a time boundary
+signal     Signal (a handle over the Rust graph), Constant, from_series, from_values, minimum, maximum  |  params   Params, param: a plugin's declaration, built into the core's `ParamTable`  |  easing   `curve`: named and Bezier eases  |  hashing   `uniform`: seeded random numbers by index  |  rounding   decisions at a time boundary
 _chain     Chain: a typed method per built-in shaper, which Signal inherits (generated; rounding > _chain > formats)
 formats    Bundle > Series | Event | Grid > Unit: the Rust-backed classes of the extension, re-exported; `load`, `save`, `events`
 _native    home of the Rust extension `_native._core`      (imports `errors` only, lazily, to raise its errors)

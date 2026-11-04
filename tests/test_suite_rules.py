@@ -28,7 +28,7 @@ ALLOWED: dict[tuple[str, str], str] = {
         "Python and deep graphs are the extension's to get right, before the package wraps it"
     ),
     ("_native/test__core_primitives.py", "bullterrier_control._native"): (
-        "the boundary the package's easing, hashing, scaling, cadence and rounding wrap"
+        "the boundary the package's easing, hashing and rounding wrap"
     ),
     ("_native/test__core_inputs.py", "bullterrier_control._native"): (
         "the boundary the package's inputs are read through: Python objects of every kind, hostile ones too, read "
