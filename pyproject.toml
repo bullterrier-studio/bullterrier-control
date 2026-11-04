@@ -122,7 +122,7 @@ test = { cmd = "pytest -q -n auto", env = { PYTHONWARNDEFAULTENCODING = "1" }, h
 # releases). It is for CI. Tests marked `typecheck` are left out because mypy's verdict on our source depends on the
 # dependencies' own type annotations, which are not what this checks. No PYTHONWARNDEFAULTENCODING here: numpy 1.26
 # runs a text-mode subprocess when numpy.testing is imported, and the encoding of our own IO is `poe test`'s concern.
-check-min-deps = { cmd = "uv run --isolated --python 3.12 --resolution lowest-direct pytest -q -n auto -m 'not typecheck'", help = "Run the suite on Python 3.12 against the lowest allowed release of every dependency" }
+check-min-deps = { cmd = "uv run --isolated --python 3.12 --resolution lowest-direct pytest -q -n auto -m 'not typecheck and not gate'", help = "Run the suite on Python 3.12 against the lowest allowed release of every dependency" }
 # Not part of `check`: it asks the PyPI vulnerability database about every locked package (runtime, extras and dev
 # tools, pinned by hash), so it needs the network and its verdict changes as advisories are published. For CI and
 # before a release; an advisory with no fixed release is ignored with `--ignore-vuln ID` and listed in SECURITY.md.
@@ -203,7 +203,7 @@ addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config", "--
 xfail_strict = true
 markers = [
     "typecheck: type-checks the package with mypy; `poe check-min-deps` leaves it out",
-    "gate: proves a gate that needs Node and the wasm-bindgen command fails on a known-bad input; CI runs it on Linux only",
+    "gate: proves a gate that needs Node and the wasm-bindgen command fails on a known-bad input; CI runs it on Linux only, in the test job (`poe check-min-deps` leaves it out)",
 ]
 # Every warning fails the test that raised it: a leaked file or process (ResourceWarning), a deprecated call, and, when
 # PYTHONWARNDEFAULTENCODING=1 is set (`poe test` sets it), text IO that relies on the locale's encoding (EncodingWarning,

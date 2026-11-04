@@ -1,8 +1,9 @@
 """What the native extension answers, written as JSON for the Node tests of the WebAssembly package.
 
-`poe wasm-test` runs this beside the build: the Node tests (`package.test.mjs`) call the WebAssembly package with the
-same patches, bundles and times and expect exactly these values. The two are different binaries built from one core, so
-a difference is a defect in the glue, the target or the build. Usage: `python tests/wasm/oracle.py <output file>`.
+`poe wasm-test` runs this beside the build: the Node tests (`tests/wasm/*.test.mjs`) call the WebAssembly package
+with the same patches, bundles and times and expect exactly these values. The two are different binaries built from
+one core, so a difference is a defect in the glue, the target or the build.
+Usage: `python tests/wasm/oracle.py <output file>`.
 """
 
 import json
