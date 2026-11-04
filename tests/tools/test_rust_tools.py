@@ -120,3 +120,77 @@ def test_specs_prints_every_pin_as_an_installer_takes_it_on_one_line(tmp_path, c
     (tmp_path / "Cargo.toml").write_text(MANIFEST, encoding="utf-8")
     assert rust_tools.main(["specs", "--root", str(tmp_path)]) == 0
     assert capsys.readouterr().out == "cargo-shear@1.14.0,cargo-deny@0.20.2\n"
+
+
+WASM_MANIFEST = MANIFEST + 'wasm-bindgen = "0.2.130"\n'
+LOCK = '[[package]]\nname = "libm"\nversion = "0.2.15"\n\n[[package]]\nname = "wasm-bindgen"\nversion = "{}"\n'
+
+
+@pytest.mark.parametrize(
+    ("locked", "problems"),
+    [
+        pytest.param("0.2.130", [], id="the pair matches"),
+        pytest.param(
+            "0.2.131",
+            ["wasm-bindgen 0.2.130 (Cargo.toml's tool pin) is not the crate version in Cargo.lock, 0.2.131"],
+            id="the crate is newer than the command",
+        ),
+        pytest.param(
+            "0.2.9",
+            ["wasm-bindgen 0.2.130 (Cargo.toml's tool pin) is not the crate version in Cargo.lock, 0.2.9"],
+            id="the crate is older than the command",
+        ),
+    ],
+)
+def test_the_wasm_bindgen_command_must_be_the_version_of_the_crate_in_cargo_lock(tmp_path, locked, problems):
+    # a command and a crate of different versions generate glue that fails only when the browser runs it
+    (tmp_path / "Cargo.toml").write_text(WASM_MANIFEST, encoding="utf-8")
+    (tmp_path / "Cargo.lock").write_text(LOCK.format(locked), encoding="utf-8")
+    assert rust_tools.pairing_problems(tmp_path, rust_tools.pinned(tmp_path)) == problems
+
+
+def test_a_pinned_command_without_the_crate_in_cargo_lock_is_a_problem(tmp_path):
+    (tmp_path / "Cargo.toml").write_text(WASM_MANIFEST, encoding="utf-8")
+    (tmp_path / "Cargo.lock").write_text('[[package]]\nname = "libm"\nversion = "0.2.15"\n', encoding="utf-8")
+    [found] = rust_tools.pairing_problems(tmp_path, rust_tools.pinned(tmp_path))
+    assert "wasm-bindgen" in found
+    assert "Cargo.lock" in found
+
+
+def test_check_fails_the_gate_on_a_mismatched_pair_naming_both_versions(programs, tmp_path, capsys):
+    (tmp_path / "Cargo.toml").write_text(WASM_MANIFEST, encoding="utf-8")
+    (tmp_path / "Cargo.lock").write_text(LOCK.format("0.2.131"), encoding="utf-8")
+    programs("cargo-shear", "Version: 1.14.0")
+    programs("cargo-deny", "cargo-deny 0.20.2")
+    programs("wasm-bindgen", "wasm-bindgen 0.2.130")
+    assert rust_tools.main(["check", "--root", str(tmp_path)]) == 1
+    error = capsys.readouterr().err
+    assert "0.2.130" in error
+    assert "0.2.131" in error
+
+
+def test_check_passes_a_matching_pair(programs, tmp_path):
+    (tmp_path / "Cargo.toml").write_text(WASM_MANIFEST, encoding="utf-8")
+    (tmp_path / "Cargo.lock").write_text(LOCK.format("0.2.130"), encoding="utf-8")
+    programs("cargo-shear", "Version: 1.14.0")
+    programs("cargo-deny", "cargo-deny 0.20.2")
+    programs("wasm-bindgen", "wasm-bindgen 0.2.130")
+    assert rust_tools.main(["check", "--root", str(tmp_path)]) == 0
+
+
+def test_the_wasm_bindgen_command_installs_from_the_crate_that_holds_it(programs, tmp_path):
+    # the command `wasm-bindgen` is built from the crate `wasm-bindgen-cli`; the crate `wasm-bindgen` is the library
+    (tmp_path / "Cargo.toml").write_text(WASM_MANIFEST, encoding="utf-8")
+    (tmp_path / "Cargo.lock").write_text(LOCK.format("0.2.130"), encoding="utf-8")
+    programs("cargo")
+    programs("cargo-shear", "Version: 1.14.0")
+    programs("cargo-deny", "cargo-deny 0.20.2")
+    assert rust_tools.main(["install", "--root", str(tmp_path)]) == 0
+    installs = [call for call in programs.calls() if call.startswith("install")]
+    assert installs == ["install --locked wasm-bindgen-cli@0.2.130"]
+
+
+def test_specs_names_the_command_as_the_installer_action_knows_it(tmp_path, capsys):
+    (tmp_path / "Cargo.toml").write_text(WASM_MANIFEST, encoding="utf-8")
+    assert rust_tools.main(["specs", "--root", str(tmp_path)]) == 0
+    assert capsys.readouterr().out.strip().endswith(",wasm-bindgen@0.2.130")
