@@ -206,7 +206,7 @@ separate ramp. Changed:
   is defined, deterministic and never casts out of range.
 - **`noise` has no `per="beat"`.** *Reason:* a random value per beat is a `steps` of random `values`; tempo-synced noise
   waits for a consumer that needs it.
-- **`lfo` and `noise` put 0..1 on `low`..`high` through one function, `scaling.between`** (the Python module went in R6; the Rust function stays)**. *Reason:* the exact-range
+- **`lfo` and `noise` put 0..1 on `low`..`high` through one function, `scaling.between`.** (The Python module went in R6; the Rust function stays.) *Reason:* the exact-range
   promise (see C2c) is one decision, extracted when `noise` became the second consumer.
 - **A step edge sits where `rate * t` reaches a whole number, to within float rounding.** *Reason:* `rate * (k / rate)`
   can round just below `k` (rate 7, t = 61/7 reads step 60), so a read at a "frame time" may land on the step before. No

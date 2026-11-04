@@ -120,7 +120,9 @@ pub fn shape(name: &str, input: &Signal, params: &serde_json::Value) -> Result<S
 /// // seeded noise: the same seed gives the same values, in any reading order
 /// let params = noise::Params { rate: 4.0, seed: 7, shape: noise::Shape::Smooth, ..Default::default() };
 /// let drift = lib::noise(params.clone())?;
-/// assert_eq!(drift.sample(&[2.0, 1.0])?, lib::noise(params)?.sample(&[2.0, 1.0])?);
+/// let forward = drift.sample(&[1.0, 2.0])?;
+/// let backward = lib::noise(params)?.sample(&[2.0, 1.0])?;
+/// assert_eq!([forward[1], forward[0]], [backward[0], backward[1]]);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub mod lib {
