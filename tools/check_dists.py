@@ -25,6 +25,7 @@ import sys
 import tempfile
 import tomllib
 import zipfile
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 
@@ -76,7 +77,7 @@ def check(folder: Path) -> list[str]:
     return problems
 
 
-def _local_builds(native: Path, name: str):
+def _local_builds(native: Path, name: str) -> Callable[[str, list[str]], list[str]]:
     """A `copytree` filter leaving out the extension built in the checkout (an editable install puts it there)."""
 
     def ignore(folder: str, entries: list[str]) -> list[str]:

@@ -2,7 +2,7 @@
 # exactly these files), and prove each works when installed on its own, away from the checkout. Called by ci.yml once
 # every check passed; can also be started by hand (only release.yml publishes, and only what its own CI built).
 #
-# The sdist and one abi3 wheel per platform; which platforms, and why: docs/design-decisions.md, "Platforms". No job
+# The sdist and one abi3 wheel per platform; which platforms, and why: docs/template-decisions.md, "Platforms". No job
 # here restores a build cache: what it builds may be published.
 name: Build
 
@@ -153,12 +153,12 @@ jobs:
           rustup toolchain install --no-self-update && cargo --version
       # The environment has the package and its dependencies only. A wheel comes from the artifact alone (`--no-index`:
       # no release from PyPI; `--only-binary`: no sdist built on the fly), the platform's wheel chosen by uv; then its
-      # dependencies, as its installed metadata names them, from PyPI (`--no-index` cannot resolve them). The sdist is installed from its file and built here, with the toolchain its own
-      # rust-toolchain.toml pins (installed in the step before). check_installed.py then names the artifact's file it came
-      # from and walks the deepest chain of each kind on a 256 KiB thread, or fails. `slew` is a shaper written in the
-      # Rust extension: sampling the gallery patch that uses it runs the installed build, and the patch is read from the
-      # sparse checkout beside it, not from the environment.
-      - name: Install the ${{ matrix.from }} in a fresh environment and sample a patch that runs the extension
+      # dependencies, as its installed metadata names them, from PyPI (`--no-index` cannot resolve them). The sdist is
+      # installed from its file and built here, with the toolchain its own rust-toolchain.toml pins (installed in the
+      # step before). check_installed.py then names the artifact's file it came from, or fails. The last line is the
+      # project's smoke command, which calls the Rust extension, so its answer proves the installed build runs: the
+      # template's runs the demo `scale`, a project replaces it with its own, and the template never changes that line.
+      - name: Install the ${{ matrix.from }} in a fresh environment and run the extension
         shell: bash
         env:
           FROM: ${{ matrix.from }}
@@ -180,6 +180,7 @@ jobs:
           uv pip list --python smoke
           "$bin/bt-control" --version
           "$bin/bt-control" --help
+          # the project's own smoke command (the template never changes this line)
           "$bin/bt-control" sample "$patch" input slew --to 6 --rate 20 --csv > sampled.csv
           "$bin/python" - <<'PY'
           import csv

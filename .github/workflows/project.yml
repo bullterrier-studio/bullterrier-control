@@ -1,0 +1,45 @@
+# This project's own CI jobs (a test in another language, a second build target, a scheduled check): ci.yml runs this
+# file beside the template's checks, the build waits for it, and so does ci-ok. The file is the project's: an update never
+# changes it. Replace the placeholder job with the project's own; the file needs at least one.
+name: Project
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  # the WebAssembly package (crates/wasm): the bindings build for the browser, then run in Node against what the native
+  # extension answers (`project-gates` in pyproject.toml). Linux only: the gate proof of this job's gate runs in test.yml.
+  wasm:
+    name: WebAssembly package in Node
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install --no-self-update && cargo --version
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Read the cargo tools' versions (Cargo.toml)
+        id: cargo-tools
+        run: echo "specs=$(uv run --no-project python tools/rust_tools.py specs)" >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: ${{ steps.cargo-tools.outputs.specs }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+          package-manager-cache: false
+      - name: Fetch the locked crates (cargo fetch)
+        run: cargo fetch --locked
+      - name: Install the locked dependencies (builds the Rust extension)
+        run: uv sync --locked
+      - name: The WebAssembly package (build for the browser, run in Node, compare with the native extension)
+        run: uv run --locked poe project-gates

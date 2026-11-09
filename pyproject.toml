@@ -119,7 +119,7 @@ dev = [
 [tool.poe.tasks]
 # PYTHONWARNDEFAULTENCODING makes the interpreter, and every xdist worker it starts, report text IO without an
 # encoding (EncodingWarning), which `filterwarnings` below turns into a failure; an -X flag would not reach the workers
-# Three tiers (CLAUDE.md, "Gates"): `fast` while working, `check` before a push to main, `full` before a tag and in CI. The tests that
+# Three tiers (docs/rules.md, "Three tiers"): `fast` while working, `check` before a push to main, `full` before a tag and in CI. The tests that
 # prove a gate fails on a known-bad input copy the workspace and build in it (marked `gate`), and the shared tools' own tests are the
 # same in every project (marked `tooling`): `test` is the project's own suite, and `gate-tests` runs both when the tooling changed.
 test = { cmd = "python tools/run_capped.py -- pytest -q -n auto -m 'not gate and not tooling'", env = { PYTHONWARNDEFAULTENCODING = "1" }, help = "Run the project's test suite on every CPU core (pytest-xdist; the order stays random), without the tests of the tooling" }
@@ -137,7 +137,7 @@ audit = { sequence = ["uv export --frozen --all-extras --all-groups --no-emit-pr
 fix = { sequence = ["ruff check --fix .", "ruff format .", "cargo fmt --all"], default_item_type = "cmd", help = "Apply every automatic lint and format fix" }
 # The sdist and wheel as PyPI would get them, built into dist/check (git-ignored, emptied first) and checked as CI checks
 # every platform's: tools/check_dists.py (twine, one build of the extension, check-wheel-contents)
-build-check = { sequence = ["uv build --quiet --clear --no-create-gitignore --out-dir dist/check", "uv run python tools/check_dists.py dist/check"], default_item_type = "cmd", help = "Build the sdist and wheel and check what would be uploaded" }
+build-check = { sequence = ["uv build --quiet --clear --no-create-gitignore --out-dir dist/check", "python tools/check_dists.py dist/check"], default_item_type = "cmd", help = "Build the sdist and wheel and check what would be uploaded" }
 # The GitHub workflows and dependabot.yml: actionlint (syntax, expressions, job wiring; it also runs shellcheck on the
 # `run:` scripts when shellcheck is installed, as on GitHub's runners) and zizmor (unpinned actions, template
 # injection, persisted credentials, over-broad permissions). `uv run`, because the actionlint-py distribution names
@@ -146,51 +146,55 @@ lint-workflows = { sequence = ["uv run actionlint", "zizmor --offline .github"],
 # The Rust gates, each beside its Python counterpart; cargo comes with rustup, at the version rust-toolchain.toml pins.
 # Warnings fail only here (`-D warnings`), never a user's build. tests/tools/test_rust_gates.py shows each one failing.
 # rustfmt follows `mod` but not `include!`: a file pulled in with `include!` is never checked unless it is named here (add it to this
-# task, as `rustfmt --check <file>`); the project has none.
+# task, as `rustfmt --check <file>`).
 rust-fmt = { cmd = "cargo fmt --all --check", help = "Check the Rust formatting (rustfmt.toml)" }
 rust-lint = { cmd = "cargo clippy --workspace --all-targets --locked --quiet -- -D warnings", help = "Lint the Rust code: clippy, dead code, missing docs, unreachable pub, unsafe ([workspace.lints] in Cargo.toml)" }
 rust-doc = { cmd = "cargo doc --workspace --no-deps --locked --quiet", env = { RUSTDOCFLAGS = "-D warnings" }, help = "Build the Rust documentation; any rustdoc warning (a broken link) fails" }
-rust-tools = { cmd = "uv run python tools/rust_tools.py check", help = "Check that the cargo tools the gate runs are installed at the versions Cargo.toml pins" }
+rust-tools = { cmd = "python tools/rust_tools.py check", help = "Check that the cargo tools the gate runs are installed at the versions Cargo.toml pins" }
 rust-shear = { cmd = "cargo shear", help = "Find Rust dependencies no code uses (cargo-shear)" }
 rust-deny = { cmd = "cargo deny --offline --locked check bans licenses sources", help = "Check the Rust dependencies offline: banned crates, licences, sources (deny.toml)" }
-# The core is pure Rust so that it also runs in a browser (WebAssembly): only the core crate, which has no Python in it,
-# and the bindings crate that gives it to JavaScript
-rust-wasm = { cmd = "cargo check -p bullterrier-control -p bullterrier-control-wasm --target wasm32-unknown-unknown --locked --quiet", help = "Check that the core and the WebAssembly bindings build for the browser (wasm32-unknown-unknown)" }
-# Not in `fast`: a release build, then the glue (`wasm-bindgen`, pinned in Cargo.toml) for Node and for the browser into the
-# ignored pkg/, then Node runs tests/wasm against what the native extension answers (tests/wasm/oracle.py).
-# tests/tools/test_wasm_gate.py shows the task failing.
+# The core is pure Rust so that it also runs in a browser (WebAssembly): only the core crate, which has no Python in it
+rust-wasm = { cmd = "cargo check -p bullterrier-control --target wasm32-unknown-unknown --locked --quiet", help = "Check that the core builds for the browser (wasm32-unknown-unknown)" }
+stubtest = { cmd = "python -m mypy.stubtest --mypy-config-file pyproject.toml bullterrier_control._native._core", help = "Check the stub _core.pyi against the built extension" }
+rust-test = { cmd = "python tools/run_capped.py -- cargo test --workspace --locked --quiet --no-fail-fast", help = "Run the Rust tests under the memory cap, every binary even after one fails" }
+# A crate's Rust integration tests are one binary (tests/it/main.rs); tools/check_rust_test_layout.py, the table [tool.rust-tests.own-binaries]
+rust-test-layout = { cmd = "python tools/check_rust_test_layout.py", help = "Check that the Rust integration tests are one binary per crate (tests/it/)" }
+dead-code = { cmd = "vulture src", help = "Find dead code in src (vulture)" }
+# The project's own gates and the steps only `full` runs: the template ships these two lines as no-ops and never changes
+# them again, so a project replaces each with a sequence of its tasks without a conflict at the next update
+# The WebAssembly package (crates/wasm): the bindings crate builds for the browser; a release build, then the glue (`wasm-bindgen`,
+# pinned in Cargo.toml) for Node and for the browser into the ignored pkg/, then Node runs tests/wasm against what the native
+# extension answers (tests/wasm/oracle.py). tests/tools/test_wasm_gate.py shows the task failing.
+wasm-check = { cmd = "cargo check -p bullterrier-control-wasm --target wasm32-unknown-unknown --locked --quiet", help = "Check that the WebAssembly bindings build for the browser (wasm32-unknown-unknown)" }
 wasm-test = { sequence = [
     "cargo build -p bullterrier-control-wasm --target wasm32-unknown-unknown --release --locked --quiet",
     "wasm-bindgen --target nodejs --out-dir pkg/node ${CARGO_TARGET_DIR:-target}/wasm32-unknown-unknown/release/bullterrier_control_wasm.wasm",
     "wasm-bindgen --target web --out-dir pkg/web ${CARGO_TARGET_DIR:-target}/wasm32-unknown-unknown/release/bullterrier_control_wasm.wasm",
-    "uv run python tests/wasm/oracle.py pkg/oracle.json",
+    "python tests/wasm/oracle.py pkg/oracle.json",
     "node --max-old-space-size=2048 --test tests/wasm/",  # a runaway test dies at 2 GB of JavaScript heap, not at the machine's
 ], default_item_type = "cmd", help = "Build the WebAssembly package (Node and browser), run it in Node and compare it with the native extension" }
-stubtest = { cmd = "uv run python -m mypy.stubtest --mypy-config-file pyproject.toml bullterrier_control._native._core", help = "Check the stub _core.pyi against the built extension" }
-rust-test = { cmd = "uv run python tools/run_capped.py -- cargo test --workspace --locked --quiet --no-fail-fast", help = "Run the Rust tests under the memory cap, every binary even after one fails" }
-# A crate's Rust integration tests are one binary (tests/it/main.rs); tools/check_rust_test_layout.py, the table [tool.rust-tests.own-binaries]
-rust-test-layout = { cmd = "uv run python tools/check_rust_test_layout.py", help = "Check that the Rust integration tests are one binary per crate (tests/it/)" }
-dead-code = { cmd = "vulture src", help = "Find dead code in src (vulture)" }
+project-gates = { sequence = [{ ref = "wasm-check" }, { ref = "wasm-test" }], help = "The project's own gates, run last by check and full: the WebAssembly package" }
+project-full = { cmd = "python -c pass", help = "The project's own steps that only full runs (none yet)" }
 # The steps `check` and `full` share, cheapest first, stopping at the first failure
-gates = { sequence = ["ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, { ref = "lint-workflows" }, { ref = "dead-code" }, { ref = "rust-doc" }, "deptry .", { ref = "rust-tools" }, { ref = "rust-test-layout" }, { ref = "rust-shear" }, { ref = "rust-deny" }, { ref = "rust-wasm" }, "mypy", { ref = "stubtest" }, { ref = "rust-test" }, { ref = "wasm-test" }, { ref = "test" }], default_item_type = "cmd", help = "Every gate except the proofs that each gate can fail (format, lint, workflows, dead code, docs, dependencies, distributions, types, tests)" }
+gates = { sequence = ["ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, { ref = "lint-workflows" }, { ref = "dead-code" }, { ref = "rust-doc" }, "deptry .", { ref = "rust-tools" }, { ref = "rust-test-layout" }, { ref = "rust-shear" }, { ref = "rust-deny" }, { ref = "rust-wasm" }, "mypy", { ref = "stubtest" }, { ref = "rust-test" }, { ref = "test" }, { ref = "project-gates" }], default_item_type = "cmd", help = "Every gate except the proofs that each gate can fail (format, lint, workflows, dead code, docs, dependencies, types, tests, the project's own)" }
 fast = { sequence = ["ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, "mypy", { ref = "test" }], default_item_type = "cmd", help = "The inner loop: format, lint, types and the quick tests; no build, no Rust tests, no proofs" }
 # A pass on a clean tree is remembered with its tier, so pushing exactly that tree does not repeat it; `check` runs the proofs only when the
 # change since they last passed touches what they test ([tool.gate-proofs] below), `full` always
-proofs = { cmd = "uv run python tools/pre_push.py proofs", help = "Run the gate proofs if the change touches what they test (or they never passed here)" }
-check = { sequence = ["uv run python tools/pre_push.py start", { ref = "gates" }, { ref = "proofs" }, "uv run python tools/pre_push.py pass check"], default_item_type = "cmd", help = "The gate before a push to main: every gate, and the proofs when the change touches what they test; a pass is remembered for that tree" }
-full = { sequence = ["uv run python tools/pre_push.py start", { ref = "gates" }, { ref = "build-check" }, { ref = "gate-tests" }, "uv run python tools/pre_push.py pass full"], default_item_type = "cmd", help = "The gate before a tag and in CI: `check`, the build of the sdist and the wheel, and the proofs always; a pass is remembered for that tree" }
+proofs = { cmd = "python tools/pre_push.py proofs", help = "Run the gate proofs if the change touches what they test (or they never passed here)" }
+check = { sequence = ["python tools/pre_push.py start", { ref = "gates" }, { ref = "proofs" }, "python tools/pre_push.py pass check"], default_item_type = "cmd", help = "The gate before a push to main: every gate, and the proofs when the change touches what they test; a pass is remembered for that tree" }
+full = { sequence = ["python tools/pre_push.py start", { ref = "gates" }, { ref = "build-check" }, { ref = "gate-tests" }, { ref = "project-full" }, "python tools/pre_push.py pass full"], default_item_type = "cmd", help = "The gate before a tag and in CI: `check`, the build of the sdist and the wheel, the proofs always, and the project's own full-only steps; a pass is remembered for that tree" }
 # Redraw the gallery (docs/gallery/ and docs/gallery.md) from the patches in examples/gallery/; needs matplotlib (uv sync)
-gallery = { cmd = "uv run python tools/gallery.py", help = "Redraw docs/gallery/ and docs/gallery.md from examples/gallery/" }
+gallery = { cmd = "python tools/gallery.py", help = "Redraw docs/gallery/ and docs/gallery.md from examples/gallery/" }
 # Rewrite lib.pyi and _chain.py (the typed functions of `lib`, the chain methods of `Signal`) from the built-ins;
 # tests/tools/test_gen_api.py fails while either is stale
-api = { cmd = "uv run python tools/gen_api.py", help = "Rewrite src/bullterrier_control/lib.pyi and _chain.py from the built-in sources, shapers and operations" }
+api = { cmd = "python tools/gen_api.py", help = "Rewrite src/bullterrier_control/lib.pyi and _chain.py from the built-in sources, shapers and operations" }
 # Developer commands that need a source checkout (tools/dev.py); extra arguments go to the script
-new-source = { cmd = "uv run python tools/dev.py new-source", help = "Write a new source, shaper or operation and its test from the templates (NAME --kind source|shaper|operation)" }
+new-source = { cmd = "python tools/dev.py new-source", help = "Write a new source, shaper or operation and its test from the templates (NAME --kind source|shaper|operation)" }
 # Release from main in one command: checks, plan, [y/N], version bump, changelog section, commit, annotated tag and an
 # atomic push of main and the tag (CONTRIBUTING.md, "Releasing")
-release = { cmd = "uv run python tools/release.py", help = "Release VERSION from main (e.g. 0.1.0rc1 to TestPyPI, 0.1.0 to PyPI): check, plan, ask, bump, tag, push [--dry-run] [--yes]" }
+release = { cmd = "python tools/release.py", help = "Release VERSION from main (e.g. 0.1.0rc1 to TestPyPI, 0.1.0 to PyPI): check, plan, ask, bump, tag, push [--dry-run] [--yes]" }
 # `default_install_hook_types` in .pre-commit-config.yaml names the three hook types, so a bare `install` covers them
-setup = { sequence = ["pre-commit install --install-hooks", "git config --local commit.template .gitmessage", "uv run python tools/rust_tools.py install"], default_item_type = "cmd", help = "Install the git hooks, the commit-message template and the cargo tools the gate runs (once per clone)" }
+setup = { sequence = ["pre-commit install --install-hooks", "git config --local commit.template .gitmessage", "python tools/rust_tools.py install"], default_item_type = "cmd", help = "Install the git hooks, the commit-message template and the cargo tools the gate runs (once per clone)" }
 
 # Read by tools/check_commit_message.py (the commit-msg hook): Conventional Commits 1.0 with these limits.
 [tool.commit-message]
@@ -222,12 +226,15 @@ triggers = [
     "Cargo.toml",
     "Cargo.lock",
     "crates/*/Cargo.toml",
-    "tools/*",  # tools/dev.py and its templates, which the scaffold tests of tests/tools/test_dev.py run
-    "crates/core/src/registry*",  # the core files the scaffolded things are written against
-    "crates/core/src/signal*",
-    "crates/core/src/params*",
+    "tools/*",
     "tests/tools/*",
     ".github/*",
+]
+# The project's own: files its own proofs copy or match (the template never changes this line)
+project-triggers = [
+    "crates/core/src/registry*",  # the core files the scaffolded things of tests/tools/test_dev.py are written against
+    "crates/core/src/signal*",
+    "crates/core/src/params*",
 ]
 
 # Read by tests/tools/test_project_wiring.py: the system tools this project's gates run besides the template's
@@ -246,6 +253,7 @@ addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config", "--
 xfail_strict = true
 markers = [
     "gate: proves a gate fails on a known-bad input in a copy of the workspace; slow, so `poe test` and `poe check` leave it out unless the change touches [tool.gate-proofs]; `poe gate-tests` and `poe full` run it",
+    "control: a gate proof's known-good side (the gate passes on the unchanged copy); `check` leaves it to `full`, which runs every proof",
     "tooling: tests a shared tool of the template (the same file in every project, tested in the template too); `poe test` leaves it out, `poe gate-tests` runs it with the proofs",
     "typecheck: type-checks the package with mypy; `poe check-min-deps` leaves it out",
     "node: a gate proof that needs Node and the wasm-bindgen command (also marked `gate`); CI runs it on Linux only",
@@ -332,11 +340,11 @@ extraPaths = ["src"]
 # `uv run mypy` checks src and tests; the gate (`poe check`) and the pre-push hook run it.
 [tool.mypy]
 python_version = "3.12"
-files = ["src", "tests"]
+files = ["src", "tests", "tools"]  # the tools are code too: the gate runs them
 # tests/ has no __init__.py (pytest imports it with importlib), so equal test file names in different folders need
 # module names from their paths: tests/ops/test_x.py is tests.ops.test_x, src/bullterrier_control/x.py is bullterrier_control.x.
 explicit_package_bases = true
-mypy_path = "src"
+mypy_path = "src,tools"  # a tool imports its sibling (release.py imports check_release)
 check_untyped_defs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

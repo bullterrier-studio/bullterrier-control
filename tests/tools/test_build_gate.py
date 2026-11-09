@@ -7,6 +7,7 @@ An architecture test of the tooling: its subject is the `build-check` task in py
 way `uv run poe check` does, in a copy of the project into which one fault at a time is written.
 """
 
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -26,8 +27,13 @@ RUST_FILES = ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml")
 
 
 @pytest.fixture(scope="module")
-def rust_build_folder(tmp_path_factory) -> Path:
-    return tmp_path_factory.mktemp("target")
+def rust_build_folder(build_folder) -> Path:
+    """`build_folder`, one per state of the Rust sources as well: the sdist dates its files 2006, which cargo takes for
+    older than any artifact, so a folder that outlived an edit of the sources would build the wheel from old objects."""
+    digest = hashlib.sha256()
+    for path in sorted(filter(Path.is_file, (ROOT / "crates").rglob("*"))):
+        digest.update(path.relative_to(ROOT).as_posix().encode() + path.read_bytes())
+    return build_folder.with_name(f"{build_folder.name}-{digest.hexdigest()[:12]}")
 
 
 @pytest.fixture
@@ -37,11 +43,11 @@ def build_env(uv_run_env, rust_build_folder) -> dict[str, str]:
 
 
 @pytest.fixture
-def project(project_copy) -> Path:
+def project(project_copy, copy_tree) -> Path:
     copy = project_copy("pyproject.toml", "README.md", "LICENSE", *RUST_FILES)
     (copy / "tools").mkdir()
     shutil.copy(ROOT / "tools" / "check_dists.py", copy / "tools")
-    shutil.copytree(ROOT / "crates", copy / "crates")
+    copy_tree(ROOT / "crates", copy / "crates")
     return copy
 
 
@@ -50,6 +56,7 @@ def build_check(project: Path, env: dict[str, str]) -> subprocess.CompletedProce
     return subprocess.run(command, cwd=project, env=env, capture_output=True, encoding="utf-8", check=False)
 
 
+@pytest.mark.control
 def test_the_project_as_it_is_builds_clean_distributions(project, build_env):
     result = build_check(project, build_env)
     assert result.returncode == 0, result.stdout + result.stderr

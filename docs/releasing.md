@@ -1,7 +1,7 @@
 # Continuous integration and releasing
 
 How a change is checked on GitHub and how a version reaches PyPI. The short rules for contributors are in
-[CONTRIBUTING.md](../CONTRIBUTING.md); the commands and gates run locally are in [CLAUDE.md](../CLAUDE.md).
+[CONTRIBUTING.md](../CONTRIBUTING.md); the commands and gates run locally are in [rules.md](rules.md).
 
 ## Continuous integration
 
@@ -10,10 +10,10 @@ How a change is checked on GitHub and how a version reaches PyPI. The short rule
 workflows), `test.yml` (the suite on Linux, macOS and Windows, Python 3.12 to 3.14, and `cargo test`), `min-deps.yml` (the lowest allowed
 dependencies), `security.yml` (pip-audit, CodeQL, and dependency review on pull requests) and `pre-commit.yml` (the
 commit hooks over every file). Stage 2, `build.yml`, only once every check passed: the sdist and one abi3 wheel per
-platform ([which](design-decisions.md#the-rust-core-batch-r0); built with maturin-action, no build cache), checked by
+platform ([which](template-decisions.md#platforms); built with maturin-action, no build cache), checked by
 `tools/check_dists.py` and kept as one `dist` artifact; then each wheel is installed from that artifact alone on its
 own platform and the sdist is built on Linux, `tools/check_installed.py` names the file each came from, and each runs
-`bt-control` and samples a patch that uses `slew`, so the Rust extension runs. `ci-ok` waits for all of them and is
+the project's smoke command (the template's: `bt-control scale 3 2`), so the Rust extension runs. `ci-ok` waits for all of them and is
 the one required check. Each of these workflows can also be started by hand, and `security.yml` runs weekly on its
 own. A release runs the whole CI again and publishes only the files its build made, so nothing that fails a check can
 be built or published.
