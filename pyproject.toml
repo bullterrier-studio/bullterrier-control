@@ -83,7 +83,8 @@ cache-keys = [
 # and so does library code left out of the wheel (W101).
 [tool.check-wheel-contents]
 package = "src/bullterrier_control"
-# the one top-level name a wheel may hold; a stray top-level entry in the wheel fails (W201, W202)
+# the one top-level name a wheel may hold; it also keeps W005 (a name common to many wheels)
+# from firing for it, and adds W201/W202: a stray top-level entry in the wheel fails
 toplevel = ["bullterrier_control"]
 package_omit = ["__pycache__", "*.pyc", ".*", "*.jpg", "*.jpeg", "*.png", "*.gif", "test_*.py"]
 
@@ -119,15 +120,15 @@ dev = [
 # PYTHONWARNDEFAULTENCODING makes the interpreter, and every xdist worker it starts, report text IO without an
 # encoding (EncodingWarning), which `filterwarnings` below turns into a failure; an -X flag would not reach the workers
 # Three tiers (CLAUDE.md, "Gates"): `fast` while working, `check` before a push to main, `full` before a tag and in CI. The tests that
-# prove a gate fails on a known-bad input copy the workspace and build in it, so they are marked `gate` and are not in `test`.
-test = { cmd = "pytest -q -n auto -m 'not gate'", env = { PYTHONWARNDEFAULTENCODING = "1" }, help = "Run the test suite on every CPU core (pytest-xdist; the order stays random), without the gate proofs" }
-gate-tests = { cmd = "pytest -q -n auto -m gate", env = { PYTHONWARNDEFAULTENCODING = "1" }, help = "Run the tests that prove each gate fails on a known-bad input (they copy the workspace and build in it)" }
+# prove a gate fails on a known-bad input copy the workspace and build in it (marked `gate`), and the shared tools' own tests are the
+# same in every project (marked `tooling`): `test` is the project's own suite, and `gate-tests` runs both when the tooling changed.
+test = { cmd = "python tools/run_capped.py -- pytest -q -n auto -m 'not gate and not tooling'", env = { PYTHONWARNDEFAULTENCODING = "1" }, help = "Run the project's test suite on every CPU core (pytest-xdist; the order stays random), without the tests of the tooling" }
+gate-tests = { cmd = "python tools/run_capped.py -- pytest -q -n auto -m 'gate or tooling'", env = { PYTHONWARNDEFAULTENCODING = "1" }, help = "Run the tests of the tooling: the proofs that each gate fails on a known-bad input, and the shared tools' own tests" }
 # Not part of `check`: the suite on the oldest Python and the lowest release each direct dependency's floor allows, in a
 # throwaway environment (uv.lock and the project environment stay as they are; the first run downloads the old
 # releases). It is for CI. Tests marked `typecheck` are left out because mypy's verdict on our source depends on the
-# dependencies' own type annotations, which are not what this checks. No PYTHONWARNDEFAULTENCODING here: numpy 1.26
-# runs a text-mode subprocess when numpy.testing is imported, and the encoding of our own IO is `poe test`'s concern.
-check-min-deps = { cmd = "uv run --isolated --python 3.12 --resolution lowest-direct pytest -q -n auto -m 'not typecheck and not gate'", help = "Run the suite on Python 3.12 against the lowest allowed release of every dependency" }
+# dependencies' own type annotations, which are not what this checks; tests marked `gate` or `tooling` because they test our tooling (`poe gate-tests`).
+check-min-deps = { cmd = "python tools/run_capped.py -- uv run --isolated --python 3.12 --resolution lowest-direct pytest -q -n auto -m 'not typecheck and not gate and not tooling'", help = "Run the suite on Python 3.12 against the lowest allowed release of every dependency" }
 # Not part of `check`: it asks the PyPI vulnerability database about every locked package (runtime, extras and dev
 # tools, pinned by hash), so it needs the network and its verdict changes as advisories are published. For CI and
 # before a release; an advisory with no fixed release is ignored with `--ignore-vuln ID` and listed in SECURITY.md.
@@ -174,8 +175,8 @@ dead-code = { cmd = "vulture src", help = "Find dead code in src (vulture)" }
 gates = { sequence = ["ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, { ref = "lint-workflows" }, { ref = "dead-code" }, { ref = "rust-doc" }, "deptry .", { ref = "rust-tools" }, { ref = "rust-test-layout" }, { ref = "rust-shear" }, { ref = "rust-deny" }, { ref = "rust-wasm" }, { ref = "build-check" }, "mypy", { ref = "stubtest" }, { ref = "rust-test" }, { ref = "wasm-test" }, { ref = "test" }], default_item_type = "cmd", help = "Every gate except the proofs that each gate can fail (format, lint, workflows, dead code, docs, dependencies, distributions, types, tests)" }
 fast = { sequence = ["ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, "mypy", { ref = "test" }], default_item_type = "cmd", help = "The inner loop: format, lint, types and the quick tests; no build, no Rust tests, no proofs" }
 # A pass on a clean tree is remembered with its tier, so pushing exactly that tree does not repeat it; `check` runs the proofs only when the
-# change touches what they test ([tool.gate-proofs] below), `full` always
-proofs = { cmd = "uv run python tools/pre_push.py proofs", help = "Run the gate proofs if the change touches what they test (or the base cannot be read)" }
+# change since they last passed touches what they test ([tool.gate-proofs] below), `full` always
+proofs = { cmd = "uv run python tools/pre_push.py proofs", help = "Run the gate proofs if the change touches what they test (or they never passed here)" }
 check = { sequence = ["uv run python tools/pre_push.py start", { ref = "gates" }, { ref = "proofs" }, "uv run python tools/pre_push.py pass check"], default_item_type = "cmd", help = "The gate before a push to main: every gate, and the proofs when the change touches what they test; a pass is remembered for that tree" }
 full = { sequence = ["uv run python tools/pre_push.py start", { ref = "gates" }, { ref = "gate-tests" }, "uv run python tools/pre_push.py pass full"], default_item_type = "cmd", help = "The gate before a tag and in CI: `check` with the proofs always run; a pass is remembered for that tree" }
 # Redraw the gallery (docs/gallery/ and docs/gallery.md) from the patches in examples/gallery/; needs matplotlib (uv sync)
@@ -226,6 +227,11 @@ triggers = [
     ".github/*",
 ]
 
+# Read by tests/tools/test_project_wiring.py: the system tools this project's gates run besides the template's
+# (`wasm-bindgen`, pinned in Cargo.toml and installed by `poe setup`, and `node`, in which the WebAssembly package is tested)
+[tool.project-wiring]
+system-commands = ["wasm-bindgen", "node"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # test files are named after the module they test, so equal names in different folders must never collide
@@ -237,6 +243,7 @@ addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config", "--
 xfail_strict = true
 markers = [
     "gate: proves a gate fails on a known-bad input in a copy of the workspace; slow, so `poe test` and `poe check` leave it out unless the change touches [tool.gate-proofs]; `poe gate-tests` and `poe full` run it",
+    "tooling: tests a shared tool of the template (the same file in every project, tested in the template too); `poe test` leaves it out, `poe gate-tests` runs it with the proofs",
     "typecheck: type-checks the package with mypy; `poe check-min-deps` leaves it out",
     "node: a gate proof that needs Node and the wasm-bindgen command (also marked `gate`); CI runs it on Linux only",
 ]

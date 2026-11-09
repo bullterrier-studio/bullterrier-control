@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.tooling
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -113,6 +115,14 @@ def test_install_installs_only_what_is_missing_or_at_another_version(programs, t
     assert rust_tools.main(["install", "--root", str(tmp_path)]) == 0
     installs = [call for call in programs.calls() if call.startswith("install")]
     assert installs == ["install --locked cargo-deny@0.20.2"]
+
+
+def test_install_without_cargo_fails_naming_it_and_installs_nothing(programs, tmp_path, capsys):
+    (tmp_path / "Cargo.toml").write_text(MANIFEST, encoding="utf-8")
+    programs("cargo-shear", "Version: 1.14.0")
+    programs("cargo-deny", "cargo-deny 0.19.0")
+    assert rust_tools.main(["install", "--root", str(tmp_path)]) == 1
+    assert "cargo is not installed" in capsys.readouterr().err
 
 
 def test_specs_prints_every_pin_as_an_installer_takes_it_on_one_line(tmp_path, capsys):

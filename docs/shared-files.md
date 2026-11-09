@@ -9,7 +9,7 @@ what may differ.
 | File | Why it is shared |
 |---|---|
 | `tools/check_rust_test_layout.py`, `tests/tools/test_check_rust_test_layout.py` | the one-binary test layout gate; per-project data is only `[tool.rust-tests.own-binaries]` |
-| `tools/run_capped.py`, `tests/tools/test_run_capped.py` | the memory cap `poe rust-test` runs under; the cap is `[tool.run-capped] cap-mb` |
+| `tools/run_capped.py`, `tests/tools/test_run_capped.py` | the memory cap every task that runs tests goes through; the cap is `[tool.run-capped] cap-mb` |
 | `tools/rust_tools.py`, `tests/tools/test_rust_tools.py` | installs and checks the cargo tools pinned in `[workspace.metadata.tools]` |
 | `tools/check_commit_message.py`, `tests/tools/test_check_commit_message.py` | Conventional Commits check; limits in `[tool.commit-message]` |
 | `tools/check_one_config_home.py`, `tests/tools/test_one_config_home.py` | one home for tool settings |
@@ -32,4 +32,5 @@ what may differ.
 | `tools/check_installed.py` | a project may check more of the installed build; the template only names the artifact's file |
 | `build.yml` smoke step | runs the project's own command on the installed build |
 | Domain gates and scaffolds (a `tools/` script and its `poe` task) | each project adds the checks and generators of its own kind of thing |
+| `pyproject.toml` `[tool.project-wiring] system-commands` | the system tools those gates run that are not dev dependencies (`node`, say); absent when there are none |
 | `tools/pre_push.py` env var | `BT_CONTROL_GATE_PASSED` is named after the project (`poe release` sets it) |

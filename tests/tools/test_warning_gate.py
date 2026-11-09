@@ -23,6 +23,8 @@ LOCALE_ENCODING = 'def test_probe(tmp_path):\n    (tmp_path / "a.txt").write_tex
 
 def poe_test(tmp_path: Path, probe: str, env: dict[str, str]) -> subprocess.CompletedProcess:
     shutil.copy(ROOT / "pyproject.toml", tmp_path)
+    (tmp_path / "tools").mkdir()
+    shutil.copy(ROOT / "tools" / "run_capped.py", tmp_path / "tools")  # the task runs pytest under the memory cap
     (tmp_path / "test_probe.py").write_text(probe, encoding="utf-8")
     # the `simple` executor runs the task's command from this environment (the copy is no uv project of its own);
     # extra arguments go to pytest after the task's own: only the probe, in one process (`-n 0`), so it stays fast.

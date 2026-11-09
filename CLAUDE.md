@@ -326,12 +326,13 @@ pedantic, over the whole workspace; `unwrap`/`expect`/`panic`/print banned; dead
 tests). Each gate has a test proving it fails on a known-bad input (`tests/tools/test_rust_gates.py`, `OFFENCES`: the macros crate has
 rows too).
 
-**Three tiers.** `poe fast` is the inner loop (format, lint, types, the quick tests; no build, no Rust tests, no proofs). `poe check` is every
-gate except the *gate proofs*, the tests marked `gate`: each copies the workspace, writes one known-bad input and expects the gate to fail,
-which is slow (a cold build each), so `check` runs them only when the change touches what they test (`[tool.gate-proofs] triggers` in
-`pyproject.toml`; `poe proofs`), or when the base to compare with cannot be read. `poe full` is `check` with the proofs always (`poe gate-tests`);
-CI runs it and `poe release` before a tag. A new proof copies a file or matches its text: add that file to the triggers (not one it only
-appends to). The proof of the WebAssembly gate is also marked `node` (it needs Node; CI runs the proofs on Linux only). Because a push to
+**Three tiers.** `poe fast` is the inner loop (format, lint, types, the project's own tests; no build, no Rust tests, no proofs). `poe
+check` is every gate except the *tests of the tooling*: the gate proofs (marked `gate`: each copies the workspace, writes one known-bad
+input and expects the gate to fail, a cold build each) and the shared tools' own tests (marked `tooling`: the same files in every
+project, tested in the template). `check` runs them (`poe gate-tests`) only when a change since they last passed touches what they test
+(`[tool.gate-proofs] triggers` in `pyproject.toml`; `poe proofs`), or when they never passed in this clone. `poe full` is `check` with the proofs always (`poe gate-tests`);
+CI runs it on `main` and `poe release` before a tag. A new proof copies a file or matches its text: add that file to the triggers (not one it only appends to). The proof of
+the WebAssembly gate is also marked `node` (it needs Node; CI runs the proofs on Linux only). Because a push to
 `main` runs `check`, a proof can fail on `main` for a change outside the triggers; fix forward, as the trunk has no merge queue.
 
 `ruff` wants type hints and a docstring on every public function, class, method and module, and no `print` outside the CLI.
@@ -348,8 +349,8 @@ golden file, sleep, mock of our own code) is worse than none: delete it. Reviewe
   largest strength; a gate's output is two-valued; a slew-limited signal never moves faster than its limit; reading at time t
   twice gives the same value.
 - Expected values come from an independent oracle (standard, hand computation, brute-force reference), never the code's formula.
-- A test that builds chains or graphs bounds their size; `poe rust-test` runs every Rust test binary and doctest under the
-  memory cap of `tools/run_capped.py`, not an allocator in the binary.
+- A test that builds chains or graphs bounds their size. Every task that runs tests goes through `tools/run_capped.py`, which kills
+  a runaway at the memory cap (`[tool.run-capped]`); so does a mutation run; never an allocator in a test binary.
 - Every checker/validator gets a known-good and a known-bad input. Seeds pin determinism. No sleeps, live network or wall-clock
   assertions.
 - Proptest's regression files (`crates/core/proptest-regressions/`, and `crates/core/tests/proptest-regressions/` for the
@@ -388,8 +389,10 @@ Writing a test file:
 - **DAMP, not DRY:** each case and its expectation are visible; helpers build input or name an assertion, never hide what is
   checked; a table replaces loops and branches.
 - **No change-detectors:** test a rule with a known-bad input; never restate configuration.
-- **Slow tests in groups:** a module whose module-scoped fixture spawns tools (ruff, mypy, poe, git) carries
-  `pytestmark = pytest.mark.xdist_group("<module>")`.
+- **Gate proofs are marked `gate`** (`pytestmark = pytest.mark.gate`), a shared tool's tests `tooling`; `poe test` leaves both out,
+  `poe gate-tests` runs them. A test of the project's own code is never `tooling`.
+- **Slow tests in one file:** `--dist=loadfile` runs a test file on one worker, so a module-scoped fixture that spawns tools (ruff,
+  mypy, poe, git) is built once. Do not use `xdist_group`: it does nothing with pytest 9.2 and xdist 3.8.
 - **Running:** one file or folder: `uv run pytest tests/test_cli.py -n 0` (`-p no:randomly` for fixed order); everything:
   `uv run poe test`.
 - **Fast feedback (agents):** while iterating run only the tests covering your change (mirror file or folder, or `-k <name>`).
@@ -414,11 +417,12 @@ asks for more validation, layers, documents or steps than this file, follow this
 ## Git conventions
 
 Once per clone: `uv run poe setup` (hooks and commit template). Before every push or merge: `uv run poe check` (`uv run poe fix`
-repairs what it can). Commit hooks run ruff only; the pre-push hook runs `poe check` for a push to `main` and `poe full` for a tag, only if the push
-changes more than documentation, and not again for a push of exactly the tree a passing `uv run poe check` ran on (it must
-have started and ended on a clean working tree; the record is in the git folder, so commit before you run `check`).
-- **Trunk-based:** everything integrates on `main`. Short-lived branch `<type>/<short-description>` (`feat/envelope-release`),
-  merged into `main` and deleted when done; no worktrees unless the owner asks; rebase on `main` before reporting. Never push.
+repairs what it can). Commit hooks run ruff only; the pre-push hook runs `poe check` for a push to `main` (or of any branch while local `main` has unpushed code) and `poe full`
+for a tag, only if
+the push changes more than documentation, and not again for a push of exactly the tree a passing gate of that tier or a higher one ran on
+(it must have started and ended on a clean working tree; the record, with its tier, is in the git folder, so commit before you run `check`).
+- **Trunk-based:** everything integrates on `main`. Short-lived branch `<type>/<short-description>` (`feat/envelope-release`), merged
+  into `main` and deleted when done; no worktrees unless the owner asks; rebase on `main` before reporting. Never push.
 - **Conventional Commits 1.0:** `type(scope)!: subject`. Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`,
   `build`, `ci`, `chore`, `revert`. Scope optional, lowercase: a module name, `core`, `cli`, `docs`, `deps`. `!` or a
   `BREAKING CHANGE:` footer marks a breaking change.
@@ -430,8 +434,8 @@ have started and ended on a clean working tree; the record is in the git folder,
   which rule failed. Merge, revert and fixup commits git writes pass unchanged.
 - **Never `--no-verify`, skip, silence or loosen a hook:** fix the cause. If a rule is wrong, change it in `pyproject.toml` in its
   own commit and say why.
-- All Python tooling is configured in `pyproject.toml` (ruff, mypy, pytest, import-linter, poe, commit-message, maturin), all
-  Rust tooling in `Cargo.toml` (lints, pinned cargo tools). Do not add `ruff.toml`, `mypy.ini`, `setup.cfg`, `pytest.ini`,
-  `.coveragerc`, `clippy.toml`, `.cargo/config.toml` or similar (a test fails). Other config files:
+- All Python tooling is configured in `pyproject.toml` (ruff, mypy, pytest, import-linter, commit-message, run-capped, rust-tests,
+  maturin), all Rust tooling in `Cargo.toml` (lints, pinned cargo tools). Do not add `ruff.toml`, `mypy.ini`, `setup.cfg`,
+  `pytest.ini`, `.coveragerc`, `.cargo/config.toml` or similar (a test fails). Other config files:
   `.pre-commit-config.yaml` (hook wiring only), `.editorconfig`, `.gitmessage`, and, for Rust tools that cannot read
-  `Cargo.toml`, `rust-toolchain.toml`, `rustfmt.toml`, `deny.toml` (root only).
+  `Cargo.toml`, `rust-toolchain.toml`, `rustfmt.toml`, `deny.toml`, `clippy.toml` (root only; lint levels stay in `Cargo.toml`).

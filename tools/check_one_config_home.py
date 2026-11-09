@@ -1,9 +1,10 @@
 """Check that all Python tooling is configured in pyproject.toml, and all Rust tooling in Cargo.toml, and nowhere else.
 
-A second config file (ruff.toml, mypy.ini, setup.cfg, pytest.ini, clippy.toml, .cargo/config.toml ...) silently
+A second config file (ruff.toml, mypy.ini, setup.cfg, pytest.ini, .cargo/config.toml ...) silently
 overrides or shadows the settings in pyproject.toml or Cargo.toml, so the project has exactly one home for them. The
 Rust tools that cannot read Cargo.toml have one file each, at the root only: rust-toolchain.toml (rustup),
-rustfmt.toml (rustfmt), deny.toml (cargo-deny). No `.cargo/config.toml` either: its build flags (such as
+rustfmt.toml (rustfmt), deny.toml (cargo-deny), clippy.toml (clippy's settings such as `disallowed-methods`;
+its lint levels stay in Cargo.toml). No `.cargo/config.toml` either: its build flags (such as
 `target-cpu=native`) would make wheels that do not run on every CPU of their platform. Run by hand with
 `python tools/check_one_config_home.py`; the test suite runs it too.
 
@@ -36,7 +37,6 @@ STRAY_NAMES = frozenset(
         "pyrightconfig.json",
         ".isort.cfg",
         ".bandit",
-        "clippy.toml",
         ".clippy.toml",
         ".rustfmt.toml",
         "rust-toolchain",
@@ -44,7 +44,7 @@ STRAY_NAMES = frozenset(
     }
 )
 # the Rust tools' own files: their one home is the root, anywhere else they shadow it
-ROOT_ONLY_NAMES = frozenset({"rust-toolchain.toml", "rustfmt.toml", "deny.toml"})
+ROOT_ONLY_NAMES = frozenset({"rust-toolchain.toml", "rustfmt.toml", "deny.toml", "clippy.toml"})
 # cargo's own configuration (`.cargo/config.toml`, or `.cargo/config` as older cargo calls it)
 CARGO_CONFIG_NAMES = frozenset({"config.toml", "config"})
 # tools look for their config in the project root and (for nested config) in the folders that hold code

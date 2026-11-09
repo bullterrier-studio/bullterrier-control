@@ -1012,8 +1012,8 @@ script or a note does not run for the next contributor.
   its inputs, so a derive over any type holding a signal (`Recipe`, `Output`) is bounded per level. Before, each node wrote
   its own, and one printing its signals doubled per level. Test: the deepest chain of every node kind formats in at most 48
   bytes a level.
-- **Rust tests run under `tools/run_capped.py`, not an allocator in the binary.** `poe rust-test` caps the memory of the
-  whole process group, so every binary and doctest is covered (the `cap` allocator covered the core's unit tests only) and the
+- **Tests run under `tools/run_capped.py`, not an allocator in the binary.** Every task that runs tests (`poe rust-test`, `test`,
+  `gate-tests`) caps the memory of the whole process group, so every binary and doctest is covered (the `cap` allocator covered the core's unit tests only) and the
   core needs no dev-dependency for it. A whole run peaks near 140 MB; the runner's tests kill a known-bad allocation.
 - **The installed wheel walks the deepest chains on a 256 KiB thread.** `tools/check_installed.py`, run by CI's `build` on
   every platform's wheel and on the sdist, grows each chain of `CHAINS` to the deepest the package accepts and walks it on a

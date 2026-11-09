@@ -99,6 +99,12 @@ class GitRepo:
     def push(self) -> None:
         self.git("push", "-q", "origin", "main")
 
+    def add_remote(self, name: str) -> None:
+        """Add a remote `name`: a new empty bare repository next to the working one."""
+        bare = self.path.parent / f"{name}.git"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True, env=self.env)
+        self.git("remote", "add", name, str(bare))
+
     def answer_gh(self, *, stdout: str = "", stderr: str = "", exit_code: int = 0) -> None:
         """Make every later `gh` call print `stdout` and `stderr` and exit with `exit_code`."""
         reply = {"stdout": stdout, "stderr": stderr, "exit_code": exit_code}

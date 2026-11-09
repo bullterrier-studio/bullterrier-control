@@ -25,9 +25,9 @@ checker = _load_checker()
 STRAY_NAMES = [
     "ruff.toml", ".ruff.toml", "mypy.ini", ".mypy.ini", "setup.cfg", "tox.ini", "pytest.ini", ".coveragerc",
     ".importlinter", ".flake8", ".pylintrc", "pyrightconfig.json", ".isort.cfg", ".bandit",
-    "clippy.toml", ".clippy.toml", ".rustfmt.toml", "rust-toolchain", ".deny.toml",
+    ".clippy.toml", ".rustfmt.toml", "rust-toolchain", ".deny.toml",
 ]  # fmt: skip
-ROOT_ONLY_NAMES = ["rust-toolchain.toml", "rustfmt.toml", "deny.toml"]
+ROOT_ONLY_NAMES = ["rust-toolchain.toml", "rustfmt.toml", "deny.toml", "clippy.toml"]  # clippy: disallowed-methods
 
 
 def test_the_repository_has_no_stray_tool_config():

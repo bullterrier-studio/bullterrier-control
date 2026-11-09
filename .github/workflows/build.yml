@@ -152,8 +152,8 @@ jobs:
           cd "$RUNNER_TEMP/unpacked"
           rustup toolchain install --no-self-update && cargo --version
       # The environment has the package and its dependencies only. A wheel comes from the artifact alone (`--no-index`:
-      # no release from PyPI; `--only-binary`: no sdist built on the fly), the platform's wheel chosen by uv, then its
-      # dependencies from the index. The sdist is installed from its file and built here, with the toolchain its own
+      # no release from PyPI; `--only-binary`: no sdist built on the fly), the platform's wheel chosen by uv; then its
+      # dependencies, as its installed metadata names them, from PyPI (`--no-index` cannot resolve them). The sdist is installed from its file and built here, with the toolchain its own
       # rust-toolchain.toml pins (installed in the step before). check_installed.py then names the artifact's file it came
       # from and walks the deepest chain of each kind on a 256 KiB thread, or fails. `slew` is a shaper written in the
       # Rust extension: sampling the gallery patch that uses it runs the installed build, and the patch is read from the
@@ -170,10 +170,8 @@ jobs:
           uv venv --quiet smoke
           if [ "$RUNNER_OS" = Windows ]; then bin=smoke/Scripts; else bin=smoke/bin; fi
           if [ "$FROM" = wheel ]; then
-            uv pip install --python smoke --no-index --find-links "$dist" --only-binary bullterrier-control --no-deps \
-              bullterrier-control
-            "$bin/python" -c "from importlib.metadata import requires; print('\n'.join(requires('bullterrier-control')))" \
-              > requirements.txt
+            uv pip install --python smoke --no-index --find-links "$dist" --only-binary bullterrier-control --no-deps bullterrier-control
+            "$bin/python" -c "from importlib.metadata import requires; print('\n'.join(requires('bullterrier-control') or []))" > requirements.txt
             uv pip install --python smoke --requirement requirements.txt
           else
             uv pip install --python smoke "$dist"/bullterrier_control-*.tar.gz

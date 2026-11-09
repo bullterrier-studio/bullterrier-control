@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.tooling
+
 ROOT = Path(__file__).resolve().parents[2]
 REPOSITORY = "https://example.com/owner/demo"
 PREAMBLE = "# Changelog\n\nAll notable changes.\n\n"
