@@ -1,0 +1,13 @@
+# Changes here will be overwritten by Copier; `copier update` reads this file. Commit it.
+_commit: v0.2.2
+_src_path: gh:jcakstins/rust-project-template
+concept: control
+description: 'Control signals: keyframes, LFOs, envelopes and shaping, read at any
+    moment in seconds.'
+family: bullterrier
+min_deps: true
+owner: bullterrier-studio
+release: true
+rust: true
+short: bt
+wasm: true

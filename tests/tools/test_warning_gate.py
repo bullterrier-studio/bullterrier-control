@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.gate
+
 ROOT = Path(__file__).resolve().parents[2]
 
 CLEAN = 'def test_probe(tmp_path):\n    (tmp_path / "a.txt").write_text("é", encoding="utf-8")\n'

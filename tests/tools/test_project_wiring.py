@@ -19,8 +19,6 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-# one xdist worker runs this module, so its fixture (a poe dry run of every task) is built once
-pytestmark = pytest.mark.xdist_group("project-wiring")
 # the only commands that are not dev dependencies: tools every machine that can clone the repository already has, cargo,
 # which rustup installs at the version rust-toolchain.toml pins, `wasm-bindgen` (pinned in Cargo.toml, installed by
 # `poe setup`) and `node` (the WebAssembly package is tested in it)

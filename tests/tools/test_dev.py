@@ -15,7 +15,6 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-pytestmark = pytest.mark.xdist_group("dev-scaffold")
 
 
 @pytest.fixture

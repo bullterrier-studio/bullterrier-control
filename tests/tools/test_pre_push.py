@@ -104,7 +104,14 @@ def test_a_push_whose_range_is_unknown_runs_the_gate(monkeypatch, capsys):
 
 
 def passed_gate(
-    repo, *, dirty_at_start=False, tidied_between=False, change_between=None, dirty_at_end=False, skip_start=False
+    repo,
+    *,
+    tier="check",
+    dirty_at_start=False,
+    tidied_between=False,
+    change_between=None,
+    dirty_at_end=False,
+    skip_start=False,
 ):
     """Run what `poe check` does around the gate in `repo`: note the start, let `change_between` happen (a commit), and
     note the pass. `dirty_at_start` and `dirty_at_end` leave an uncommitted file at that moment; `tidied_between`
@@ -119,7 +126,7 @@ def passed_gate(
         repo.commit("chore: change", change_between)
     if dirty_at_end:
         (repo.path / "scratch.txt").write_text("y", encoding="utf-8")
-    pre_push.record_gate_pass()
+    pre_push.record_gate_pass(tier)
 
 
 def test_a_gate_that_passed_on_a_clean_tree_is_remembered_for_that_tree_and_no_other(git_repo, monkeypatch):
@@ -204,6 +211,58 @@ def test_a_push_of_a_newer_tree_than_the_one_that_passed_runs_the_gate(git_repo,
     monkeypatch.setattr(shutil, "which", lambda _name: None)
     assert pre_push.main() == 1
     assert "uv is not on the PATH" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("ref", "tier"),
+    [
+        pytest.param("refs/heads/main", "check", id="a push to main needs check"),
+        pytest.param("refs/tags/v1.2.3", "full", id="a tag needs full"),
+        pytest.param("", "full", id="a ref this hook cannot classify needs full"),
+    ],
+)
+def test_main_needs_the_check_tier_and_a_tag_the_full_one(ref, tier):
+    assert pre_push.tier_for(ref) == tier
+
+
+@pytest.mark.parametrize(
+    ("passed", "needed", "covers"),
+    [
+        pytest.param("check", "check", True, id="check covers check"),
+        pytest.param("full", "check", True, id="full covers check"),
+        pytest.param("full", "full", True, id="full covers full"),
+        pytest.param("check", "full", False, id="check never covers full"),
+    ],
+)
+def test_a_pass_covers_its_own_tier_and_the_lower_one_only(git_repo, monkeypatch, passed, needed, covers):
+    git_repo.commit("chore: start", {"start.txt": "start"})
+    monkeypatch.chdir(git_repo.path)
+    passed_gate(git_repo, tier=passed)
+    assert pre_push.gate_passed_on("HEAD", needed) is covers
+
+
+@pytest.mark.parametrize(
+    ("changed", "needed"),
+    [
+        pytest.param(["src/bullterrier_control/cli.py"], False, id="library code alone leaves the proofs for full"),
+        pytest.param(["README.md", "tests/test_cli.py"], False, id="a page and an ordinary test"),
+        pytest.param(["pyproject.toml"], True, id="the configuration the gates read"),
+        pytest.param(["tools/check_commit_message.py"], True, id="a tool"),
+        pytest.param(["tests/tools/test_pre_push.py"], True, id="a proof"),
+        pytest.param([".github/workflows/ci.yml"], True, id="a workflow"),
+        pytest.param(["README.md", "tools/run_capped.py"], True, id="one trigger among other files"),
+        pytest.param([], False, id="no change at all"),
+        pytest.param(None, True, id="a base that cannot be read"),
+    ],
+)
+def test_the_proofs_run_when_the_change_touches_what_they_test_or_is_unknown(changed, needed):
+    assert pre_push.proofs_needed(changed, ["pyproject.toml", "tools/*", "tests/tools/*", ".github/*"]) is needed
+
+
+def test_without_origin_main_the_base_is_unreadable_so_the_proofs_run(git_repo, monkeypatch):
+    git_repo.commit("chore: start", {"start.txt": "start"})
+    monkeypatch.chdir(git_repo.path)
+    assert pre_push.changed_since_base() is None
 
 
 # One gate per checkout --------------------------------------------------------------------------------------------

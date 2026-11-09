@@ -16,12 +16,12 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from packaging.utils import parse_sdist_filename, parse_wheel_filename
+from packaging.utils import canonicalize_name, parse_sdist_filename, parse_wheel_filename
 from packaging.version import Version
 
+pytestmark = pytest.mark.gate
+
 ROOT = Path(__file__).resolve().parents[2]
-# one xdist worker runs this module, so the Rust build folder its builds share is reused across its tests
-pytestmark = pytest.mark.xdist_group("build-gate")
 RUST_FILES = ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml")
 
 
@@ -57,9 +57,9 @@ def test_the_project_as_it_is_builds_clean_distributions(project, build_env):
     [sdist] = (project / "dist" / "check").glob("*.tar.gz")
     [wheel] = (project / "dist" / "check").glob("*.whl")  # sdist and wheel, nothing else
     assert len(list((project / "dist" / "check").iterdir())) == 2
-    assert parse_sdist_filename(sdist.name) == ("bullterrier-control", Version(version))
+    assert parse_sdist_filename(sdist.name) == (canonicalize_name("bullterrier-control"), Version(version))
     name, wheel_version, _, tags = parse_wheel_filename(wheel.name)
-    assert (name, wheel_version) == ("bullterrier-control", Version(version))
+    assert (name, wheel_version) == (canonicalize_name("bullterrier-control"), Version(version))
     # one wheel per platform for every Python from 3.12 (the stable ABI), with the extension in the package
     assert {(tag.interpreter, tag.abi) for tag in tags} == {("cp312", "abi3")}
     native = "bullterrier_control/_native/"
@@ -85,7 +85,8 @@ def test_a_long_description_pypi_cannot_render_fails_the_gate(project, build_env
 
 def test_a_wheel_file_that_cannot_be_imported_fails_the_gate(project, build_env):
     (project / "src" / "bullterrier_control" / "not-importable.py").write_text(
-        '"""A module with a dash."""\n', encoding="utf-8"
+        '"""A module with a dash."""\n',
+        encoding="utf-8",
     )
     result = build_check(project, build_env)
     assert result.returncode != 0
@@ -121,9 +122,8 @@ def test_a_wheel_without_the_extension_where_the_package_has_it_fails_the_gate(p
     pyproject = project / "pyproject.toml"
     text = pyproject.read_text(encoding="utf-8")
     assert 'module-name = "bullterrier_control._native._core"' in text
-    pyproject.write_text(
-        text.replace("bullterrier_control._native._core", "bullterrier_control.native._core"), encoding="utf-8"
-    )
+    renamed = text.replace("bullterrier_control._native._core", "bullterrier_control.native._core")
+    pyproject.write_text(renamed, encoding="utf-8")
     (project / "src" / "bullterrier_control" / "native").mkdir()
     (project / "src" / "bullterrier_control" / "native" / "__init__.py").write_text('"""Native."""\n', encoding="utf-8")
     result = build_check(project, build_env)

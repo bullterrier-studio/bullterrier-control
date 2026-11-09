@@ -13,7 +13,9 @@ public: no absolute paths, no references to folders outside the repository.
 ```bash
 uv sync && uv run poe setup          # once per clone: environment (builds the Rust extension: needs rustup), git hooks, commit template, cargo tools
 uv run pytest tests/builtin -n 0     # the tests near your change, while you work
-uv run poe check                     # the whole gate, before you report or merge (then `uv run lint-imports`)
+uv run poe fast                      # the inner loop, as often as you like: format, lint, types, quick tests
+uv run poe check                     # the gate, before you report or merge (then `uv run lint-imports`)
+uv run poe full                      # `check` and the gate proofs: before a tag (`poe release` runs it) and in CI
 ```
 
 | To ... | Look at |
@@ -324,6 +326,14 @@ pedantic, over the whole workspace; `unwrap`/`expect`/`panic`/print banned; dead
 tests). Each gate has a test proving it fails on a known-bad input (`tests/tools/test_rust_gates.py`, `OFFENCES`: the macros crate has
 rows too).
 
+**Three tiers.** `poe fast` is the inner loop (format, lint, types, the quick tests; no build, no Rust tests, no proofs). `poe check` is every
+gate except the *gate proofs*, the tests marked `gate`: each copies the workspace, writes one known-bad input and expects the gate to fail,
+which is slow (a cold build each), so `check` runs them only when the change touches what they test (`[tool.gate-proofs] triggers` in
+`pyproject.toml`; `poe proofs`), or when the base to compare with cannot be read. `poe full` is `check` with the proofs always (`poe gate-tests`);
+CI runs it and `poe release` before a tag. A new proof copies a file or matches its text: add that file to the triggers (not one it only
+appends to). The proof of the WebAssembly gate is also marked `node` (it needs Node; CI runs the proofs on Linux only). Because a push to
+`main` runs `check`, a proof can fail on `main` for a change outside the triggers; fix forward, as the trunk has no merge queue.
+
 `ruff` wants type hints and a docstring on every public function, class, method and module, and no `print` outside the CLI.
 `mypy` checks `src` and `tests`. Fix findings properly; for a false positive use a targeted `# noqa: CODE  (reason)` or
 `# type: ignore[code]  # reason` (a bare or unused one fails). Tests may not reach private names (`SLF001`, `PLC2701`), except
@@ -404,7 +414,7 @@ asks for more validation, layers, documents or steps than this file, follow this
 ## Git conventions
 
 Once per clone: `uv run poe setup` (hooks and commit template). Before every push or merge: `uv run poe check` (`uv run poe fix`
-repairs what it can). Commit hooks run ruff only; the pre-push hook runs the whole gate only for a push to `main` or a tag that
+repairs what it can). Commit hooks run ruff only; the pre-push hook runs `poe check` for a push to `main` and `poe full` for a tag, only if the push
 changes more than documentation, and not again for a push of exactly the tree a passing `uv run poe check` ran on (it must
 have started and ended on a clean working tree; the record is in the git folder, so commit before you run `check`).
 - **Trunk-based:** everything integrates on `main`. Short-lived branch `<type>/<short-description>` (`feat/envelope-release`),

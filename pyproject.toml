@@ -83,6 +83,8 @@ cache-keys = [
 # and so does library code left out of the wheel (W101).
 [tool.check-wheel-contents]
 package = "src/bullterrier_control"
+# the one top-level name a wheel may hold; a stray top-level entry in the wheel fails (W201, W202)
+toplevel = ["bullterrier_control"]
 package_omit = ["__pycache__", "*.pyc", ".*", "*.jpg", "*.jpeg", "*.png", "*.gif", "test_*.py"]
 
 [dependency-groups]
@@ -116,7 +118,10 @@ dev = [
 [tool.poe.tasks]
 # PYTHONWARNDEFAULTENCODING makes the interpreter, and every xdist worker it starts, report text IO without an
 # encoding (EncodingWarning), which `filterwarnings` below turns into a failure; an -X flag would not reach the workers
-test = { cmd = "pytest -q -n auto", env = { PYTHONWARNDEFAULTENCODING = "1" }, help = "Run the test suite on every CPU core (pytest-xdist; the order stays random)" }
+# Three tiers (CLAUDE.md, "Gates"): `fast` while working, `check` before a push to main, `full` before a tag and in CI. The tests that
+# prove a gate fails on a known-bad input copy the workspace and build in it, so they are marked `gate` and are not in `test`.
+test = { cmd = "pytest -q -n auto -m 'not gate'", env = { PYTHONWARNDEFAULTENCODING = "1" }, help = "Run the test suite on every CPU core (pytest-xdist; the order stays random), without the gate proofs" }
+gate-tests = { cmd = "pytest -q -n auto -m gate", env = { PYTHONWARNDEFAULTENCODING = "1" }, help = "Run the tests that prove each gate fails on a known-bad input (they copy the workspace and build in it)" }
 # Not part of `check`: the suite on the oldest Python and the lowest release each direct dependency's floor allows, in a
 # throwaway environment (uv.lock and the project environment stay as they are; the first run downloads the old
 # releases). It is for CI. Tests marked `typecheck` are left out because mypy's verdict on our source depends on the
@@ -139,6 +144,8 @@ build-check = { sequence = ["uv build --quiet --clear --no-create-gitignore --ou
 lint-workflows = { sequence = ["uv run actionlint", "zizmor --offline .github"], default_item_type = "cmd", help = "Lint the GitHub workflows (actionlint, zizmor)" }
 # The Rust gates, each beside its Python counterpart; cargo comes with rustup, at the version rust-toolchain.toml pins.
 # Warnings fail only here (`-D warnings`), never a user's build. tests/tools/test_rust_gates.py shows each one failing.
+# rustfmt follows `mod` but not `include!`: a file pulled in with `include!` is never checked unless it is named here (add it to this
+# task, as `rustfmt --check <file>`); the project has none.
 rust-fmt = { cmd = "cargo fmt --all --check", help = "Check the Rust formatting (rustfmt.toml)" }
 rust-lint = { cmd = "cargo clippy --workspace --all-targets --locked --quiet -- -D warnings", help = "Lint the Rust code: clippy, dead code, missing docs, unreachable pub, unsafe ([workspace.lints] in Cargo.toml)" }
 rust-doc = { cmd = "cargo doc --workspace --no-deps --locked --quiet", env = { RUSTDOCFLAGS = "-D warnings" }, help = "Build the Rust documentation; any rustdoc warning (a broken link) fails" }
@@ -163,7 +170,14 @@ rust-test = { cmd = "uv run python tools/run_capped.py -- cargo test --workspace
 # A crate's Rust integration tests are one binary (tests/it/main.rs); tools/check_rust_test_layout.py, the table [tool.rust-tests.own-binaries]
 rust-test-layout = { cmd = "uv run python tools/check_rust_test_layout.py", help = "Check that the Rust integration tests are one binary per crate (tests/it/)" }
 dead-code = { cmd = "vulture src", help = "Find dead code in src (vulture)" }
-check = { sequence = ["uv run python tools/pre_push.py start", "ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, { ref = "lint-workflows" }, { ref = "dead-code" }, { ref = "rust-doc" }, "deptry .", { ref = "rust-tools" }, { ref = "rust-test-layout" }, { ref = "rust-shear" }, { ref = "rust-deny" }, { ref = "rust-wasm" }, { ref = "build-check" }, "mypy", { ref = "stubtest" }, { ref = "rust-test" }, { ref = "wasm-test" }, { ref = "test" }, "uv run python tools/pre_push.py pass"], default_item_type = "cmd", help = "The full gate, Python and Rust (format, lint, workflows, dead code, docs, dependencies, distributions, types, tests); stops at the first failure; a pass on a clean tree is remembered, so pushing exactly that tree does not repeat it" }
+# The steps `check` and `full` share, cheapest first, stopping at the first failure
+gates = { sequence = ["ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, { ref = "lint-workflows" }, { ref = "dead-code" }, { ref = "rust-doc" }, "deptry .", { ref = "rust-tools" }, { ref = "rust-test-layout" }, { ref = "rust-shear" }, { ref = "rust-deny" }, { ref = "rust-wasm" }, { ref = "build-check" }, "mypy", { ref = "stubtest" }, { ref = "rust-test" }, { ref = "wasm-test" }, { ref = "test" }], default_item_type = "cmd", help = "Every gate except the proofs that each gate can fail (format, lint, workflows, dead code, docs, dependencies, distributions, types, tests)" }
+fast = { sequence = ["ruff format --check .", { ref = "rust-fmt" }, "ruff check .", { ref = "rust-lint" }, "mypy", { ref = "test" }], default_item_type = "cmd", help = "The inner loop: format, lint, types and the quick tests; no build, no Rust tests, no proofs" }
+# A pass on a clean tree is remembered with its tier, so pushing exactly that tree does not repeat it; `check` runs the proofs only when the
+# change touches what they test ([tool.gate-proofs] below), `full` always
+proofs = { cmd = "uv run python tools/pre_push.py proofs", help = "Run the gate proofs if the change touches what they test (or the base cannot be read)" }
+check = { sequence = ["uv run python tools/pre_push.py start", { ref = "gates" }, { ref = "proofs" }, "uv run python tools/pre_push.py pass check"], default_item_type = "cmd", help = "The gate before a push to main: every gate, and the proofs when the change touches what they test; a pass is remembered for that tree" }
+full = { sequence = ["uv run python tools/pre_push.py start", { ref = "gates" }, { ref = "gate-tests" }, "uv run python tools/pre_push.py pass full"], default_item_type = "cmd", help = "The gate before a tag and in CI: `check` with the proofs always run; a pass is remembered for that tree" }
 # Redraw the gallery (docs/gallery/ and docs/gallery.md) from the patches in examples/gallery/; needs matplotlib (uv sync)
 gallery = { cmd = "uv run python tools/gallery.py", help = "Redraw docs/gallery/ and docs/gallery.md from examples/gallery/" }
 # Rewrite lib.pyi and _chain.py (the typed functions of `lib`, the chain methods of `Signal`) from the built-ins;
@@ -193,17 +207,38 @@ cap-mb = 4000
 # process to themselves). Empty: every integration test is a module of tests/it/.
 [tool.rust-tests.own-binaries]
 
+# Read by tools/pre_push.py (`poe proofs`, the last step of `poe check`): the gate proofs (tests marked `gate`) run in `check` only when the
+# change touches one of these globs, relative to the repository root, or when the base to compare with cannot be read. List every file a proof
+# copies or matches the text of; not one it only appends to (that cannot break it, and the project's own source changes often, which
+# would run the slow proofs every time). `poe full` runs them always.
+[tool.gate-proofs]
+triggers = [
+    "pyproject.toml",
+    ".pre-commit-config.yaml",
+    "rustfmt.toml",
+    "deny.toml",
+    "rust-toolchain.toml",
+    "Cargo.toml",
+    "Cargo.lock",
+    "crates/*/Cargo.toml",
+    "tools/*",
+    "tests/tools/*",
+    ".github/*",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # test files are named after the module they test, so equal names in different folders must never collide
 # a misspelt marker or option is an error, not a silently ignored typo
-# with xdist (`-n`), tests marked `xdist_group` stay on one worker, so an expensive module fixture is built once
-addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config", "--dist=loadgroup"]
+# with xdist (`-n`), a test file runs on one worker, so a module fixture that spawns tools is built once (`xdist_group` marks
+# do nothing with pytest 9.2 and xdist 3.8: five marked tests ran on three workers)
+addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config", "--dist=loadfile"]
 # an xfail that starts passing fails the run, so the marker cannot outlive the bug it names
 xfail_strict = true
 markers = [
+    "gate: proves a gate fails on a known-bad input in a copy of the workspace; slow, so `poe test` and `poe check` leave it out unless the change touches [tool.gate-proofs]; `poe gate-tests` and `poe full` run it",
     "typecheck: type-checks the package with mypy; `poe check-min-deps` leaves it out",
-    "gate: proves a gate that needs Node and the wasm-bindgen command fails on a known-bad input; CI runs it on Linux only, in the test job (`poe check-min-deps` leaves it out)",
+    "node: a gate proof that needs Node and the wasm-bindgen command (also marked `gate`); CI runs it on Linux only",
 ]
 # Every warning fails the test that raised it: a leaked file or process (ResourceWarning), a deprecated call, and, when
 # PYTHONWARNDEFAULTENCODING=1 is set (`poe test` sets it), text IO that relies on the locale's encoding (EncodingWarning,

@@ -21,7 +21,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 # one xdist worker runs this module, so the copy and its build folder are made once
-pytestmark = [pytest.mark.gate, pytest.mark.xdist_group("wasm-gate")]
+pytestmark = [pytest.mark.gate, pytest.mark.node]
 WORKSPACE_FILES = ["pyproject.toml", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml", "deny.toml"]
 GLUE = "crates/wasm/src/lib.rs"
 ORACLE = "tests/wasm/oracle.py"

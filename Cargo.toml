@@ -65,3 +65,16 @@ undocumented_unsafe_blocks = "warn"
 cargo-shear = "1.14.0"
 cargo-deny = "0.20.2"
 wasm-bindgen = "0.2.130"  # the command (crate wasm-bindgen-cli); `rust-tools` ties it to the crate version in Cargo.lock
+
+# Debug builds keep file and line tables (panics and backtraces still name them) but no variable information, and on
+# macOS the debug info stays in the binary: by default (`unpacked`) cargo leaves every object file of every build behind
+# in target/debug/deps, never cleaned (measured in a sibling project: 1.1 million files, 38 GB after a week). `cargo test`
+# uses the `test` profile, which inherits this one.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "off"
+
+# Not optimised, unlike the template's `opt-level = 1`: the stack-depth tests (the graph is read, saved and dropped on a 256 KiB
+# thread) measure frame sizes, which an optimised build makes smaller, so they would bound the recursion more loosely.
+[profile.test]
+opt-level = 0

@@ -14,7 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 # one xdist worker runs this module, so mypy (with a cold cache) runs once
-pytestmark = [pytest.mark.xdist_group("api-typing"), pytest.mark.typecheck]
+pytestmark = pytest.mark.typecheck
 
 PRELUDE = """import bullterrier_control as btc
 from bullterrier_control import lib

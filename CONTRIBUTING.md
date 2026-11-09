@@ -21,6 +21,7 @@ uv run poe setup       # once per clone: the git hooks, the commit-message templ
 ## Before you push
 
 ```bash
+uv run poe fast        # while working: format, lint, types, quick tests
 uv run poe check       # every gate, Python and Rust: format, lint, workflows, dead code, dependencies, build, types, tests
 uv run poe fix         # repairs what lint and format can repair by themselves
 uv run poe audit       # known vulnerabilities in the locked dependencies (pip-audit, cargo-deny; needs the network)

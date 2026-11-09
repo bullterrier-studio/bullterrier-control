@@ -19,10 +19,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "tools" / "run_capped.py"
-pytestmark = [
-    pytest.mark.xdist_group("run-capped"),
-    pytest.mark.skipif(sys.platform == "win32", reason="the cap needs POSIX process groups and ps; see the tool"),
-]
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="the cap needs POSIX process groups and ps; see the tool"
+)
 
 CAP_MB = 300
 SAFETY_MB = 1500  # no allocator in this file goes past it, with or without the tool

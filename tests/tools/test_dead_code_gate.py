@@ -12,8 +12,9 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.gate
+
 ROOT = Path(__file__).resolve().parents[2]
-pytestmark = pytest.mark.xdist_group("dead-code-gate")
 
 DEAD_CODE = '''"""A module with code nothing calls."""
 

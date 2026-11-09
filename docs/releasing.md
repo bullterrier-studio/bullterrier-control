@@ -34,8 +34,8 @@ uv run poe release 0.1.0        # the release: PyPI
 behind or diverged from origin/main (commits ahead of it are fine: they are pushed with the release); the version is a
 release version (MAJOR.MINOR.PATCH, optionally aN, bN or rcN) greater than the one in `pyproject.toml` and than every
 `v*` tag, and no test writes it; `ci-ok` has not failed on GitHub for the commit (asked through `gh`; if gh is missing
-or offline, or CI has not run on the commit yet, it only warns, as the tag runs the whole CI again); `poe check`
-passes. Then it prints the plan (old and new version, the changelog section, the commit, the tag, the remote and what
+or offline, or CI has not run on the commit yet, it only warns, as the tag runs the whole CI again); `poe full`
+(`check` and the gate proofs) passes. Then it prints the plan (old and new version, the changelog section, the commit, the tag, the remote and what
 the push carries) and asks `[y/N]`; `--dry-run` stops there, `--yes` does not ask. On yes: `uv version` writes
 `pyproject.toml` and `uv.lock`, the section goes into CHANGELOG.md, `chore(release): v0.1.0` is committed, the
 annotated tag `v0.1.0` is created and `git push --atomic origin main v0.1.0` pushes both, or neither.
