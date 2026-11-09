@@ -222,7 +222,10 @@ triggers = [
     "Cargo.toml",
     "Cargo.lock",
     "crates/*/Cargo.toml",
-    "tools/*",
+    "tools/*",  # tools/dev.py and its templates, which the scaffold tests of tests/tools/test_dev.py run
+    "crates/core/src/registry*",  # the core files the scaffolded things are written against
+    "crates/core/src/signal*",
+    "crates/core/src/params*",
     "tests/tools/*",
     ".github/*",
 ]

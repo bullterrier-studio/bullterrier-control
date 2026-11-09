@@ -331,7 +331,8 @@ check` is every gate except the *tests of the tooling*: the gate proofs (marked 
 input and expects the gate to fail, a cold build each) and the shared tools' own tests (marked `tooling`: the same files in every
 project, tested in the template). `check` runs them (`poe gate-tests`) only when a change since they last passed touches what they test
 (`[tool.gate-proofs] triggers` in `pyproject.toml`; `poe proofs`), or when they never passed in this clone. `poe full` is `check` with the proofs always (`poe gate-tests`);
-CI runs it on `main` and `poe release` before a tag. A new proof copies a file or matches its text: add that file to the triggers (not one it only appends to). The proof of
+CI runs it on `main` and `poe release` before a tag. A new proof copies a file or matches its text: add that file to the triggers (not one it only appends to). The slow scaffold
+tests of `tools/dev.py` are marked `gate` too, with the files they run against in the triggers. The proof of
 the WebAssembly gate is also marked `node` (it needs Node; CI runs the proofs on Linux only). Because a push to
 `main` runs `check`, a proof can fail on `main` for a change outside the triggers; fix forward, as the trunk has no merge queue.
 

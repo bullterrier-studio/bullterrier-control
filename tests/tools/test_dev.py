@@ -98,6 +98,9 @@ WINDOWS = pytest.mark.skipif(
 )
 
 
+# marked `gate` (not a proof of a gate, but as slow as one: a cold cargo build each): `poe check` runs them when their
+# inputs change ([tool.gate-proofs] triggers), `poe full` and CI always
+@pytest.mark.gate
 @WINDOWS
 @pytest.mark.parametrize(
     ("kind", "gallery", "nodes"),
@@ -157,6 +160,7 @@ def test_a_new_thing_is_found_by_the_build_and_its_rust_and_python_tests_pass_as
         assert built.stdout.strip() == f"{nodes} True"
 
 
+@pytest.mark.gate
 @WINDOWS
 def test_a_new_shaper_scales_a_signal_by_its_depth_through_the_python_binding(checkout):
     run(checkout, "tools/dev.py", "new-source", "fresh_one", "--kind", "shaper")
