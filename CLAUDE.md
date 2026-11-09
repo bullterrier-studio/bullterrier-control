@@ -321,10 +321,10 @@ pedantic, over the whole workspace; `unwrap`/`expect`/`panic`/print banned; dead
 `Cargo.toml`); `poe lint-workflows` (actionlint, zizmor); `poe dead-code` (vulture on `src`; exemptions in `[tool.vulture]`); `rust-doc`;
 `deptry`; `rust-tools` (cargo-shear and cargo-deny installed at the versions `Cargo.toml` pins; `poe setup` installs them),
 `rust-shear` (unused crates), `rust-deny` (bans, licences, sources; `deny.toml`), `rust-wasm` (the core builds for
-`wasm32-unknown-unknown`); `poe build-check` (maturin sdist and wheel, twine, check-wheel-contents); `mypy` and `stubtest`
-(`_native/_core.pyi` against the extension); `rust-test`; the tests, in random order (import contracts and the tooling's own
-tests). Each gate has a test proving it fails on a known-bad input (`tests/tools/test_rust_gates.py`, `OFFENCES`: the macros crate has
-rows too).
+`wasm32-unknown-unknown`); `mypy` and `stubtest`
+(`_native/_core.pyi` against the extension); `rust-test` (under the memory cap); the tests, in random order. `poe full` adds
+`poe build-check` (maturin sdist and wheel, twine, check-wheel-contents; CI also builds every platform's wheel). Each gate has a test
+proving it fails on a known-bad input (`tests/tools/`; `test_rust_gates.py` `OFFENCES`).
 
 **Three tiers.** `poe fast` is the inner loop (format, lint, types, the project's own tests; no build, no Rust tests, no proofs). `poe
 check` is every gate except the *tests of the tooling*: the gate proofs (marked `gate`: each copies the workspace, writes one known-bad
