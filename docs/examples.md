@@ -235,3 +235,30 @@ constant of 0.25 s. `patch.build` gives every node by name (`strong` is the two 
 | 1.75 | 0.36787944117144233 | e⁻¹ after the third kick |
 
 The same from a shell: `bt-control sample examples/glow.toml --bundle examples/kicks.json --to 2 --rate 4 --csv`.
+
+## 9. The kicks after the reveal
+
+The title words should land on the first four kicks after the reveal at 8 s, and no two closer than 0.3 s. **Needs:**
+`window`, `thin`.
+
+```python
+from bullterrier_control import lib
+
+reveal = 8.0
+kicks = [{"t": t} for t in (0.5, 1.0, 8.0, 8.1, 8.5, 8.6, 9.2, 10.0)]
+words = lib.thin(events=lib.window(events=kicks, start=reveal, first=4), gap=0.3)
+signal = lib.envelope(events=words, decay=0.25)
+```
+
+`window` keeps the range first (8.0 to 10.0), then the first four of it: 8.0, 8.1, 8.5 and 8.6. `thin` drops 8.1 and 8.6, each 0.1 s
+after a kept kick. The kicks at 0.5 and 1.0 s are before the reveal and do nothing.
+
+| t (s) | value | by hand |
+|---|---|---|
+| 1.0 | 0 | a kick before the reveal, left out |
+| 8.0 | 1.0 | the first word |
+| 8.1 | 0.6703200460356393 | e⁻⁰·⁴; the thinned 8.1 kick would have made it 1 |
+| 8.25 | 0.36787944117144233 | e⁻¹ after the first word |
+| 8.5 | 1.0 | the second word |
+| 9.0 | 0.1353352832366127 | e⁻² after the second word; the kick at 9.2 is beyond the first four |
+

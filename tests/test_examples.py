@@ -37,7 +37,7 @@ EXAMPLES = [example(section) for section in SECTIONS]
 
 
 def test_the_page_has_its_examples():
-    assert len(EXAMPLES) == 8
+    assert len(EXAMPLES) == 9
 
 
 @pytest.mark.parametrize(("title", "needs", "code", "rows"), EXAMPLES, ids=[title for title, *_ in EXAMPLES])

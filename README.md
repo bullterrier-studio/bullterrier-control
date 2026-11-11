@@ -33,7 +33,7 @@ is up to you. Music software calls this automation or modulation, animation tool
 <table>
   <tr>
     <td width="33%" valign="top"><b>Read at any moment</b><br>A signal has a value at every time. <code>sample(times)</code> takes a number or an array of seconds, in any order, and returns values in the same shape. No clock, no frames.</td>
-    <td width="33%" valign="top"><b>Sources, shapers and operations</b><br>Keyframes, LFOs, envelopes, steps, noise and latches make signals; slew, follow, spring, integrate, repeat, gate, hold, remap, delay and clip shape them; select, thin, quantize and more prepare events and series. Signals combine with <code>+</code>, <code>-</code>, <code>*</code>, <code>minimum</code> and <code>maximum</code>.</td>
+    <td width="33%" valign="top"><b>Sources, shapers and operations</b><br>Keyframes, LFOs, envelopes, steps, noise and latches make signals; slew, follow, spring, integrate, repeat, gate, hold, remap, delay and clip shape them; select, thin, window, quantize and more prepare events and series. Signals combine with <code>+</code>, <code>-</code>, <code>*</code>, <code>minimum</code> and <code>maximum</code>.</td>
     <td width="33%" valign="top"><b>Deterministic</b><br>The same inputs and seed give the same values, whatever the order or number of earlier reads. Noise is the same on every machine.</td>
   </tr>
   <tr>
@@ -231,6 +231,7 @@ called with keyword inputs (`btc.lib.thin(events=kicks, gap=0.25)`), and give ev
 | `select` | events | The events with a label and at least a strength |
 | `every` | events | Every Nth event |
 | `thin` | events | The events that come at least a gap after the last one kept |
+| `window` | events | The events from a start time up to an end time, then the first few of them |
 | `shift` | events | The events moved earlier or later, cut off at time 0 |
 | `beats` | a grid | An event on each beat (downbeats marked), and on subdivisions |
 | `quantize` | events, a grid | The events snapped to the nearest beat or subdivision |
@@ -325,7 +326,7 @@ bt-control schema                    # the JSON Schema of a bundle, for tools in
 Pre-alpha, not yet on PyPI. The formats, patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`)
 and the core exist, with the sources `constant`, `keyframes`, `envelope`, `latch`,
 `lfo`, `steps` and `noise`, the shapers `clip`, `delay`, `follow`, `gate`, `hold`, `integrate`, `remap`, `repeat`, `slew` and `spring`, and the operations
-`beats`, `every`, `normalise`, `quantize`, `select`, `shift` and `thin`.
+`beats`, `every`, `normalise`, `quantize`, `select`, `shift`, `thin` and `window`.
 
 ## Development
 

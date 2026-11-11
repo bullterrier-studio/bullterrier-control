@@ -127,15 +127,16 @@ it becomes a signal. (`slew` and `clip` shipped in C1.)
 ### C3b Operations on events and series (done)
 
 - A third registered kind, the operation: data in, data out, parameters declared like a source's, in `lib`.
-- Events: `select` (label, strength threshold), `every` (every Nth), `thin` (minimum gap), `shift` (lead or lag),
+- Events: `select` (label, strength threshold), `every` (every Nth), `thin` (minimum gap), `window` (a time range, then the first N), `shift` (lead or lag),
   `quantize` (to the grid), `beats` (events from a grid: beats, downbeats, subdivisions). Merging is concatenation, since
   the `events` input sorts; a signal quantized to the grid is `hold` at `beats`.
 - Series: `normalise` (between two percentiles, to a `fraction` series that states its `scaling`).
 - Example 7: strong kicks only, thinned, through `envelope`.
+- Example 9: the first four kicks after a reveal, thinned (`window` then `thin`).
 - Open candidate, not scheduled: `within`, keeping the events that fall inside the spans of other events (a section, a held
-  note), so "the kicks during the drop" is `select` then `within` and needs no hand loop. A prototype wanted "the first four
-  kicks after a reveal, at least 0.3 s apart"; `thin` covers the spacing, nothing covers "after". It may be unnecessary if the
-  consumer (video) takes events from audio's labelled sections instead: decide when video's mappings are designed.
+  note), so "the kicks during the drop" is `select` then `within`. `window` covers a known time range; `within` needs a second
+  events input kind (the spans) and may be unnecessary if the consumer (video) takes events from audio's labelled sections
+  instead: decide when video's mappings are designed.
 
 ## C4 Patch files, CLI, gallery (done)
 
