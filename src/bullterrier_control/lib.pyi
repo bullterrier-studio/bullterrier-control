@@ -348,4 +348,22 @@ def thin(*, events: Sequence[Event | Mapping[str, object]], gap: float = 0.1) ->
             kept when it comes at least this long after the last kept one. Raising it keeps fewer events; 0 keeps all.
     """
 
+def window(
+    *, events: Sequence[Event | Mapping[str, object]], start: float = 0.0, end: float = 0.0, first: int = 0
+) -> tuple[Event, ...]:
+    """The events from `start` up to (not including) `end`, then the earliest `first` of them.
+
+    Args:
+        events: required. Events: a list of {t, strength, duration, label, pitch}, as in a bundle, in any order (checked
+            into time order).
+        start: seconds, 0 to 86400, default 0.0. The time the window opens, in seconds, 0 to 86400: events at or after
+            it are kept. 0 (the default) starts at the beginning.
+        end: seconds, 0 to 86400, default 0.0. The time the window closes, in seconds, 0 to 86400 and not before
+            `start`: events before it are kept, one at this time is not. 0 (the default) means no end: every event from
+            `start` on.
+        first: count, 0 to 10000, default 0. How many events to keep, 0 to 10000: the first this many in time order of
+            the events left by `start` and `end` (the range is applied first). Raising it keeps more; 0 (the default)
+            keeps all of them.
+    """
+
 def __getattr__(name: str) -> Registered: ...

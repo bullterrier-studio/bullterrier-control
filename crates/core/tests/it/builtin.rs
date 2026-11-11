@@ -251,6 +251,9 @@ fn declared_fields() -> Vec<Row> {
         number("steps", "rate", "float", json!(4.0), (Some("count"), 0.001, 1000.0), ""),
         other("steps", "per", "choice", json!("second"), &["second", "beat"]),
         number("thin", "gap", "float", json!(0.1), seconds(3600.0), ""),
+        number("window", "start", "float", json!(0.0), seconds(86400.0), ""),
+        number("window", "end", "float", json!(0.0), seconds(86400.0), ""),
+        number("window", "first", "whole", json!(0), count(0.0, 10000.0), ""),
     ]
 }
 
