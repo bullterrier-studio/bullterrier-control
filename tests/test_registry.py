@@ -883,5 +883,5 @@ def test_events_given_positionally_to_an_operation_are_refused_naming_the_keywor
     with pytest.raises(
         TypeError, match=r"takes no positional arguments, got 1; pass its input by keyword: events="
     ) as refused:
-        lib.window([{"t": 1.0}], start=4)
+        lib.window([{"t": 1.0}], start=4)  # type: ignore[call-arg]  # the stub already refuses it
     assert "operation 'window'" in str(refused.value)
