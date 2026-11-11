@@ -58,7 +58,7 @@ fn by_body(start: f64, end: f64, count: i64, events: &[Event]) -> Result<Vec<Eve
 
 /// `(id, start, end, count, times given, times kept)`: the rows of `tests/builtin/test_window.py`.
 #[allow(clippy::type_complexity, reason = "a table of rows, read as one")]
-const KEEPS: [(&str, f64, f64, i64, &[f64], &[f64]); 12] = [
+const KEEPS: [(&str, f64, f64, i64, &[f64], &[f64]); 13] = [
     ("the defaults keep all", 0.0, 0.0, 0, &[0.0, 1.0, 2.0], &[0.0, 1.0, 2.0]),
     (
         "an event exactly at start is kept",
@@ -132,6 +132,14 @@ const KEEPS: [(&str, f64, f64, i64, &[f64], &[f64]); 12] = [
         0,
         &[0.3],
         &[0.3],
+    ),
+    (
+        "decimals: an event at 0.3 is at the end 0.1 + 0.2 within rounding, so the half-open range drops it",
+        0.0,
+        0.1 + 0.2,
+        0,
+        &[0.2, 0.3],
+        &[0.2],
     ),
     ("no events keep none", 1.0, 2.0, 3, &[], &[]),
 ];
