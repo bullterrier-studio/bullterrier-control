@@ -132,6 +132,10 @@ it becomes a signal. (`slew` and `clip` shipped in C1.)
   the `events` input sorts; a signal quantized to the grid is `hold` at `beats`.
 - Series: `normalise` (between two percentiles, to a `fraction` series that states its `scaling`).
 - Example 7: strong kicks only, thinned, through `envelope`.
+- Open candidate, not scheduled: `within`, keeping the events that fall inside the spans of other events (a section, a held
+  note), so "the kicks during the drop" is `select` then `within` and needs no hand loop. A prototype wanted "the first four
+  kicks after a reveal, at least 0.3 s apart"; `thin` covers the spacing, nothing covers "after". It may be unnecessary if the
+  consumer (video) takes events from audio's labelled sections instead: decide when video's mappings are designed.
 
 ## C4 Patch files, CLI, gallery (done)
 
