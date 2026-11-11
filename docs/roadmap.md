@@ -269,6 +269,10 @@ publishing on TestPyPI and PyPI, `uv run poe release 0.1.0rc1`, then `0.1.0`.
 - **A source that reads a series**, when a consumer needs to save a graph built from a bundle's `series.<name>` (today a patch
   that reads one cannot be saved from the graph; keep the patch).
 
+- **Method chaining on events** (`lib.window(...).thin(...)`): considered and deferred. Operations return a plain tuple of
+  `Event`; chaining needs a tuple subclass plus changes to the stubs and the generator, and inputs stay keyword-only
+  (see design-decisions). Signals already chain, through `Chain`. Revisit if named intermediates prove a real burden.
+
 ## Not in v1
 
 - Real-time output (a live clock driving MIDI or OSC). Offline first; later as an optional extra.

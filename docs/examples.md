@@ -174,7 +174,8 @@ kicks = [
     {"t": 1.05, "strength": 0.95},
     {"t": 2.0, "strength": 0.7},
 ]
-strong = lib.thin(events=lib.select(events=kicks, threshold=0.5), gap=0.25)
+loud = lib.select(events=kicks, threshold=0.5)
+strong = lib.thin(events=loud, gap=0.25)
 signal = lib.envelope(events=strong, decay=0.25)
 ```
 
@@ -246,7 +247,8 @@ from bullterrier_control import lib
 
 reveal = 8.0
 kicks = [{"t": t} for t in (0.5, 1.0, 8.0, 8.1, 8.5, 8.6, 9.2, 10.0)]
-words = lib.thin(events=lib.window(events=kicks, start=reveal, first=4), gap=0.3)
+late = lib.window(events=kicks, start=reveal, first=4)
+words = lib.thin(events=late, gap=0.3)
 signal = lib.envelope(events=words, decay=0.25)
 ```
 

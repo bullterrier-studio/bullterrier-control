@@ -307,10 +307,17 @@ def test_a_call_that_keeps_the_rules_gives_the_signal_its_body_makes(callable_th
 
 
 BAD_CALLS = [
-    pytest.param("level", (ONE,), {}, TypeError, "source 'level' takes 0 signal(s), not 1", id="a signal to a source"),
-    pytest.param("scale", (), {}, TypeError, "shaper 'scale' takes 1 signal(s), not 0", id="a shaper without one"),
-    pytest.param("scale", (ONE, FOUR), {}, TypeError, "shaper 'scale' takes 1 signal(s), not 2", id="two signals"),
-    pytest.param("scale", (1.0,), {}, TypeError, "shaper 'scale' takes 1 signal(s), not 1", id="a number not a signal"),
+    pytest.param(
+        "level", (ONE,), {}, TypeError, "source 'level' takes no positional arguments, got 1", id="a signal to a source"
+    ),
+    pytest.param("scale", (), {}, TypeError, "shaper 'scale' takes 1 signal, got 0", id="a shaper without one"),
+    pytest.param("scale", (ONE, FOUR), {}, TypeError, "shaper 'scale' takes 1 signal, got 2", id="two signals"),
+    pytest.param(
+        "scale", (1.0,), {}, TypeError, "shaper 'scale': argument 1 is of type float, not a Signal", id="a number"
+    ),
+    pytest.param(
+        "scale", ([1],), {}, TypeError, "shaper 'scale': argument 1 is of type list, not a Signal", id="a list"
+    ),
     pytest.param(
         "level", (), {"points": POINTS}, TypeError, "source 'level' takes no input 'points'", id="an undeclared input"
     ),
@@ -347,7 +354,9 @@ BAD_CALLS = [
         "track", (), {"points": POINTS, "speed": 1}, ParameterError, "speed: unknown field", id="unknown beside input"
     ),
     # the order of the checks: the signals, an undeclared input, each input in its order, then the values
-    pytest.param("level", (ONE,), {"points": [], "value": 9}, TypeError, "signal", id="the signals first"),
+    pytest.param(
+        "level", (ONE,), {"points": [], "value": 9}, TypeError, "positional arguments", id="the signals first"
+    ),
     pytest.param(
         "track", (), {"values": [1], "points": "x"}, TypeError, "takes no input 'values'", id="undeclared before data"
     ),

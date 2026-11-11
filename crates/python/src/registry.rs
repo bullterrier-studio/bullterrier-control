@@ -456,19 +456,43 @@ impl PyThing {
         let py = signals.py();
         let label = self.label();
         let wanted = self.thing.kind().signals();
-        let read: Option<Vec<_>> = signals
-            .iter()
-            .map(|one| one.cast::<SignalBase>().ok().map(signal::signal))
-            .collect();
-        let signals = match read {
-            Some(read) if read.len() == wanted => read,
-            _ => {
+        if wanted == 0 && !signals.is_empty() {
+            let by_keyword = self
+                .thing
+                .inputs()
+                .iter()
+                .map(|(kind, _)| format!("{}=...", kind.name()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let hint = if by_keyword.is_empty() {
+                String::new()
+            } else {
+                format!("; pass its input by keyword: {by_keyword}")
+            };
+            return Err(PyTypeError::new_err(format!(
+                "{label} takes no positional arguments, got {}{hint}",
+                signals.len()
+            )));
+        }
+        let mut read = Vec::new();
+        for (index, one) in signals.iter().enumerate() {
+            let Ok(one) = one.cast::<SignalBase>() else {
                 return Err(PyTypeError::new_err(format!(
-                    "{label} takes {wanted} signal(s), not {}",
-                    signals.len()
+                    "{label}: argument {} is of type {}, not a Signal",
+                    index + 1,
+                    type_name(&one)
                 )));
-            }
-        };
+            };
+            read.push(signal::signal(one));
+        }
+        if read.len() != wanted {
+            let plural = if wanted == 1 { "" } else { "s" };
+            return Err(PyTypeError::new_err(format!(
+                "{label} takes {wanted} signal{plural}, got {}",
+                read.len()
+            )));
+        }
+        let signals = read;
         let mut given = BTreeMap::new();
         let mut parameters = Vec::new();
         for (key, value) in values.into_iter().flat_map(PyDictMethods::iter) {

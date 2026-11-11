@@ -877,3 +877,11 @@ def test_a_chain_method_applies_whatever_the_live_registry_holds_under_its_name(
         with pytest.raises(TypeError, match="not a shaper"):
             Constant(4.0).clip()
     assert Constant(4.0).clip(low=0.25, high=2.0).sample(0.0).tolist() == 2.0  # the built-in again
+
+
+def test_events_given_positionally_to_an_operation_are_refused_naming_the_keyword():
+    with pytest.raises(
+        TypeError, match=r"takes no positional arguments, got 1; pass its input by keyword: events="
+    ) as refused:
+        lib.window([{"t": 1.0}], start=4)
+    assert "operation 'window'" in str(refused.value)
