@@ -392,7 +392,7 @@ def test_a_bundle_is_written_as_the_oldest_version_that_carries_its_data():
 
 def test_a_confidence_survives_dumps_loads_and_pickle(tmp_path):
     bundle = Bundle(format=FORMAT, version=2, grid=SURE)
-    assert Bundle.from_json(dumps(bundle)).grid.confidence == 0.75
+    assert Bundle.from_json(dumps(bundle)).grid == SURE
     assert pickle.loads(pickle.dumps(bundle)) == bundle  # noqa: S301
     save(bundle, tmp_path / "sure.json")
     assert load(tmp_path / "sure.json") == bundle
