@@ -601,26 +601,8 @@ mod tests {
             ("format: left out", r#"{"version": 1}"#.to_owned(), &[("format", "is required")]),
             ("format: a number", r#"{"format": 1, "version": 1}"#.to_owned(), &[("format", "integer")]),
             ("version: left out", r#"{"format": "bullterrier-control/bundle"}"#.to_owned(), &[("version", "is required")]),
-            ("version: 2 is read", r#"{"format": "bullterrier-control/bundle", "version": 2}"#.to_owned(), &[]),
-            ("version: 3", r#"{"format": "bullterrier-control/bundle", "version": 3}"#.to_owned(), &[("version", "must be 1 or 2 (got 3)")]),
             ("version: 0", r#"{"format": "bullterrier-control/bundle", "version": 0}"#.to_owned(), &[("version", "must be 1 or 2 (got 0)")]),
-            ("version: negative", r#"{"format": "bullterrier-control/bundle", "version": -1}"#.to_owned(), &[("version", "must be 1 or 2 (got -1)")]),
-            ("version: beyond u32", r#"{"format": "bullterrier-control/bundle", "version": 4294967297}"#.to_owned(), &[("version", "must be 1 or 2 (got 4294967297)")]),
             ("version: 1.0", r#"{"format": "bullterrier-control/bundle", "version": 1.0}"#.to_owned(), &[("version", "whole number (got 1.0)")]),
-            ("version: 2.0", r#"{"format": "bullterrier-control/bundle", "version": 2.0}"#.to_owned(), &[("version", "whole number (got 2.0)")]),
-            ("confidence: under version 2", V2_GRID.replace("CONF", "0.75"), &[]),
-            ("confidence: at both ends of its range", V2_GRID.replace("CONF", "0"), &[]),
-            ("confidence: 1", V2_GRID.replace("CONF", "1"), &[]),
-            ("confidence: null is none", V2_GRID.replace("CONF", "null"), &[]),
-            ("confidence: under version 1", V1_GRID.replace("CONF", "0.75"), &[("grid.confidence", "needs version 2 (the document states version 1)")]),
-            ("confidence: null under version 1 is none", V1_GRID.replace("CONF", "null"), &[]),
-            ("confidence: below 0", V2_GRID.replace("CONF", "-0.1"), &[("grid.confidence", "[0, 1] (got -0.1)")]),
-            ("confidence: above 1", V2_GRID.replace("CONF", "1.1"), &[("grid.confidence", "[0, 1] (got 1.1)")]),
-            ("confidence: a string", V2_GRID.replace("CONF", r#""0.5""#), &[("grid.confidence", "string")]),
-            ("confidence: a bool", V2_GRID.replace("CONF", "true"), &[("grid.confidence", "boolean")]),
-            ("confidence: out of range under version 1 is both faults", V1_GRID.replace("CONF", "2"),
-                &[("grid.confidence", "[0, 1] (got 2.0)"), ("grid.confidence", "needs version 2")]),
-            ("confidence: under an unknown version is only the version", V3_GRID.replace("CONF", "0.5"), &[("version", "must be 1 or 2 (got 3)")]),
             ("version: \"1\"", r#"{"format": "bullterrier-control/bundle", "version": "1"}"#.to_owned(), &[("version", "string")]),
             ("version: true", r#"{"format": "bullterrier-control/bundle", "version": true}"#.to_owned(), &[("version", "boolean")]),
             ("not an object: an array", "[]".to_owned(), &[("", "an object")]),
@@ -661,6 +643,34 @@ mod tests {
                 );
             }
             check_against(id, result, expected);
+        }
+    }
+
+    #[test]
+    fn versions_1_and_2_are_read_and_a_grid_confidence_is_refused_under_version_1() {
+        #[rustfmt::skip]
+        let rows: Vec<(&str, String, Expected)> = vec![
+            ("version: 2 is read", r#"{"format": "bullterrier-control/bundle", "version": 2}"#.to_owned(), &[]),
+            ("version: 3", r#"{"format": "bullterrier-control/bundle", "version": 3}"#.to_owned(), &[("version", "must be 1 or 2 (got 3)")]),
+            ("version: negative", r#"{"format": "bullterrier-control/bundle", "version": -1}"#.to_owned(), &[("version", "must be 1 or 2 (got -1)")]),
+            ("version: beyond u32", r#"{"format": "bullterrier-control/bundle", "version": 4294967297}"#.to_owned(), &[("version", "must be 1 or 2 (got 4294967297)")]),
+            ("version: 2.0", r#"{"format": "bullterrier-control/bundle", "version": 2.0}"#.to_owned(), &[("version", "whole number (got 2.0)")]),
+            ("confidence: under version 2", V2_GRID.replace("CONF", "0.75"), &[]),
+            ("confidence: at both ends of its range", V2_GRID.replace("CONF", "0"), &[]),
+            ("confidence: 1", V2_GRID.replace("CONF", "1"), &[]),
+            ("confidence: null is none", V2_GRID.replace("CONF", "null"), &[]),
+            ("confidence: under version 1", V1_GRID.replace("CONF", "0.75"), &[("grid.confidence", "needs version 2 (the document states version 1)")]),
+            ("confidence: null under version 1 is none", V1_GRID.replace("CONF", "null"), &[]),
+            ("confidence: below 0", V2_GRID.replace("CONF", "-0.1"), &[("grid.confidence", "[0, 1] (got -0.1)")]),
+            ("confidence: above 1", V2_GRID.replace("CONF", "1.1"), &[("grid.confidence", "[0, 1] (got 1.1)")]),
+            ("confidence: a string", V2_GRID.replace("CONF", r#""0.5""#), &[("grid.confidence", "string")]),
+            ("confidence: a bool", V2_GRID.replace("CONF", "true"), &[("grid.confidence", "boolean")]),
+            ("confidence: out of range under version 1 is both faults", V1_GRID.replace("CONF", "2"),
+                &[("grid.confidence", "[0, 1] (got 2.0)"), ("grid.confidence", "needs version 2")]),
+            ("confidence: under an unknown version is only the version", V3_GRID.replace("CONF", "0.5"), &[("version", "must be 1 or 2 (got 3)")]),
+        ];
+        for (id, text, expected) in rows {
+            check_against(id, Bundle::from_json(&text), expected);
         }
     }
 
@@ -980,9 +990,11 @@ mod tests {
             assert_eq!(has_confidence, version >= 2, "version {version}");
         }
         for version in [0, 3] {
-            let error = bundle_schema(version).unwrap_err();
-            assert_eq!(error.problems[0].path, "version");
-            assert!(error.problems[0].rule.contains("must be 1 or 2"), "{error}");
+            check_against(
+                "an unknown version",
+                bundle_schema(version),
+                &[("version", "must be 1 or 2")],
+            );
         }
     }
 
