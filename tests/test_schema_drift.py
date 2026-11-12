@@ -29,3 +29,12 @@ def test_schema_prints_the_committed_schema(arguments, file, capsys):
 def test_schema_of_a_bundle_version_nobody_reads_is_an_error_not_a_traceback(capsys):
     assert main(["schema", "--bundle-version", "3"]) == 1
     assert "must be 1 or 2" in capsys.readouterr().err
+
+
+def test_a_bundle_version_is_refused_for_the_patch_schema(capsys):
+    with pytest.raises(SystemExit) as refused:
+        main(["schema", "patch", "--bundle-version", "9"])
+    assert refused.value.code == 2
+    captured = capsys.readouterr()
+    assert "--bundle-version" in captured.err
+    assert captured.out == ""

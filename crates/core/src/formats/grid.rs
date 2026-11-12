@@ -326,14 +326,30 @@ pub(crate) struct RawGrid {
     #[schemars(with = "Whole", range(min = 0))]
     first_downbeat: Option<Whole>,
     // version 2 of the bundle; `bundle_schema` leaves it out of the schema of version 1
-    #[schemars(range(min = 0, max = 1))]
-    confidence: Option<Number>,
+    // outer `Some`: the key is present (even as `null`), which version 1 refuses
+    #[serde(default, deserialize_with = "key_present")]
+    #[expect(
+        clippy::option_option,
+        reason = "absent, null and a number are three states, the first two differ for version 1"
+    )]
+    #[schemars(with = "Option<Number>", range(min = 0, max = 1))]
+    confidence: Option<Option<Number>>,
+}
+
+#[expect(clippy::option_option, reason = "see `RawGrid::confidence`")]
+fn key_present<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Option<Number>>, D::Error> {
+    Option::<Number>::deserialize(deserializer).map(Some)
 }
 
 impl RawGrid {
     /// The confidence, if the data said and it is a number (the bundle checks it against the document's version).
     pub(crate) fn confidence(&self) -> Option<f64> {
-        self.confidence.map(|number| number.0)
+        self.confidence.flatten().map(|number| number.0)
+    }
+
+    /// Whether the data wrote the `confidence` key, even as `null`.
+    pub(crate) const fn states_confidence(&self) -> bool {
+        self.confidence.is_some()
     }
 
     /// Check the rules of [`Grid::new`], recording each broken one in `problems` under `prefix` (`grid`); the grid if

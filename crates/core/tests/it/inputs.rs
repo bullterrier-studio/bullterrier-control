@@ -292,6 +292,11 @@ fn a_grid_is_read_as_the_format_reads_it_with_problems_under_grid() -> Outcome {
         InputKind::Grid.check(json!({"beats": [0.0, 0.5, 1.1], "meter": 3, "first_downbeat": 1})),
         Ok(Input::Grid(Grid::new(vec![0.0, 0.5, 1.1], 3, 1)?)),
     );
+    verdict(
+        "a null confidence is none, as for any optional field",
+        InputKind::Grid.check(with("confidence", Value::Null)),
+        Ok(Input::Grid(Grid::new(vec![0.0, 0.5, 1.0, 1.5], 4, 0)?)),
+    );
     let mut meter_missing = steady();
     meter_missing.as_object_mut().map(|grid| grid.remove("meter"));
     #[rustfmt::skip]
@@ -492,7 +497,7 @@ fn each_doc_says_what_its_input_is() {
     let rows = [
         (InputKind::Points, "Keyframes: a list of {t, value, ease}"),
         (InputKind::Events, "Events: a list of {t, strength, duration, label, pitch}"),
-        (InputKind::Grid, "A beat grid: {beats, meter, first_downbeat}"),
+        (InputKind::Grid, "A beat grid: {beats, meter, first_downbeat, confidence}"),
         (InputKind::Values, "Values: a non-empty list of numbers"),
         (InputKind::Series, "A series: {start, rate, values, unit, scaling}"),
     ];

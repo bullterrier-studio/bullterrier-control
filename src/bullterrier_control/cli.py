@@ -132,6 +132,8 @@ def _validate(args: argparse.Namespace) -> int:
 
 
 def _schema(args: argparse.Namespace) -> int:
+    if args.format == "patch" and args.bundle_version is not None:
+        args.usage_error("--bundle-version describes the bundle schema, not the patch's")
     schema = bundle_schema(args.bundle_version) if args.format == "bundle" else patch_schema()
     print(json.dumps(schema, indent=2, sort_keys=True))
     return 0

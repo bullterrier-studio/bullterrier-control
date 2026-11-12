@@ -207,6 +207,7 @@ BY_VERSION = {
     "confidence 0": (at_version(2, confidence=0), False, True, None),
     "confidence 1": (at_version(2, confidence=1), False, True, None),
     "a null confidence is none": (at_version(2, confidence=None), False, True, None),
+    "version 1 with a null confidence": (at_version(1, confidence=None), False, False, "grid.confidence:"),
     "version 1 with a confidence": (at_version(1, confidence=0.75), False, False, "grid.confidence:"),
     "confidence below 0": (at_version(2, confidence=-0.1), False, False, "grid.confidence:"),
     "confidence above 1": (at_version(2, confidence=1.1), False, False, "grid.confidence:"),

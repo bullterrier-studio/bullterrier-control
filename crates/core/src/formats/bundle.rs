@@ -364,9 +364,9 @@ impl RawBundle {
         let duration = self.duration.map(|number| number.0);
         let limit = check_duration(problems, duration);
         let grid = self.grid.map(|Object(grid)| {
-            let confidence = grid.confidence();
+            let stated_key = grid.states_confidence();
             let read = grid.read("grid", problems);
-            if let Some(stated) = version.filter(|stated| confidence.is_some() && *stated < CONFIDENCE_VERSION) {
+            if let Some(stated) = version.filter(|stated| stated_key && *stated < CONFIDENCE_VERSION) {
                 let rule = format!("needs version {CONFIDENCE_VERSION} (the document states version {stated})");
                 push(problems, "grid", "confidence", rule);
             }
@@ -660,7 +660,7 @@ mod tests {
             ("confidence: 1", V2_GRID.replace("CONF", "1"), &[]),
             ("confidence: null is none", V2_GRID.replace("CONF", "null"), &[]),
             ("confidence: under version 1", V1_GRID.replace("CONF", "0.75"), &[("grid.confidence", "needs version 2 (the document states version 1)")]),
-            ("confidence: null under version 1 is none", V1_GRID.replace("CONF", "null"), &[]),
+            ("confidence: null under version 1 is refused like any value", V1_GRID.replace("CONF", "null"), &[("grid.confidence", "needs version 2 (the document states version 1)")]),
             ("confidence: below 0", V2_GRID.replace("CONF", "-0.1"), &[("grid.confidence", "[0, 1] (got -0.1)")]),
             ("confidence: above 1", V2_GRID.replace("CONF", "1.1"), &[("grid.confidence", "[0, 1] (got 1.1)")]),
             ("confidence: a string", V2_GRID.replace("CONF", r#""0.5""#), &[("grid.confidence", "string")]),
@@ -983,11 +983,11 @@ mod tests {
 
     #[test]
     fn the_schema_of_each_version_states_that_version_and_only_what_it_carries() {
-        for version in BUNDLE_VERSIONS {
+        for (version, has_confidence) in [(1, false), (2, true)] {
             let schema = bundle_schema(version).unwrap_or(Value::Null);
             assert_eq!(schema.pointer("/properties/version/const"), Some(&json!(version)));
-            let has_confidence = schema.pointer("/$defs/Grid/properties/confidence").is_some();
-            assert_eq!(has_confidence, version >= 2, "version {version}");
+            let has = schema.pointer("/$defs/Grid/properties/confidence").is_some();
+            assert_eq!(has, has_confidence, "version {version}");
         }
         for version in [0, 3] {
             check_against(
