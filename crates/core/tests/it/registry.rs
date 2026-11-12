@@ -735,7 +735,7 @@ fn a_thing_answers_what_it_is_takes_and_gives() -> Result<(), String> {
 /// What `help()` says of the inputs `events` and `grid` (the core's input docs, as the Python package shows them).
 const EVENTS_DOC: &str =
     "Events: a list of {t, strength, duration, label, pitch}, as in a bundle, in any order (checked into time order).";
-const GRID_DOC: &str = "A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly \
+const GRID_DOC: &str = "A beat grid: {beats, meter, first_downbeat, confidence} as in a bundle (beats in seconds, strictly \
                         increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.";
 
 #[test]

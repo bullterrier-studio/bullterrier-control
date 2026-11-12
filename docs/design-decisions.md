@@ -1083,3 +1083,5 @@ script or a note does not run for the next contributor.
   in Python and Rust). *Reason:* a tool asking for "the schema" wants the one that reads what the package writes now; nothing is
   released yet, so no script depends on the old default.
 - **The `beats` and `quantize` operations ignore the confidence;** no operation derives a new Grid from an old one.
+- **Open (owner): does a patch file need a version bump for the new optional `confidence` of the grid input?** Patch version 1
+  files never name it; an older reader of a patch built against such a grid is untouched, so none is made so far.

@@ -140,9 +140,11 @@ impl InputKind {
             Self::Events => "Events: a list of {t, strength, duration, label, pitch}, as in a bundle, in any order \
                              (checked into time order)."
                 .to_owned(),
-            Self::Grid => "A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly \
+            Self::Grid => {
+                "A beat grid: {beats, meter, first_downbeat, confidence} as in a bundle (beats in seconds, strictly \
                            increasing, at least two). Converts seconds to beats, so a source can follow tempo changes."
-                .to_owned(),
+                    .to_owned()
+            }
             Self::Values => {
                 "Values: a non-empty list of numbers, in the order a source cycles through them.".to_owned()
             }

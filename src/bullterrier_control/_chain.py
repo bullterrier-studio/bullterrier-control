@@ -111,8 +111,8 @@ class Chain[S]:
         """A signal that plays the first `length` of its input again and again, or forward and backward.
 
         Args:
-            grid: optional. A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly
-                increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
+            grid: optional. A beat grid: {beats, meter, first_downbeat, confidence} as in a bundle (beats in seconds,
+                strictly increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
             mode: default 'wrap'. How the input is played again: 'wrap' (restarts after `length`) or 'ping-pong'
                 (forward, then backward).
             length: seconds, 0.001 to 3600, default 16.0. How much of the input repeats: seconds, or beats if `per` is

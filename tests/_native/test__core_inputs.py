@@ -696,8 +696,8 @@ def test_the_inputs_are_named_and_documented_as_help_shows_them():
             " order)."
         ),
         "grid": (
-            "A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly increasing, at"
-            " least two). Converts seconds to beats, so a source can follow tempo changes."
+            "A beat grid: {beats, meter, first_downbeat, confidence} as in a bundle (beats in seconds, strictly"
+            " increasing, at least two). Converts seconds to beats, so a source can follow tempo changes."
         ),
         "values": "Values: a non-empty list of numbers, in the order a source cycles through them.",
         "series": (

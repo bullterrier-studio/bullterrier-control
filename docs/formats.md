@@ -10,14 +10,14 @@ number is finite (`NaN`, `Infinity`, `-Infinity` are rejected). A number is a JS
 decimal is expected, `true` and a string are not (an integer-valued field such as `version` or `meter` also refuses
 `1.0`). A whole number beyond 2^53 is refused where a decimal is expected, since a decimal cannot hold it exactly. The one gap:
 a JSON integer beyond 64 bits is read like a decimal. Python refuses any `int` beyond 2^53. Strings must be writable as UTF-8 (no lone surrogates). An optional field is absent when unset; a reader also accepts
-it written as `null`. `series` and `events` are objects, never `null`.
+it written as `null` (except `grid.confidence` under version 1: any `confidence` key is refused there). `series` and `events` are objects, never `null`.
 
 ## Bundle
 
 | Field | Type | Rule |
 |---|---|---|
 | `format` | string | exactly `"bullterrier-control/bundle"` |
-| `version` | int | `1` or `2` (`2` only when the grid has a `confidence`); a reader rejects any other and says which it supports |
+| `version` | int | `1` or `2`; a reader rejects any other and says which it supports. A reader accepts 2 without a `confidence` (and 1 only without the key); a writer writes 2 only when the grid has a `confidence`, so re-saving such a document writes 1 |
 | `source` | string, optional | free text: what produced the file (tool, version, input name) |
 | `duration` | number, optional | length of the material in seconds, `> 0` |
 | `grid` | Grid, optional | at most one |
@@ -91,8 +91,16 @@ from the Rust types of the core (`uv run bt-control schema --bundle-version N`; 
 languages. They state the shapes, types, ranges and names. A schema cannot state, and `bt-control validate FILE` and
 `bullterrier_control.load` alone enforce: sorted events, `duration` bounds, strictly increasing beats, `first_downbeat` below
 `meter` and `len(beats)`, `scaling` and the 0..1 range of a `fraction` series, repeated keys, integers written as `1.0`
-(JSON Schema counts `1.0` as an integer), non-finite numbers, and UTF-8 text. Version 1's schema refuses every `grid.confidence`,
-even `null`; the reader reads a `null` as absent.
+(JSON Schema counts `1.0` as an integer), non-finite numbers, and UTF-8 text. Version 1's schema refuses the `grid.confidence`
+key, `null` included, and so does the reader.
+
+A producer picks the schema by the `version` it writes: version 1 when the grid has no confidence, else 2. The version-2 schema
+rejects every version-1 document (`version` is a `const`), so a producer holds both files:
+
+```python
+schema = schemas[document["version"]]  # bundle-1.schema.json or bundle-2.schema.json
+jsonschema.validate(document, schema)
+```
 
 A refusal lists the broken rules, the first 100 at most and a count of the rest. A value of the wrong JSON type, an
 unknown field or unit, a non-whole number for an integer, or an integer beyond 2^53 stops the reading at that value,

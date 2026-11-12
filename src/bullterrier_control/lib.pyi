@@ -14,8 +14,8 @@ def beats(*, grid: Grid | Mapping[str, object], division: int = 1) -> tuple[Even
     """Events at the grid's beats and, with a `division`, at equal steps of beats between them, each of strength 1.
 
     Args:
-        grid: required. A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly
-            increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
+        grid: required. A beat grid: {beats, meter, first_downbeat, confidence} as in a bundle (beats in seconds,
+            strictly increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
         division: count, 1 to 64, default 1. Events per beat, 1 to 64: 1 gives the beats alone, 2 adds one `sub` event
             halfway between neighbouring beats, 4 adds three, and so on. Raising it gives a finer pulse.
     """
@@ -168,8 +168,8 @@ def lfo(
     """A periodic wave between `low` and `high`, repeating `rate` times per second or per beat.
 
     Args:
-        grid: optional. A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly
-            increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
+        grid: optional. A beat grid: {beats, meter, first_downbeat, confidence} as in a bundle (beats in seconds,
+            strictly increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
         shape: default 'sine'. The wave: 'sine' (smooth), 'triangle' (straight up and down), 'square' (high, then low),
             'saw' (rises, then jumps back) or 'saw-down' (falls, then jumps back).
         rate: cycles, 0 to 1000, default 1.0. Cycles per second, or per beat if `per` is 'beat'; 0 holds the wave still
@@ -232,8 +232,8 @@ def quantize(
     Args:
         events: required. Events: a list of {t, strength, duration, label, pitch}, as in a bundle, in any order (checked
             into time order).
-        grid: required. A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly
-            increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
+        grid: required. A beat grid: {beats, meter, first_downbeat, confidence} as in a bundle (beats in seconds,
+            strictly increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
         division: count, 1 to 64, default 1. Snap positions per beat, 1 to 64: 1 snaps to the beats, 2 to the beats and
             the halves between them, 4 to quarters. Raising it moves events less.
     """
@@ -261,8 +261,8 @@ def repeat(
     """A signal that plays the first `length` of its input again and again, or forward and backward.
 
     Args:
-        grid: optional. A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly
-            increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
+        grid: optional. A beat grid: {beats, meter, first_downbeat, confidence} as in a bundle (beats in seconds,
+            strictly increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
         mode: default 'wrap'. How the input is played again: 'wrap' (restarts after `length`) or 'ping-pong' (forward,
             then backward).
         length: seconds, 0.001 to 3600, default 16.0. How much of the input repeats: seconds, or beats if `per` is
@@ -330,8 +330,8 @@ def steps(
 
     Args:
         values: required. Values: a non-empty list of numbers, in the order a source cycles through them.
-        grid: optional. A beat grid: {beats, meter, first_downbeat} as in a bundle (beats in seconds, strictly
-            increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
+        grid: optional. A beat grid: {beats, meter, first_downbeat, confidence} as in a bundle (beats in seconds,
+            strictly increasing, at least two). Converts seconds to beats, so a source can follow tempo changes.
         rate: count, 0.001 to 1000, default 4.0. Steps per second, or per beat if `per` is 'beat'; each step holds one
             value. Raising it steps faster.
         per: default 'second'. What `rate` counts in: 'second' (free-running) or 'beat' (follows the tempo of the
