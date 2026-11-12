@@ -7,13 +7,15 @@ use serde::{Deserialize, Deserializer, Serialize};
 use super::error::{FormatError, Problems};
 use super::field::{Number, Whole, check, decode, finite, push, push_with, required, show};
 
-/// Beat times in seconds, strictly increasing, with the beats per bar and which beat starts the first bar. Tempo is
-/// derived from the beats, never stored beside them.
+/// Beat times in seconds, strictly increasing, with the beats per bar, which beat starts the first bar and, if the
+/// producer says so, how sure it is of all this. Tempo is derived from the beats, never stored beside them.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Grid {
     beats: Vec<f64>,
     meter: u32,
     first_downbeat: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    confidence: Option<f64>,
 }
 
 impl Grid {
@@ -41,9 +43,35 @@ impl Grid {
             Some(beats),
             Some(i128::from(meter)),
             Some(i128::from(first_downbeat)),
+            None,
             &mut problems,
         )
         .ok_or_else(|| FormatError::new(problems))
+    }
+
+    /// This grid with the producer's `confidence` in it, in `[0, 1]`: how sure it is of the beats, the meter and the
+    /// first downbeat. A grid written with a confidence needs bundle version 2.
+    ///
+    /// ```
+    /// use bullterrier_control::formats::Grid;
+    ///
+    /// let grid = Grid::new(vec![0.0, 0.5, 1.0], 4, 0)?.with_confidence(0.75)?;
+    /// assert_eq!(grid.confidence(), Some(0.75));
+    /// assert!(Grid::new(vec![0.0, 0.5, 1.0], 4, 0)?.with_confidence(1.5).is_err());
+    /// # Ok::<(), bullterrier_control::formats::FormatError>(())
+    /// ```
+    ///
+    /// # Errors
+    /// A [`FormatError`] if `confidence` is not finite or outside `[0, 1]`.
+    pub fn with_confidence(mut self, confidence: f64) -> Result<Self, FormatError> {
+        let mut problems = Problems::new();
+        check_confidence(&mut problems, "", Some(confidence));
+        if problems.is_empty() {
+            self.confidence = Some(confidence);
+            Ok(self)
+        } else {
+            Err(FormatError::new(problems))
+        }
     }
 
     /// The one place the rules are written. Every rule broken is recorded in `problems` under `prefix` (empty, or where
@@ -55,6 +83,7 @@ impl Grid {
         beats: Option<Vec<f64>>,
         meter: Option<i128>,
         first_downbeat: Option<i128>,
+        confidence: Option<f64>,
         problems: &mut Problems,
     ) -> Option<Self> {
         let before = problems.len();
@@ -118,12 +147,14 @@ impl Grid {
                 }
             }
         }
+        check_confidence(problems, prefix, confidence);
         match (beats, meter, first_downbeat) {
             (Some(beats), Some(meter), Some(first)) if problems.len() == before => Some(Self {
                 beats,
                 // the rules above hold both below `u32::MAX`: `first` is below `meter`
                 meter: u32::try_from(meter).ok()?,
                 first_downbeat: u32::try_from(first).ok()?,
+                confidence,
             }),
             _ => None,
         }
@@ -156,6 +187,12 @@ impl Grid {
     #[must_use]
     pub const fn first_downbeat(&self) -> u32 {
         self.first_downbeat
+    }
+
+    /// How sure the producer is of the grid, in `[0, 1]`, if it said.
+    #[must_use]
+    pub const fn confidence(&self) -> Option<f64> {
+        self.confidence
     }
 
     /// The time of the first beat of every bar: `beats[first_downbeat::meter]`.
@@ -220,6 +257,15 @@ impl Grid {
     }
 }
 
+/// The rule of `confidence`, if there is one: in `[0, 1]`.
+fn check_confidence(problems: &mut Problems, prefix: &str, confidence: Option<f64>) {
+    if let Some(confidence) = confidence {
+        check(problems, prefix, "confidence", confidence, "must be in [0, 1]", |x| {
+            (0.0..=1.0).contains(&x)
+        });
+    }
+}
+
 /// `convert` every one of `values` (named `name`, in a message `name[2]`), or say which is not finite or has a result
 /// that is not.
 fn convert(name: &str, values: &[f64], convert: impl Fn(f64) -> f64) -> Result<Vec<f64>, FormatError> {
@@ -279,18 +325,28 @@ pub(crate) struct RawGrid {
     meter: Option<Whole>,
     #[schemars(with = "Whole", range(min = 0))]
     first_downbeat: Option<Whole>,
+    // version 2 of the bundle; `bundle_schema` leaves it out of the schema of version 1
+    #[schemars(range(min = 0, max = 1))]
+    confidence: Option<Number>,
 }
 
 impl RawGrid {
+    /// The confidence, if the data said and it is a number (the bundle checks it against the document's version).
+    pub(crate) fn confidence(&self) -> Option<f64> {
+        self.confidence.map(|number| number.0)
+    }
+
     /// Check the rules of [`Grid::new`], recording each broken one in `problems` under `prefix` (`grid`); the grid if
     /// none is broken.
     pub(crate) fn read(self, prefix: &str, problems: &mut Problems) -> Option<Grid> {
+        let confidence = self.confidence();
         Grid::build(
             prefix,
             self.beats
                 .map(|beats| beats.into_iter().map(|number| number.0).collect()),
             self.meter.map(|whole| whole.0),
             self.first_downbeat.map(|whole| whole.0),
+            confidence,
             problems,
         )
     }
@@ -352,6 +408,29 @@ mod tests {
             (grid.beats(), grid.meter(), grid.first_downbeat()),
             (&[0.5, 1.0, 1.75][..], 3, 2)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn a_confidence_is_kept_when_in_range_and_refused_otherwise() -> Result<(), FormatError> {
+        let plain = Grid::new(vec![0.0, 1.0], 1, 0)?;
+        assert_eq!(plain.confidence(), None);
+        for (confidence, expected) in [
+            (0.0, &[][..]),
+            (1.0, &[]),
+            (0.5, &[]),
+            (-0.1, &[("confidence", "[0, 1] (got -0.1)")]),
+            (1.1, &[("confidence", "[0, 1] (got 1.1)")]),
+            (f64::NAN, &[("confidence", "finite (got NaN)")]),
+            (f64::INFINITY, &[("confidence", "finite (got Infinity)")]),
+        ] {
+            let result = plain.clone().with_confidence(confidence);
+            if expected.is_empty() {
+                assert_eq!(result?.confidence(), Some(confidence));
+            } else {
+                check_against(&confidence.to_string(), result, expected);
+            }
+        }
         Ok(())
     }
 
@@ -479,6 +558,15 @@ mod tests {
         #[rustfmt::skip]
         let rows: &[(&str, &str, Expected)] = &[
             ("a grid", r#"{"beats": [0, 0.5, 1.25], "meter": 4, "first_downbeat": 1}"#, &[]),
+            ("a grid with a confidence", r#"{"beats": [0, 1], "meter": 4, "first_downbeat": 0, "confidence": 0.5}"#, &[]),
+            ("a confidence of 0", r#"{"beats": [0, 1], "meter": 4, "first_downbeat": 0, "confidence": 0}"#, &[]),
+            ("a confidence of 1", r#"{"beats": [0, 1], "meter": 4, "first_downbeat": 0, "confidence": 1}"#, &[]),
+            ("a null confidence is none", r#"{"beats": [0, 1], "meter": 4, "first_downbeat": 0, "confidence": null}"#, &[]),
+            ("a confidence below 0", r#"{"beats": [0, 1], "meter": 4, "first_downbeat": 0, "confidence": -0.1}"#, &[("confidence", "[0, 1] (got -0.1)")]),
+            ("a confidence above 1", r#"{"beats": [0, 1], "meter": 4, "first_downbeat": 0, "confidence": 1.1}"#, &[("confidence", "[0, 1] (got 1.1)")]),
+            ("a confidence as text", r#"{"beats": [0, 1], "meter": 4, "first_downbeat": 0, "confidence": "0.5"}"#, &[("confidence", "string")]),
+            ("a confidence after another broken rule", r#"{"beats": [0], "meter": 4, "first_downbeat": 0, "confidence": 2}"#,
+                &[("beats", "at least 2"), ("confidence", "[0, 1] (got 2.0)")]),
             ("nothing said", "{}", &[("beats", "is required"), ("meter", "is required"), ("first_downbeat", "is required")]),
             ("null is not said", r#"{"beats": null, "meter": null, "first_downbeat": 0}"#, &[("beats", "is required"), ("meter", "is required")]),
             ("meter as a decimal", r#"{"beats": [0, 1], "meter": 4.0, "first_downbeat": 0}"#, &[("meter", "whole number (got 4.0)")]),
@@ -544,9 +632,14 @@ mod tests {
         }
 
         #[test]
-        fn a_valid_grid_survives_json_text_exactly(beats in grids(), meter in 1_u32..9, first in 0_u32..9) {
+        fn a_valid_grid_survives_json_text_exactly(
+            beats in grids(), meter in 1_u32..9, first in 0_u32..9, confidence in prop::option::of(0.0..=1.0_f64),
+        ) {
             prop_assume!(first < meter.min(u32::try_from(beats.len()).unwrap_or(0)));
-            let grid = Grid::new(beats, meter, first).map_err(|e| TestCaseError::fail(e.to_string()))?;
+            let mut grid = Grid::new(beats, meter, first).map_err(|e| TestCaseError::fail(e.to_string()))?;
+            if let Some(confidence) = confidence {
+                grid = grid.with_confidence(confidence).map_err(|e| TestCaseError::fail(e.to_string()))?;
+            }
             let text = serde_json::to_string(&grid).map_err(|e| TestCaseError::fail(e.to_string()))?;
             prop_assert_eq!(read(&text), Ok(grid), "{}", text);
         }

@@ -1,0 +1,1 @@
+{"format": "bullterrier-control/bundle", "version": 2, "source": "hand-written example: a beat grid its producer is 80% sure of", "duration": 2.0, "grid": {"beats": [0.0, 0.5, 1.0, 1.5], "meter": 4, "first_downbeat": 0, "confidence": 0.8}, "series": {}, "events": {}}

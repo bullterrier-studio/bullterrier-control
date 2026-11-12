@@ -20,8 +20,15 @@ use super::series::{RawSeries, Series};
 /// What a bundle file states its `format` as.
 pub const BUNDLE_FORMAT: &str = "bullterrier-control/bundle";
 
-/// The one version of the bundle format there is: a reader refuses any other.
-pub const BUNDLE_VERSION: u32 = 1;
+/// The versions of the bundle format a reader accepts, oldest first; it refuses any other. A writer states the oldest
+/// that carries its data ([`Bundle::version`]).
+pub const BUNDLE_VERSIONS: [u32; 2] = [1, 2];
+
+/// The first version a document can state.
+const FIRST_VERSION: u32 = 1;
+
+/// The version that added `grid.confidence`.
+const CONFIDENCE_VERSION: u32 = 2;
 
 /// A series or an event list is named by a string of this shape (`bass`, `stem.drums`, `kick`).
 const NAME_PATTERN: &str = "^[a-z0-9][a-z0-9_.-]*$";
@@ -93,7 +100,7 @@ impl Bundle {
     }
 
     /// Read a bundle from JSON text and check it with [`Bundle::new`]'s rules, and these: `format` is
-    /// `"bullterrier-control/bundle"` and `version` the integer `1`, the top level is one object, the text ends with
+    /// `"bullterrier-control/bundle"` and `version` the integer `1` or `2` (`grid.confidence` needs 2), the top level is one object, the text ends with
     /// it, and no key is written twice in one object. `NaN` and the infinities are not JSON and are refused.
     ///
     /// ```
@@ -148,6 +155,16 @@ impl Bundle {
         self.duration
     }
 
+    /// The version the bundle is written as: the oldest that carries its data, 2 when its grid has a confidence, else 1.
+    #[must_use]
+    pub fn version(&self) -> u32 {
+        if self.grid.as_ref().is_some_and(|grid| grid.confidence().is_some()) {
+            CONFIDENCE_VERSION
+        } else {
+            FIRST_VERSION
+        }
+    }
+
     /// The beats, if there are any.
     #[must_use]
     pub const fn grid(&self) -> Option<&Grid> {
@@ -174,7 +191,7 @@ impl Bundle {
     pub fn to_json(&self, ascii_only: bool) -> String {
         let written = Written {
             format: BUNDLE_FORMAT,
-            version: BUNDLE_VERSION,
+            version: self.version(),
             source: self.source.as_deref(),
             duration: self.duration,
             grid: self.grid.as_ref(),
@@ -195,9 +212,32 @@ impl Bundle {
 /// else is allowed in an object. What a schema cannot state is only checked by [`Bundle::from_json`]: sorted events,
 /// the `duration` bounds, strictly increasing beats, `first_downbeat` below `meter` and the number of beats, `scaling`
 /// and the range of a `fraction` series, repeated keys, and an integer written as `1.0`.
-#[must_use]
-pub fn bundle_schema() -> serde_json::Value {
-    serde_json::Value::from(schemars::schema_for!(RawBundle))
+///
+/// There is one schema for each version of [`BUNDLE_VERSIONS`], for the documents that state it: that of version 1 has no
+/// `grid.confidence`.
+///
+/// # Errors
+/// A [`FormatError`] if `version` is not one of [`BUNDLE_VERSIONS`].
+pub fn bundle_schema(version: u32) -> Result<serde_json::Value, FormatError> {
+    if !BUNDLE_VERSIONS.contains(&version) {
+        return Err(FormatError::at("version", unsupported(i128::from(version))));
+    }
+    let mut schema = serde_json::Value::from(schemars::schema_for!(RawBundle));
+    schema["properties"]["version"]["const"] = version.into();
+    if version < CONFIDENCE_VERSION
+        && let Some(properties) = schema
+            .pointer_mut("/$defs/Grid/properties")
+            .and_then(serde_json::Value::as_object_mut)
+    {
+        properties.remove("confidence");
+    }
+    Ok(schema)
+}
+
+/// The rule of `version` when it is not one a reader accepts.
+fn unsupported(version: i128) -> String {
+    let supported: Vec<String> = BUNDLE_VERSIONS.iter().map(u32::to_string).collect();
+    format!("must be {} (got {version})", supported.join(" or "))
 }
 
 /// Whether `name` may name a series or an event list in a bundle: it matches `^[a-z0-9][a-z0-9_.-]*$` (`bass`,
@@ -290,8 +330,9 @@ fn format_schema(_: &mut SchemaGenerator) -> Schema {
     json_schema!({"type": "string", "const": BUNDLE_FORMAT})
 }
 
+// the `const` is set to the version asked for by `bundle_schema`
 fn version_schema(_: &mut SchemaGenerator) -> Schema {
-    json_schema!({"type": "integer", "const": 1})
+    json_schema!({"type": "integer", "const": FIRST_VERSION})
 }
 
 impl RawBundle {
@@ -305,19 +346,32 @@ impl RawBundle {
                 push(problems, "", "format", rule);
             }
         }
-        match self.version {
-            None => required(problems, "", "version"),
-            Some(Whole(version)) if version == i128::from(BUNDLE_VERSION) => {}
-            Some(Whole(other)) => push(
-                problems,
-                "",
-                "version",
-                format!("must be {BUNDLE_VERSION} (got {other})"),
-            ),
-        }
+        let version = match self.version {
+            None => {
+                required(problems, "", "version");
+                None
+            }
+            Some(Whole(version)) => {
+                let known = u32::try_from(version)
+                    .ok()
+                    .filter(|version| BUNDLE_VERSIONS.contains(version));
+                if known.is_none() {
+                    push(problems, "", "version", unsupported(version));
+                }
+                known
+            }
+        };
         let duration = self.duration.map(|number| number.0);
         let limit = check_duration(problems, duration);
-        let grid = self.grid.map(|Object(grid)| grid.read("grid", problems));
+        let grid = self.grid.map(|Object(grid)| {
+            let confidence = grid.confidence();
+            let read = grid.read("grid", problems);
+            if let Some(stated) = version.filter(|stated| confidence.is_some() && *stated < CONFIDENCE_VERSION) {
+                let rule = format!("needs version {CONFIDENCE_VERSION} (the document states version {stated})");
+                push(problems, "grid", "confidence", rule);
+            }
+            read
+        });
         let mut series = BTreeMap::new();
         for (name, Object(raw)) in self.series.0 {
             check_name(problems, "series", &name);
@@ -484,6 +538,11 @@ mod tests {
         }
     }
 
+    /// A grid with a confidence `CONF` under each version.
+    const V1_GRID: &str = r#"{"format": "bullterrier-control/bundle", "version": 1, "grid": {"beats": [0, 1], "meter": 2, "first_downbeat": 0, "confidence": CONF}}"#;
+    const V2_GRID: &str = r#"{"format": "bullterrier-control/bundle", "version": 2, "grid": {"beats": [0, 1], "meter": 2, "first_downbeat": 0, "confidence": CONF}}"#;
+    const V3_GRID: &str = r#"{"format": "bullterrier-control/bundle", "version": 3, "grid": {"beats": [0, 1], "meter": 2, "first_downbeat": 0, "confidence": CONF}}"#;
+
     const BASS: &str = r#"{"rate": 10, "values": [0.1, 0.2], "unit": "ratio"}"#;
 
     #[test]
@@ -542,9 +601,26 @@ mod tests {
             ("format: left out", r#"{"version": 1}"#.to_owned(), &[("format", "is required")]),
             ("format: a number", r#"{"format": 1, "version": 1}"#.to_owned(), &[("format", "integer")]),
             ("version: left out", r#"{"format": "bullterrier-control/bundle"}"#.to_owned(), &[("version", "is required")]),
-            ("version: 2", r#"{"format": "bullterrier-control/bundle", "version": 2}"#.to_owned(), &[("version", "must be 1 (got 2)")]),
-            ("version: 0", r#"{"format": "bullterrier-control/bundle", "version": 0}"#.to_owned(), &[("version", "must be 1 (got 0)")]),
+            ("version: 2 is read", r#"{"format": "bullterrier-control/bundle", "version": 2}"#.to_owned(), &[]),
+            ("version: 3", r#"{"format": "bullterrier-control/bundle", "version": 3}"#.to_owned(), &[("version", "must be 1 or 2 (got 3)")]),
+            ("version: 0", r#"{"format": "bullterrier-control/bundle", "version": 0}"#.to_owned(), &[("version", "must be 1 or 2 (got 0)")]),
+            ("version: negative", r#"{"format": "bullterrier-control/bundle", "version": -1}"#.to_owned(), &[("version", "must be 1 or 2 (got -1)")]),
+            ("version: beyond u32", r#"{"format": "bullterrier-control/bundle", "version": 4294967297}"#.to_owned(), &[("version", "must be 1 or 2 (got 4294967297)")]),
             ("version: 1.0", r#"{"format": "bullterrier-control/bundle", "version": 1.0}"#.to_owned(), &[("version", "whole number (got 1.0)")]),
+            ("version: 2.0", r#"{"format": "bullterrier-control/bundle", "version": 2.0}"#.to_owned(), &[("version", "whole number (got 2.0)")]),
+            ("confidence: under version 2", V2_GRID.replace("CONF", "0.75"), &[]),
+            ("confidence: at both ends of its range", V2_GRID.replace("CONF", "0"), &[]),
+            ("confidence: 1", V2_GRID.replace("CONF", "1"), &[]),
+            ("confidence: null is none", V2_GRID.replace("CONF", "null"), &[]),
+            ("confidence: under version 1", V1_GRID.replace("CONF", "0.75"), &[("grid.confidence", "needs version 2 (the document states version 1)")]),
+            ("confidence: null under version 1 is none", V1_GRID.replace("CONF", "null"), &[]),
+            ("confidence: below 0", V2_GRID.replace("CONF", "-0.1"), &[("grid.confidence", "[0, 1] (got -0.1)")]),
+            ("confidence: above 1", V2_GRID.replace("CONF", "1.1"), &[("grid.confidence", "[0, 1] (got 1.1)")]),
+            ("confidence: a string", V2_GRID.replace("CONF", r#""0.5""#), &[("grid.confidence", "string")]),
+            ("confidence: a bool", V2_GRID.replace("CONF", "true"), &[("grid.confidence", "boolean")]),
+            ("confidence: out of range under version 1 is both faults", V1_GRID.replace("CONF", "2"),
+                &[("grid.confidence", "[0, 1] (got 2.0)"), ("grid.confidence", "needs version 2")]),
+            ("confidence: under an unknown version is only the version", V3_GRID.replace("CONF", "0.5"), &[("version", "must be 1 or 2 (got 3)")]),
             ("version: \"1\"", r#"{"format": "bullterrier-control/bundle", "version": "1"}"#.to_owned(), &[("version", "string")]),
             ("version: true", r#"{"format": "bullterrier-control/bundle", "version": true}"#.to_owned(), &[("version", "boolean")]),
             ("not an object: an array", "[]".to_owned(), &[("", "an object")]),
@@ -591,7 +667,7 @@ mod tests {
     #[test]
     fn every_rule_broken_in_a_document_is_listed_with_its_full_path_in_the_order_of_the_document() {
         let text = r#"{
-            "format": "bullterrier-control/bundle", "version": 2, "duration": 5,
+            "format": "bullterrier-control/bundle", "version": 3, "duration": 5,
             "grid": {"beats": [0, 0], "meter": 4, "first_downbeat": 5},
             "series": {
                 "bass": {"start": 6, "rate": 0, "values": [1], "unit": "ratio"},
@@ -606,7 +682,7 @@ mod tests {
             "version, grid, series by name, events by name",
             Bundle::from_json(text),
             &[
-                ("version", "must be 1 (got 2)"),
+                ("version", "must be 1 or 2 (got 3)"),
                 ("grid.beats[1]", "does not come after beats[0] = 0.0"),
                 (
                     "grid.first_downbeat",
@@ -791,7 +867,7 @@ mod tests {
 
     #[test]
     fn the_schema_states_the_shapes_ranges_and_names_a_schema_can() {
-        let schema = bundle_schema();
+        let schema = bundle_schema(2).unwrap_or(Value::Null);
         let at = |pointer: &str| schema.pointer(pointer).cloned().unwrap_or(Value::Null);
         let required = |pointer: &str| {
             let mut names: Vec<String> = at(pointer)
@@ -823,7 +899,7 @@ mod tests {
             ["duration", "events", "format", "grid", "series", "source", "version"]
         );
         assert_eq!(at("/properties/format/const"), json!("bullterrier-control/bundle"));
-        assert_eq!(at("/properties/version/const"), json!(1));
+        assert_eq!(at("/properties/version/const"), json!(2));
         assert_eq!(at("/properties/version/type"), json!("integer"));
         assert_eq!(at("/properties/duration/exclusiveMinimum"), json!(0));
         // the name maps: only names of the pattern, nothing else
@@ -887,6 +963,66 @@ mod tests {
         assert_eq!(at("/$defs/Grid/properties/meter/minimum"), json!(1));
         assert_eq!(at("/$defs/Grid/properties/first_downbeat/type"), json!("integer"));
         assert_eq!(at("/$defs/Grid/properties/first_downbeat/minimum"), json!(0));
+        assert_eq!(
+            keys("/$defs/Grid/properties"),
+            ["beats", "confidence", "first_downbeat", "meter"]
+        );
+        assert_eq!(at("/$defs/Grid/properties/confidence/minimum"), json!(0));
+        assert_eq!(at("/$defs/Grid/properties/confidence/maximum"), json!(1));
+    }
+
+    #[test]
+    fn the_schema_of_each_version_states_that_version_and_only_what_it_carries() {
+        for version in BUNDLE_VERSIONS {
+            let schema = bundle_schema(version).unwrap_or(Value::Null);
+            assert_eq!(schema.pointer("/properties/version/const"), Some(&json!(version)));
+            let has_confidence = schema.pointer("/$defs/Grid/properties/confidence").is_some();
+            assert_eq!(has_confidence, version >= 2, "version {version}");
+        }
+        for version in [0, 3] {
+            let error = bundle_schema(version).unwrap_err();
+            assert_eq!(error.problems[0].path, "version");
+            assert!(error.problems[0].rule.contains("must be 1 or 2"), "{error}");
+        }
+    }
+
+    #[test]
+    fn a_bundle_is_written_as_the_oldest_version_that_carries_its_data() -> Result<(), FormatError> {
+        let plain = Grid::new(vec![0.0, 0.5], 2, 1)?;
+        for (id, grid, version, grid_text) in [
+            ("no grid", None, 1, None),
+            (
+                "a grid without confidence",
+                Some(plain.clone()),
+                1,
+                Some(r#"{"beats": [0.0, 0.5], "meter": 2, "first_downbeat": 1}"#),
+            ),
+            (
+                "a grid with confidence 0",
+                Some(plain.clone().with_confidence(0.0)?),
+                2,
+                Some(r#"{"beats": [0.0, 0.5], "meter": 2, "first_downbeat": 1, "confidence": 0.0}"#),
+            ),
+            (
+                "a grid with confidence 0.75",
+                Some(plain.clone().with_confidence(0.75)?),
+                2,
+                Some(r#"{"beats": [0.0, 0.5], "meter": 2, "first_downbeat": 1, "confidence": 0.75}"#),
+            ),
+        ] {
+            let bundle = Bundle::new(BundleOptions {
+                grid,
+                ..Default::default()
+            })?;
+            let text = bundle.to_json(false);
+            assert_eq!(bundle.version(), version, "{id}");
+            assert!(text.contains(&format!(r#""version": {version}, "#)), "{id}: {text}");
+            if let Some(grid_text) = grid_text {
+                assert!(text.contains(&format!(r#""grid": {grid_text}, "#)), "{id}: {text}");
+            }
+            assert_eq!(Bundle::from_json(&text), Ok(bundle), "{id}");
+        }
+        Ok(())
     }
 
     fn arbitrary_bundles() -> impl Strategy<Value = Bundle> {
@@ -935,8 +1071,13 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         });
-        let grid = (0.0..100.0_f64, prop::collection::vec(0.01..10.0_f64, 1..10), 1_u32..5).prop_map(
-            |(start, gaps, meter)| {
+        let grid = (
+            0.0..100.0_f64,
+            prop::collection::vec(0.01..10.0_f64, 1..10),
+            1_u32..5,
+            prop::option::of(0.0..=1.0_f64),
+        )
+            .prop_map(|(start, gaps, meter, confidence)| {
                 let beats = gaps
                     .iter()
                     .scan(start, |at, gap| {
@@ -947,9 +1088,12 @@ mod tests {
                         all.push(at);
                         all
                     });
-                Grid::new(beats, meter, 0).ok()
-            },
-        );
+                let grid = Grid::new(beats, meter, 0).ok()?;
+                match confidence {
+                    Some(confidence) => grid.with_confidence(confidence).ok(),
+                    None => Some(grid),
+                }
+            });
         (
             proptest::option::of(text),
             proptest::option::of(1.0..1000.0_f64),

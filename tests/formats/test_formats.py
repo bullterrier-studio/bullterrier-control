@@ -79,6 +79,7 @@ VALUES = {
             Grid(beats=[0.5, 1.0, 1.5], meter=2, first_downbeat=0),
             Grid(beats=[0.5, 1.0], meter=3, first_downbeat=0),
             Grid(beats=[0.5, 1.0], meter=2, first_downbeat=1),
+            Grid(beats=[0.5, 1.0], meter=2, first_downbeat=0, confidence=0.5),
         ],
     ),
     "Bundle": (
@@ -174,7 +175,7 @@ def test_an_unpickled_bundle_keeps_its_parts_as_formats():
 FIELDS = {
     "Event": (Event(0.5), ["t", "strength", "duration", "label", "pitch", "colour"]),
     "Series": (BASS, ["start", "rate", "values", "unit", "scaling"]),
-    "Grid": (GRID, ["beats", "meter", "first_downbeat", "downbeats"]),
+    "Grid": (GRID, ["beats", "meter", "first_downbeat", "confidence", "downbeats"]),
     "Bundle": (a_bundle(), ["source", "duration", "grid", "series", "events"]),
     "Unit": (Unit.RATIO, ["value", "name"]),
 }
@@ -209,6 +210,10 @@ REPRS = {
         "Series(start=0.0, rate=1.0, values=[1.0], unit=Unit.FRACTION, scaling='peak')",
     ),
     "a grid": (GRID, "Grid(beats=[0.5, 1.0], meter=2, first_downbeat=0)"),
+    "a grid with a confidence": (
+        Grid(beats=[0.5, 1.0], meter=2, first_downbeat=0, confidence=0.75),
+        "Grid(beats=[0.5, 1.0], meter=2, first_downbeat=0, confidence=0.75)",
+    ),
     "the smallest bundle": (Bundle(format=FORMAT, version=1), "Bundle(series=[], events={})"),
     "a full bundle": (
         a_bundle(),

@@ -8,7 +8,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from bullterrier_control import Bundle, Event, FormatError, Grid, Series, Unit, load, save
-from bullterrier_control.formats import bundle_schema
+from bullterrier_control.formats import bundle_schema, dumps
 
 FORMAT: Final = "bullterrier-control/bundle"
 MINIMAL = {"format": FORMAT, "version": 1}
@@ -44,7 +44,13 @@ def test_a_full_bundle_keeps_its_parts_as_formats():
 
 
 INVALID = {
-    "an unknown version": ({"format": FORMAT, "version": 2}, "version"),
+    "an unknown version": ({"format": FORMAT, "version": 3}, "version"),
+    "version 0": ({"format": FORMAT, "version": 0}, "version"),
+    "version 2 written as a float": ({"format": FORMAT, "version": 2.0}, "version"),
+    "a confidence under version 1": (
+        {**MINIMAL, "grid": {"beats": [0, 1], "meter": 1, "first_downbeat": 0, "confidence": 0.5}},
+        "grid.confidence",
+    ),
     "another format": ({"format": "other", "version": 1}, "format"),
     "a missing version": ({"format": FORMAT}, "version"),
     "a version that is a bool": ({"format": FORMAT, "version": True}, "version"),
@@ -73,8 +79,8 @@ def test_an_invalid_bundle_is_refused_naming_the_problem(data, named, reports):
 
 
 def test_an_unknown_version_names_the_supported_one():
-    with pytest.raises(FormatError, match="1"):
-        Bundle.parse({"format": FORMAT, "version": 2})
+    with pytest.raises(FormatError, match="1 or 2"):
+        Bundle.parse({"format": FORMAT, "version": 3})
 
 
 EDGES = {
@@ -255,11 +261,11 @@ def test_a_bundle_cannot_be_changed_through_its_mappings():
 
 def test_a_bundle_built_directly_is_checked_like_a_parsed_one():
     with pytest.raises(FormatError, match="version"):
-        Bundle(format=FORMAT, version=2)
+        Bundle(format=FORMAT, version=3)
 
 
 def test_the_schema_refuses_names_the_format_refuses():
-    schema = bundle_schema()
+    schema = bundle_schema(1)
     for field in ("series", "events"):
         jsonschema.validate({**MINIMAL, field: {"bass": BASS if field == "series" else []}}, schema)
         with pytest.raises(jsonschema.ValidationError):
@@ -316,7 +322,7 @@ def test_a_bundle_built_from_parts_that_are_not_formats_or_break_a_rule_is_refus
 
 def test_a_bundle_built_from_parts_lists_every_problem_of_the_document_and_the_parts():
     with pytest.raises(FormatError) as refused:
-        Bundle(format=FORMAT, version=2, grid={}, series={"Bass": SERIES}, events={"kick": [KICK, 1]})  # type: ignore[arg-type, list-item]  # wrong on purpose: refused at run time
+        Bundle(format=FORMAT, version=3, grid={}, series={"Bass": SERIES}, events={"kick": [KICK, 1]})  # type: ignore[arg-type, list-item]  # wrong on purpose: refused at run time
     assert [path for path, _ in refused.value.problems] == ["version", "grid", "events.kick[1]", "series.Bass"]
 
 
@@ -368,3 +374,41 @@ def test_a_bundle_of_many_parts_that_are_not_events_gives_a_short_list_that_stil
     assert refused.value.problems[0][0] == "events.kick[0]"
     # 20 are shown, so 299_980 of the 300_000 are left out
     assert str(refused.value).endswith("; ... and 299980 more")
+
+
+SURE = Grid(beats=[0.5, 1.0], meter=2, first_downbeat=0, confidence=0.75)
+UNSURE = Grid(beats=[0.5, 1.0], meter=2, first_downbeat=0)
+
+
+def test_a_bundle_is_written_as_the_oldest_version_that_carries_its_data():
+    for grid, version in ((None, 1), (UNSURE, 1), (SURE, 2)):
+        bundle = Bundle(format=FORMAT, version=version, grid=grid)
+        assert bundle.version == version
+        assert json.loads(dumps(bundle))["version"] == version
+        assert Bundle.from_json(dumps(bundle)) == bundle
+    # a version 2 document that carries nothing of version 2 is written as version 1
+    assert json.loads(dumps(Bundle.parse({"format": FORMAT, "version": 2}))) == {**MINIMAL, "series": {}, "events": {}}
+
+
+def test_a_confidence_survives_dumps_loads_and_pickle(tmp_path):
+    bundle = Bundle(format=FORMAT, version=2, grid=SURE)
+    assert Bundle.from_json(dumps(bundle)).grid.confidence == 0.75
+    assert pickle.loads(pickle.dumps(bundle)) == bundle  # noqa: S301
+    save(bundle, tmp_path / "sure.json")
+    assert load(tmp_path / "sure.json") == bundle
+
+
+def test_a_bundle_built_with_version_1_cannot_hold_a_confidence(reports):
+    with pytest.raises(FormatError) as refused:
+        Bundle(format=FORMAT, version=1, grid=SURE)
+    reports(refused.value, "grid.confidence")
+
+
+def test_the_two_schemas_describe_the_two_versions():
+    assert bundle_schema(1)["properties"]["version"]["const"] == 1
+    assert bundle_schema(2)["properties"]["version"]["const"] == 2
+    assert "confidence" not in bundle_schema(1)["$defs"]["Grid"]["properties"]
+    document = Bundle(format=FORMAT, version=2, grid=SURE).to_dict()
+    jsonschema.validate(document, bundle_schema(2))
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(document, bundle_schema(1))

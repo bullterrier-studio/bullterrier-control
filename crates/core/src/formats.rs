@@ -18,7 +18,7 @@ mod series;
 mod test_support;
 mod unit;
 
-pub use bundle::{BUNDLE_FORMAT, BUNDLE_VERSION, Bundle, BundleOptions, bundle_schema, is_name};
+pub use bundle::{BUNDLE_FORMAT, BUNDLE_VERSIONS, Bundle, BundleOptions, bundle_schema, is_name};
 pub(crate) use error::write_problems;
 pub use error::{FormatError, Problem, Problems};
 pub use event::{Event, EventOptions};

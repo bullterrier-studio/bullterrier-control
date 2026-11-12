@@ -79,8 +79,12 @@ def main(argv: list[str] | None = None) -> int:
     command("validate", _validate, "check that files are valid bundles or (.toml) patches").add_argument(
         "files", nargs="+", type=Path, metavar="FILE", help="a bundle (JSON) or a patch (TOML) file"
     )
-    command("schema", _schema, "print the JSON Schema of a bundle or a patch").add_argument(
+    printing = command("schema", _schema, "print the JSON Schema of a bundle or a patch")
+    printing.add_argument(
         "format", nargs="?", choices=["bundle", "patch"], default="bundle", help="which one (default: bundle)"
+    )
+    printing.add_argument(
+        "--bundle-version", type=int, metavar="N", help="the bundle format version to describe (default: the newest)"
     )
     listing = command("list", _list, "list the sources, shapers and operations, or show some in full")
     listing.add_argument("names", nargs="*", metavar="NAME", help="show only these, with every parameter")
@@ -128,7 +132,7 @@ def _validate(args: argparse.Namespace) -> int:
 
 
 def _schema(args: argparse.Namespace) -> int:
-    schema = bundle_schema() if args.format == "bundle" else patch_schema()
+    schema = bundle_schema(args.bundle_version) if args.format == "bundle" else patch_schema()
     print(json.dumps(schema, indent=2, sort_keys=True))
     return 0
 

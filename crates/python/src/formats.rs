@@ -18,7 +18,7 @@ use pyo3::types::{PyBytes, PyDict, PyList, PyMapping, PyString, PyTuple, PyType}
 use serde::Serialize;
 
 use bullterrier_control::formats::{
-    BUNDLE_FORMAT, BUNDLE_VERSION, Bundle, BundleOptions, Event, Grid, Problem, Problems, Series, Unit,
+    BUNDLE_FORMAT, BUNDLE_VERSIONS, Bundle, BundleOptions, Event, Grid, Problem, Problems, Series, Unit,
 };
 
 use crate::data::{Data, NOT_UTF8, Numbers, numbers};
@@ -136,6 +136,7 @@ fn feed_grid(hasher: &mut DefaultHasher, grid: &Grid) {
     }
     grid.meter().hash(hasher);
     grid.first_downbeat().hash(hasher);
+    feed_option(hasher, grid.confidence());
 }
 
 fn feed_bundle(hasher: &mut DefaultHasher, bundle: &Bundle) {
@@ -492,8 +493,9 @@ impl PySeries {
 
 /// The musical clock: the time of every beat in seconds (at least two, each `>= 0`, strictly increasing), `meter`
 /// beats per bar (`>= 1`) and `first_downbeat`, the index of the beat that starts the first bar (below `meter` and the
-/// number of beats). Tempo is derived from the beats, never stored beside them. A broken rule is a `FormatError`
-/// listing every one.
+/// number of beats), and optionally a `confidence` in `[0, 1]`: how sure the producer is of the grid (`None` when it did
+/// not say; a bundle holding it is written as version 2). Tempo is derived from the beats, never stored beside them. A
+/// broken rule is a `FormatError` listing every one.
 ///
 /// `grid.seconds_at(2.5)` is the time of beat position 2.5 (halfway between the third and fourth beat);
 /// `grid.beat_at(12.4)` the beat position at 12.4 s.
@@ -528,18 +530,20 @@ impl PyGrid {
 #[pymethods]
 impl PyGrid {
     #[new]
-    #[pyo3(signature = (*, beats, meter, first_downbeat))]
+    #[pyo3(signature = (*, beats, meter, first_downbeat, confidence = None))]
     fn new<'py>(
         py: Python<'py>,
         beats: &Bound<'py, PyAny>,
         meter: Bound<'py, PyAny>,
         first_downbeat: Bound<'py, PyAny>,
+        confidence: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Self> {
         let beats = number_list("Grid", "beats", beats)?.into_any();
         let given = [
             ("beats", Some(beats)),
             ("meter", Some(meter)),
             ("first_downbeat", Some(first_downbeat)),
+            ("confidence", confidence),
         ];
         Self::read(fields(py, &given)?.into_any())
     }
@@ -550,7 +554,7 @@ impl PyGrid {
         Self::read(data)
     }
 
-    /// The grid as a file holds it: `{"beats": [...], "meter": 4, "first_downbeat": 0}`.
+    /// The grid as a file holds it: `{"beats": [...], "meter": 4, "first_downbeat": 0}`, with `confidence` only when set.
     fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         plain(py, &self.0)
     }
@@ -571,6 +575,12 @@ impl PyGrid {
     #[getter]
     const fn first_downbeat(&self) -> u32 {
         self.0.first_downbeat()
+    }
+
+    /// How sure the producer is of the grid, in `[0, 1]`, or `None`.
+    #[getter]
+    const fn confidence(&self) -> Option<f64> {
+        self.0.confidence()
     }
 
     /// The time of the first beat of every bar: `beats[first_downbeat::meter]`.
@@ -604,8 +614,12 @@ impl PyGrid {
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let confidence = match self.0.confidence() {
+            Some(confidence) => format!(", confidence={}", shown(py, confidence)?),
+            None => String::new(),
+        };
         Ok(format!(
-            "Grid(beats={}, meter={}, first_downbeat={})",
+            "Grid(beats={}, meter={}, first_downbeat={}{confidence})",
             listed(py, self.0.beats())?,
             self.0.meter(),
             self.0.first_downbeat()
@@ -621,7 +635,7 @@ impl PyGrid {
 
 /// Everything one producer measured of one piece of material: named Series, named Event lists, a Grid.
 ///
-/// `format` is `"bullterrier-control/bundle"` and `version` 1; `duration > 0`, and with it every event is at or before
+/// `format` is `"bullterrier-control/bundle"` and `version` 1 or 2 (a grid with a `confidence` needs 2); `duration > 0`, and with it every event is at or before
 /// it and every series starts at or before it; names match `^[a-z0-9][a-z0-9_.-]*$`; each event list is sorted by `t`.
 /// `series` and `events` are read-only mappings (events as tuples), in name order. A broken rule is a `FormatError`
 /// listing every one, under its path (`series.bass.rate`, `events.kick[3].t`).
@@ -765,12 +779,16 @@ impl PyBundle {
         events: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Self> {
         let mut problems = Problems::new();
-        // the fields of the document's own, read as a file's are; the parts below are already checked objects
+        let mut not_a_grid = Problems::new();
+        let grid = grid.and_then(|grid| instance::<PyGrid>("grid", &grid, &mut not_a_grid));
+        // the fields of the document's own, read as a file's are (the grid too, for the version it needs); the series and
+        // events below are already checked objects
         let head = [
             ("format", Some(format)),
             ("version", Some(version)),
             ("source", source),
             ("duration", duration),
+            ("grid", grid.as_ref().map(|grid| plain(py, &grid.get().0)).transpose()?),
         ];
         let (source, duration) = match Bundle::from_deserializer(Data::new(fields(py, &head)?.into_any())) {
             Ok(read) => (read.source().map(str::to_owned), read.duration()),
@@ -779,7 +797,9 @@ impl PyBundle {
                 (None, None)
             }
         };
-        let grid = grid.and_then(|grid| instance::<PyGrid>("grid", &grid, &mut problems));
+        if let Some(error) = not_a_grid.into_error() {
+            problems.absorb(&error);
+        }
         let mut given_series = BTreeMap::new();
         if let Some(series) = series {
             for (name, item) in named("series", &series, &mut problems)? {
@@ -867,11 +887,11 @@ impl PyBundle {
         BUNDLE_FORMAT
     }
 
-    /// The version of the format: 1, the one there is.
+    /// The version the bundle is written as: the oldest that carries its data, 2 when its grid has a `confidence`, else
+    /// 1.
     #[getter]
-    #[expect(clippy::unused_self, reason = "an attribute of every bundle, the same for all")]
-    const fn version(&self) -> u32 {
-        BUNDLE_VERSION
+    fn version(&self) -> u32 {
+        self.inner.version()
     }
 
     /// What produced the data, if said.
@@ -939,12 +959,16 @@ impl PyBundle {
     }
 }
 
-/// The JSON Schema of a Bundle file, for tools in other languages. It states shapes, types, ranges and the name
-/// pattern; the rules a schema cannot state (sorted events, duration bounds, increasing beats, repeated keys, an
-/// integer written as `1.0`) are enforced by `load`.
+/// The JSON Schema of the Bundle files of `version` (default: the newest, 2), for tools in other languages. It states
+/// shapes, types, ranges and the name pattern; the rules a schema cannot state (sorted events, duration bounds,
+/// increasing beats, repeated keys, an integer written as `1.0`) are enforced by `load`. A version the package does
+/// not read is a `FormatError`.
 #[pyfunction]
-pub(crate) fn bundle_schema(py: Python<'_>) -> PyResult<Bound<'_, PyAny>> {
-    loads(py, &bullterrier_control::formats::bundle_schema().to_string())
+#[pyo3(signature = (version = None))]
+pub(crate) fn bundle_schema(py: Python<'_>, version: Option<u32>) -> PyResult<Bound<'_, PyAny>> {
+    let version = version.unwrap_or(BUNDLE_VERSIONS[1]);
+    let schema = bullterrier_control::formats::bundle_schema(version).map_err(|error| format_error(py, "", &error))?;
+    loads(py, &schema.to_string())
 }
 
 /// The JSON text of `bundle`, one object ending in a newline; absent optional fields are left out, names sorted. Text

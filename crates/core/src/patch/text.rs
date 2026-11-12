@@ -163,11 +163,15 @@ fn data(input: &Input) -> String {
             fields.extend(event.pitch().map(|pitch| ("pitch", decimal(pitch))));
             table(&fields)
         })),
-        Input::Grid(grid) => table(&[
-            ("beats", list(grid.beats().iter().copied().map(decimal))),
-            ("meter", grid.meter().to_string()),
-            ("first_downbeat", grid.first_downbeat().to_string()),
-        ]),
+        Input::Grid(grid) => {
+            let mut fields = vec![
+                ("beats", list(grid.beats().iter().copied().map(decimal))),
+                ("meter", grid.meter().to_string()),
+                ("first_downbeat", grid.first_downbeat().to_string()),
+            ];
+            fields.extend(grid.confidence().map(|confidence| ("confidence", decimal(confidence))));
+            table(&fields)
+        }
         Input::Values(values) => list(values.iter().copied().map(decimal)),
         Input::Series(series) => {
             let mut fields = vec![

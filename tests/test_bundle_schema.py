@@ -43,14 +43,19 @@ def with_grid(**fields: object) -> dict[str, object]:
     return bundle(grid={**GRID, **fields})
 
 
-@pytest.fixture(scope="module")
-def schema_accepts():
-    """`schema_accepts(document)`: the verdict of the generated schema, under the draft it declares."""
-    schema = bundle_schema()
+def verdict_of(version: int):
+    """`accepts(document)`: the verdict of the generated schema of that bundle version, under the draft it declares."""
+    schema = bundle_schema(version)
     validator_class = jsonschema.validators.validator_for(schema)
     validator_class.check_schema(schema)
     validator = validator_class(schema)
     return lambda document: validator.is_valid(document)
+
+
+@pytest.fixture(scope="module")
+def schema_accepts():
+    """`schema_accepts(document)`: the verdict of the schema of version 1, the version of the tables below."""
+    return verdict_of(1)
 
 
 def parse(document: dict[str, object] | str) -> Bundle:
@@ -96,7 +101,7 @@ STATED_BY_THE_SCHEMA = {
     "wrong format": (bundle(format="bullterrier-audio/bundle"), "format:"),
     "missing format": ({"version": 1}, "format:"),
     "missing version": ({"format": FORMAT}, "version:"),
-    "version 2": (bundle(version=2), "version:"),
+    "version 3": (bundle(version=3), "version:"),
     "version as a string": (bundle(version="1"), "version:"),
     "unknown top-level field": (bundle(tempo=120), "tempo:"),
     "series name in capitals": (bundle(series={"Bass": SERIES}), "series.Bass:"),
@@ -186,3 +191,46 @@ def test_a_rule_beyond_the_schema_is_enforced_by_the_library_only(schema_accepts
     with pytest.raises(FormatError) as refused:
         parse(document)
     assert refusal in str(refused.value)
+
+
+def at_version(version: object, **confidence: object) -> dict[str, object]:
+    """A bundle of that version whose grid says `confidence=...` if given."""
+    return {"format": FORMAT, "version": version, "grid": {**GRID, **confidence}}
+
+
+# Each version has its own schema, for the documents that state it. A row: the document, the verdict of the schema of
+# version 1 and of version 2 (True: accepts), and where the library refuses it (None: it reads it).
+BY_VERSION = {
+    "version 1 without a confidence": (at_version(1), True, False, None),
+    "version 2 without a confidence": (at_version(2), False, True, None),
+    "version 2 with a confidence": (at_version(2, confidence=0.75), False, True, None),
+    "confidence 0": (at_version(2, confidence=0), False, True, None),
+    "confidence 1": (at_version(2, confidence=1), False, True, None),
+    "a null confidence is none": (at_version(2, confidence=None), False, True, None),
+    "version 1 with a confidence": (at_version(1, confidence=0.75), False, False, "grid.confidence:"),
+    "confidence below 0": (at_version(2, confidence=-0.1), False, False, "grid.confidence:"),
+    "confidence above 1": (at_version(2, confidence=1.1), False, False, "grid.confidence:"),
+    "confidence as a string": (at_version(2, confidence="0.5"), False, False, "grid.confidence:"),
+    "version 3": (at_version(3), False, False, "version:"),
+    "version 0": (at_version(0), False, False, "version:"),
+    "version 2 written as 2.0": (at_version(2.0), False, True, "version:"),  # the schema cannot tell 2.0 from 2
+    "version as a string": (at_version("2"), False, False, "version:"),
+}
+
+
+@pytest.mark.parametrize(("document", "v1", "v2", "refusal"), BY_VERSION.values(), ids=BY_VERSION)
+def test_each_versions_schema_and_the_library_agree_on_a_document_of_that_version(document, v1, v2, refusal):
+    assert (verdict_of(1)(document), verdict_of(2)(document)) == (v1, v2)
+    if refusal is None:
+        parse(document)
+    else:
+        with pytest.raises(FormatError) as refused:
+            parse(document)
+        assert refusal in str(refused.value)
+
+
+def test_a_schema_is_only_made_for_a_version_the_package_reads():
+    assert bundle_schema() == bundle_schema(2)
+    for version in (0, 3):
+        with pytest.raises(FormatError, match="version"):
+            bundle_schema(version)

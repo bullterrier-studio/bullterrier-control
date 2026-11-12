@@ -6,6 +6,7 @@ is skipped with their names, so the skips are the to-do list. The example files 
 and patches (TOML).
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -13,6 +14,7 @@ import numpy as np
 import pytest
 
 from bullterrier_control import load, load_patch, registry
+from bullterrier_control.formats import dumps
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = (ROOT / "docs" / "examples.md").read_text(encoding="utf-8")
@@ -56,6 +58,25 @@ def test_each_example_gives_the_numbers_its_table_shows(title, needs, code, rows
 @pytest.mark.parametrize("path", sorted((ROOT / "examples").glob("*.json")), ids=lambda path: path.name)
 def test_every_example_file_is_a_valid_bundle(path):
     load(path)
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted(path for path in (ROOT / "examples").glob("*.json") if path.name != "grid-confidence.json"),
+    ids=lambda path: path.name,
+)
+def test_every_example_without_a_confidence_is_still_written_as_version_1(path):
+    bundle = load(path)
+    assert bundle.version == 1
+    assert json.loads(dumps(bundle))["version"] == 1
+
+
+def test_the_confidence_example_is_version_2_and_is_what_the_package_writes():
+    path = ROOT / "examples" / "grid-confidence.json"
+    bundle = load(path)
+    assert bundle.version == 2
+    assert bundle.grid.confidence == 0.8  # type: ignore[union-attr]
+    assert dumps(bundle) == path.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("path", sorted((ROOT / "examples").glob("*.toml")), ids=lambda path: path.name)

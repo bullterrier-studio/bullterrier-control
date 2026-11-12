@@ -29,6 +29,12 @@ INVALID = {
     "downbeat past the last beat": ({"beats": [0.0, 1.0], "meter": 4, "first_downbeat": 3}, "first_downbeat"),
     "tempo is not stored": ({**STEADY, "bpm": 120}, "bpm"),
     "beats missing": ({"meter": 4, "first_downbeat": 0}, "beats"),
+    "confidence below 0": ({**STEADY, "confidence": -0.1}, "confidence"),
+    "confidence above 1": ({**STEADY, "confidence": 1.1}, "confidence"),
+    "confidence NaN": ({**STEADY, "confidence": float("nan")}, "confidence"),
+    "confidence infinite": ({**STEADY, "confidence": float("inf")}, "confidence"),
+    "confidence as a string": ({**STEADY, "confidence": "0.5"}, "confidence"),
+    "confidence as a bool": ({**STEADY, "confidence": True}, "confidence"),
 }
 
 
@@ -242,3 +248,32 @@ def test_beats_that_are_not_a_list_of_numbers_are_refused(given, named, reports)
 
 def test_to_dict_is_the_grid_as_a_file_holds_it():
     assert Grid.parse(STEADY).to_dict() == {"beats": [0.5, 1.0, 1.5, 2.0, 2.5], "meter": 4, "first_downbeat": 1}
+
+
+CONFIDENCE = {
+    "absent": (STEADY, None),
+    "null": ({**STEADY, "confidence": None}, None),
+    **{f"{value}": ({**STEADY, "confidence": value}, float(value)) for value in (0, 0.25, 1)},
+}
+
+
+@pytest.mark.parametrize(("data", "expected"), CONFIDENCE.values(), ids=CONFIDENCE.keys())
+def test_a_confidence_is_in_zero_to_one_and_absent_or_null_means_none(data, expected):
+    assert Grid.parse(data).confidence == expected
+
+
+def test_a_confidence_given_to_the_constructor_is_kept_and_written_only_when_set():
+    sure = Grid(beats=[0.5, 1.0], meter=2, first_downbeat=0, confidence=0.75)
+    assert sure.confidence == 0.75
+    assert sure.to_dict() == {"beats": [0.5, 1.0], "meter": 2, "first_downbeat": 0, "confidence": 0.75}
+    assert Grid(beats=[0.5, 1.0], meter=2, first_downbeat=0, confidence=None).to_dict() == {
+        "beats": [0.5, 1.0],
+        "meter": 2,
+        "first_downbeat": 0,
+    }
+
+
+def test_a_constructor_confidence_is_held_to_the_same_rules(reports):
+    with pytest.raises(FormatError) as refused:
+        Grid(beats=[0.5, 1.0], meter=2, first_downbeat=0, confidence=1.5)
+    reports(refused.value, "confidence")
