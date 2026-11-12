@@ -8,7 +8,7 @@ page, so it can be read without the others.
 |---|---|
 | `bullterrier-image` | Changes and understands single pictures. |
 | `bullterrier-vector` | Draws parametric shapes, as SVG or pixels. |
-| `bullterrier-audio` | Finds what is in a sound and writes it down as time-aligned data. |
+| `bullterrier-audio` | Understands and changes single sounds: measures them as time-aligned data, cuts and separates them. |
 | `bullterrier-control` | Produces control signals (automation, keyframes, modulation) that drive any parameter. |
 | `bullterrier-scene` | Puts layers (pictures, drawings, fields) together into one picture: placed, masked, blended, styled. |
 | `bullterrier-video` | Decides what happens when and what drives what, then renders it. |
@@ -34,15 +34,15 @@ Video also reads control's signals and audio's data directly; the diagram shows 
 4. Time is in seconds everywhere. Frames exist only in video.
 5. Every package is extended the same way: plugins registered by name, parameters declared once with unit, range and
    description.
-6. Every package has a Python interface. The render path (image, vector, control, scene, video) has a Rust core, published as a
-   Rust crate too, with the Python package a thin interface over it (as polars and pydantic-core do). Analysis built on
-   machine-learning models (audio, and video's footage analysis) is Python. Packages meet only through data formats (rule 2),
-   so no package depends on another's language.
+6. Every package has a Python interface over a Rust core, published as a Rust crate too, with the Python package a thin
+   interface over it (as polars and pydantic-core do). Machine-learning models run as ONNX from the package's Rust core.
+   Packages meet only through data formats (rule 2), so no package depends on another's language.
 
 ## Implementation languages
 
-Decided 2026-10-28. Rust is chosen for speed, true parallelism (threads without the GIL), small memory and a service that
-handles many requests at once; where Rust would need workarounds (running PyTorch models from Rust), the package stays Python.
+Decided 2026-10-28; audio moved to Rust on 2026-11-12. Rust is chosen for speed, true parallelism (threads without the GIL),
+small memory and a service that handles many requests at once. A model is used from Rust only through a published ONNX export
+(or one made and checked); a model without one waits, or its measure uses a method that needs none.
 
 | Package | Core | Why |
 |---|---|---|
@@ -51,10 +51,11 @@ handles many requests at once; where Rust would need workarounds (running PyTorc
 | `bullterrier-control` | Rust | Read every frame by video's core, which runs without Python; the stateful shapers are Python loops that hold the GIL; builds for WebAssembly, for editing curves in a browser. |
 | `bullterrier-scene` | Rust | Layers are rendered by the image, vector and control crates; a Rust core calls them directly, renders in bands to keep memory flat, and caches per layer. |
 | `bullterrier-video` | Rust | Decoding, multi-frame effects and encoding in one process, on top of scene; frame history in memory; live preview; uses the scene and control crates directly. |
-| `bullterrier-audio` | Python | Its time goes to models (stems, beats, drum hits, notes) that run on PyTorch, already native; it runs once per song and is cached. |
+| `bullterrier-audio` | Rust | Apps and video, both Rust, call it in-process; its models (separation, notes, beats) have ONNX exports that run from Rust; a live analyser and a WebAssembly build need the DSP in Rust. |
 
-Models in any package (image's subject and depth finders, video's matting and depth over footage) are pluggable adapters on
-their own runtime, in Python; a Rust core takes their maps as input.
+Models in any package (image's subject and depth finders, audio's separation and notes, video's matting and depth over
+footage) run as ONNX from the package's Rust core: pinned files with checksums, the runtime loaded at run time, each model
+only after its weights' licence is checked.
 
 ## Names
 
