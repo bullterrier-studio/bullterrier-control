@@ -380,14 +380,20 @@ SURE = Grid(beats=[0.5, 1.0], meter=2, first_downbeat=0, confidence=0.75)
 UNSURE = Grid(beats=[0.5, 1.0], meter=2, first_downbeat=0)
 
 
-def test_a_bundle_is_written_as_the_oldest_version_that_carries_its_data():
-    for grid, version in ((None, 1), (UNSURE, 1), (SURE, 2)):
-        bundle = Bundle(format=FORMAT, version=version, grid=grid)
-        assert bundle.version == version
-        assert json.loads(dumps(bundle))["version"] == version
-        assert Bundle.from_json(dumps(bundle)) == bundle
-    # a version 2 document that carries nothing of version 2 is written as version 1
-    assert json.loads(dumps(Bundle.parse({"format": FORMAT, "version": 2}))) == {**MINIMAL, "series": {}, "events": {}}
+@pytest.mark.parametrize(
+    ("grid", "written"),
+    [
+        pytest.param(None, 1, id="no grid"),
+        pytest.param(UNSURE, 1, id="a grid without confidence"),
+        pytest.param(SURE, 2, id="a grid with a confidence"),
+    ],
+)
+def test_a_bundle_is_written_as_the_oldest_version_that_carries_its_data(grid, written):
+    # built as version 2, the newest: the writer, not the caller, picks what the file states
+    bundle = Bundle(format=FORMAT, version=2, grid=grid)
+    assert json.loads(dumps(bundle))["version"] == written
+    assert bundle.version == written
+    assert Bundle.from_json(dumps(bundle)) == bundle
 
 
 def test_a_confidence_survives_dumps_loads_and_pickle(tmp_path):
