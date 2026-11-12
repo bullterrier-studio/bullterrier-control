@@ -10,6 +10,10 @@ its `Unreleased` becomes the release date.
 
 ## [Unreleased]
 
+- Bundle format version 2: `Grid` takes an optional `confidence` in `[0, 1]` (`schemas/bundle-2.schema.json`). A bundle is
+  written as version 2 only when its grid has one; version 1 files and `schemas/bundle-1.schema.json` are unchanged.
+  `bt-control schema` takes `--bundle-version` and prints the newest by default.
+
 ## [0.1.0] - Unreleased
 
 The first release.

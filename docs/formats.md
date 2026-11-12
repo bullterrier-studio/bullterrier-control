@@ -2,8 +2,8 @@
 
 The plain-data formats bullterrier-control owns and every package in the ecosystem reads or writes: **Series**, **Event**,
 **Grid**, carried in one file, the **Bundle**; and the **Patch**, a look of signals as data (the last section).
-`bullterrier-audio` writes the first three without importing this package; this page, `schemas/bundle-1.schema.json` and
-`schemas/patch-1.schema.json` are the contract. Changing a rule is a new `version` (see Versioning).
+`bullterrier-audio` writes the first three without importing this package; this page, `schemas/bundle-1.schema.json`,
+`schemas/bundle-2.schema.json` and `schemas/patch-1.schema.json` are the contract. Changing a rule is a new `version` (see Versioning).
 
 Conventions: JSON, UTF-8, one object per file. Times are **seconds** from the start of the material, never frames. Every
 number is finite (`NaN`, `Infinity`, `-Infinity` are rejected). A number is a JSON number: a whole number is fine where a
@@ -17,7 +17,7 @@ it written as `null`. `series` and `events` are objects, never `null`.
 | Field | Type | Rule |
 |---|---|---|
 | `format` | string | exactly `"bullterrier-control/bundle"` |
-| `version` | int | exactly `1`; a reader rejects any other |
+| `version` | int | `1` or `2` (`2` only when the grid has a `confidence`); a reader rejects any other and says which it supports |
 | `source` | string, optional | free text: what produced the file (tool, version, input name) |
 | `duration` | number, optional | length of the material in seconds, `> 0` |
 | `grid` | Grid, optional | at most one |
@@ -68,6 +68,7 @@ The musical clock, stored as the beat times themselves.
 | `beats` | array of numbers | at least 2, strictly increasing, each `>= 0`: the time of every beat |
 | `meter` | int | beats per bar, `>= 1` |
 | `first_downbeat` | int | index into `beats` of the first downbeat: `0 <= first_downbeat < meter` and `< len(beats)` |
+| `confidence` | number, optional | in `[0, 1]`: how sure the producer is of the grid. Bundle version 2; refused under version 1 |
 
 Downbeats are `beats[first_downbeat::meter]`. Tempo is not stored: it is `60 / (beats[i+1] - beats[i])`, so a tempo and its
 beats cannot disagree. A beat position *p* (fractional; 0 is `beats[0]`) maps to seconds by linear interpolation between
@@ -76,17 +77,22 @@ conversion is `Grid.seconds_at` and `Grid.beat_at`.
 
 ## Versioning
 
-`version` is `1`. A reader reports a file it cannot read as JSON (too deeply nested, an integer of thousands of digits) as
+`version` is `1` or `2`. Version 2 added `grid.confidence`; nothing else differs. A reader reports a file it cannot read as JSON (too deeply nested, an integer of thousands of digits) as
 invalid. A new optional field, a loosened or tightened rule, or a new unit is a new version; a reader rejects a
-version it does not know and says which it supports. Producers write the lowest version that carries their data.
+version it does not know and says which it supports. Producers write the lowest version that carries their data: a
+bundle is version 2 when its grid has a `confidence` and version 1 otherwise (`Bundle.version`), so a file that needs
+nothing of version 2 stays readable by a reader that knows only version 1. A reader of version 2 reads both; a `grid.confidence`
+in a document that states version 1 is refused.
 
 ## Schema
 
-`schemas/bundle-1.schema.json` is generated from the Rust types of the core (`uv run bt-control schema`) for tools in other
-languages. It states the shapes, types, ranges and names. A schema cannot state, and `bt-control validate FILE` and
+`schemas/bundle-1.schema.json` and `schemas/bundle-2.schema.json` (for the documents that state that version) are generated
+from the Rust types of the core (`uv run bt-control schema --bundle-version N`; without it, the newest) for tools in other
+languages. They state the shapes, types, ranges and names. A schema cannot state, and `bt-control validate FILE` and
 `bullterrier_control.load` alone enforce: sorted events, `duration` bounds, strictly increasing beats, `first_downbeat` below
 `meter` and `len(beats)`, `scaling` and the 0..1 range of a `fraction` series, repeated keys, integers written as `1.0`
-(JSON Schema counts `1.0` as an integer), non-finite numbers, and UTF-8 text.
+(JSON Schema counts `1.0` as an integer), non-finite numbers, and UTF-8 text. Version 1's schema refuses every `grid.confidence`,
+even `null`; the reader reads a `null` as absent.
 
 A refusal lists the broken rules, the first 100 at most and a count of the rest. A value of the wrong JSON type, an
 unknown field or unit, a non-whole number for an integer, or an integer beyond 2^53 stops the reading at that value,

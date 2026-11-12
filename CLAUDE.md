@@ -75,7 +75,7 @@ classes, `crates/core/src/formats/`, the one definition of every rule): **Series
 a fixed rate from a start time, with a unit and a documented scaling), **Event** (a moment in seconds, a strength, an optional
 duration, label and pitch: one type for onsets, beats, notes and sections), **Grid** (beat times, meter and first downbeat;
 converts beat positions and seconds), carried in one file, the **Bundle**; the rules are in `docs/formats.md`, the machine-readable form is
-`schemas/bundle-1.schema.json`, generated from the Rust types. `bullterrier-audio` writes them **without importing this package**:
+`schemas/bundle-1.schema.json` and `schemas/bundle-2.schema.json`, generated from the Rust types. `bullterrier-audio` writes them **without importing this package**:
 the schema is a file here, audio checks its output against a copy. A format is never shared as code.
 
 ## Names

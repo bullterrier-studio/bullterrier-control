@@ -277,7 +277,7 @@ through each beat.
 ```python
 import bullterrier_control as btc
 
-grid = btc.Grid(beats=[0.0, 0.5, 1.0, 1.4, 1.8], meter=4, first_downbeat=0)
+grid = btc.Grid(beats=[0.0, 0.5, 1.0, 1.4, 1.8], meter=4, first_downbeat=0)  # optionally confidence=0.9, in [0, 1]
 wobble = btc.lib.lfo(rate=1, per="beat", grid=grid)
 wobble.sample([0.125, 0.375, 1.1, 1.3])  # beat 0.25 and 0.75, then beat 2.25 and 2.75: top and bottom of a sine
 # array([1., 0., 1., 0.])
@@ -287,7 +287,7 @@ wobble.sample([0.125, 0.375, 1.1, 1.3])  # beat 0.25 and 0.75, then beat 2.25 an
 // implemented (doctest of the `lib` module)
 use bullterrier_control::cadence::Per;
 
-let grid = Grid::new(vec![0.0, 0.5, 1.0, 1.4, 1.8], 4, 0)?;
+let grid = Grid::new(vec![0.0, 0.5, 1.0, 1.4, 1.8], 4, 0)?; // optionally `.with_confidence(0.9)?`
 let wobble = lib::lfo(lfo::Params { rate: 1.0, per: Per::Beat, ..Default::default() }, Some(&grid))?;
 ```
 

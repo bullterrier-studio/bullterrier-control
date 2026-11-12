@@ -1066,3 +1066,20 @@ script or a note does not run for the next contributor.
   release, runs `wasm-bindgen` for both targets into the ignored `pkg/`, the oracle, and `node --test tests/wasm/`. CI runs it
   on Linux only. `tests/tools/test_wasm_gate.py` shows it failing for a defect in the glue and for a different expectation. No
   SIMD flag: control is scalar maths.
+
+## Grid confidence
+
+- **`grid.confidence` is bundle version 2, not an optional field of version 1.** *Reason:* a reader of version 1 refuses any
+  field it does not know (`additionalProperties: false`, the strictness the formats rely on), so a producer's file with the
+  field in place would break every existing consumer, `bullterrier-audio`'s copy of the schema among them. A version bump
+  is the policy of `docs/formats.md` ("Versioning"), and the writer picks the lowest version that carries the data
+  (`Bundle::version`: 2 with a confidence, else 1), so a producer that never says how sure it is still writes files every
+  reader takes. *Cost:* two schemas to keep; the version-1 schema is the version-2 one with the field and the version
+  removed, done in `bundle_schema` and checked by the drift test.
+- **`Grid::with_confidence`, not an options parameter.** `Event`, `Series` and `Bundle` take an `...Options` struct; `Grid` has
+  one optional field and twenty callers of `Grid::new`, so the optional is a builder step that checks the range. The Python
+  class takes `confidence=None` as a keyword.
+- **`bt-control schema` prints the newest bundle schema by default** (`--bundle-version N` for another; `bundle_schema(version)`
+  in Python and Rust). *Reason:* a tool asking for "the schema" wants the one that reads what the package writes now; nothing is
+  released yet, so no script depends on the old default.
+- **The `beats` and `quantize` operations ignore the confidence;** no operation derives a new Grid from an old one.
