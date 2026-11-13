@@ -52,7 +52,7 @@ cite them.
 `bullterrier-control` is the **control package** of the Bullterrier ecosystem (GitHub: `bullterrier-studio/bullterrier-control`).
 It answers "what is this value at 12.4 s?". Siblings: `audio` (measures sound), `image`, `vector` (draw), `video` (decides what
 happens when, maps signals onto parameters, renders frames). Image, vector, audio and control never depend on each other; only
-video knows the others.
+scene (which knows image and vector) and video (which knows scene, control and audio) know others.
 
 | Responsible for | Not responsible for |
 |---|---|
