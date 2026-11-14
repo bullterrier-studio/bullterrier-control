@@ -264,3 +264,27 @@ after a kept kick. The kicks at 0.5 and 1.0 s are before the reveal and do nothi
 | 8.5 | 1.0 | the second word |
 | 9.0 | 0.1353352832366127 | e⁻² after the second word; the kick at 9.2 is beyond the first four |
 
+
+## 10. A seamless loop
+
+A 4 s loop has kicks at 0.5 s and 3.9 s. The glow of the 3.9 s kick must still be fading when the loop starts again. An
+event cannot be at a negative time (`t >= 0`, and a signal reads every time before 0 as 0), so the previous cycle's kick
+cannot sit at -0.1 s. Instead put every event one loop later and read the signal one loop later: the previous cycle's kicks
+move to 0.5 and 3.9 s, this cycle's to 4.5 and 7.9 s.
+
+```python
+from bullterrier_control import lib
+
+loop = 4.0
+kicks = [0.5, 3.9]
+cycles = [t + k * loop for k in (0, 1) for t in kicks]  # the previous cycle, then this one, both shifted one loop later
+signal = lib.envelope(events=[{"t": t} for t in cycles], decay=0.25)
+# the frame at loop time u reads signal.sample(loop + u)
+```
+
+| t (s) | value | by hand |
+|---|---|---|
+| 4.0 | 0.6703200460356393 | loop time 0: the previous cycle's kick at 3.9 s, 0.1 s ago, e⁻⁰·⁴ |
+| 4.5 | 1.0 | loop time 0.5, the first kick |
+| 7.9 | 1.0 | loop time 3.9, the second kick |
+| 8.0 | 0.6703200460356393 | loop time 4 = loop time 0 again: the same value, so the loop closes without a jump |
