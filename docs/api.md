@@ -93,7 +93,8 @@ let energy = Signal::from_values(&[0.0, 1.0, 0.2, 0.0], 10.0, FromValues::defaul
 assert_eq!(energy.sample(&[0.05, 0.1, 0.3, 1.0])?, [0.5, 1.0, 0.0, 0.0]);
 ```
 
-From a file: `btc.from_series(bundle.series["bass"])` and `Signal::from_series(&series, Interpolation::Linear)` (the
+From a file: `btc.from_series(bundle.series["bass"])` (Python takes a `Series` or any object with `values`, `rate` and
+`start`, e.g. a series another package wrote in the format; a missing or invalid field is a `FormatError` naming it) and `Signal::from_series(&series, Interpolation::Linear)` (the
 series is a `Series`; the bundle is `Bundle::from_json(&text)?`, run as the doctest of `Bundle::from_json`).
 
 ## 2. Shape it: a chain

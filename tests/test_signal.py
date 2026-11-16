@@ -1,4 +1,6 @@
+from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -374,3 +376,34 @@ def test_a_signal_subclass_may_not_hide_a_built_in_shaper_and_is_refused_when_ma
     else:
         with pytest.raises(TypeError, match=rf"Mine\.{refused}: .*built-in shaper"):
             type("Mine", (Signal,), attributes)
+
+
+@dataclass
+class ForeignSeries:
+    """Stands in for a series another package wrote in the shared format."""
+
+    values: list[float]
+    rate: float
+    start: float
+
+
+@pytest.mark.parametrize("interpolation", ["linear", "hold"])
+def test_from_series_reads_any_object_with_the_format_fields(interpolation) -> None:
+    foreign = ForeignSeries(values=[0.0, 1.0, 0.2], rate=4.0, start=0.5)
+    times = [0.0, 0.5, 0.6, 0.75, 0.9, 1.0, 5.0]
+    expected = from_values(foreign.values, foreign.rate, start=foreign.start, interpolation=interpolation).sample(times)
+    got = from_series(foreign, interpolation=interpolation).sample(times)
+    assert got.tolist() == expected.tolist()
+
+
+@pytest.mark.parametrize("field", ["values", "rate", "start"])
+def test_from_series_names_a_missing_field(field) -> None:
+    foreign = {"values": [0.0, 1.0], "rate": 1.0, "start": 0.0}
+    del foreign[field]
+    with pytest.raises(FormatError, match=field):
+        from_series(SimpleNamespace(**foreign))
+
+
+def test_from_series_names_a_field_of_the_wrong_type() -> None:
+    with pytest.raises(FormatError, match="rate"):
+        from_series(ForeignSeries(values=[0.0, 1.0], rate="fast", start=0.0))  # type: ignore[arg-type]

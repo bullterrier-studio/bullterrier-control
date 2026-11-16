@@ -28,16 +28,16 @@ Promises:
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 import numpy as np
 from numpy.typing import NDArray
 
 from ._chain import Chain
 from ._native import _core
-from .formats import Series
+from .errors import FormatError
 
-__all__ = ["Constant", "Signal", "connect_shapers", "from_series", "from_values", "maximum", "minimum"]
+__all__ = ["Constant", "SeriesLike", "Signal", "connect_shapers", "from_series", "from_values", "maximum", "minimum"]
 
 
 def _not_connected(name: str) -> Callable[..., "Signal"]:
@@ -107,10 +107,34 @@ class Constant(_core.Constant, Signal):
     """The same finite value at every time: `Constant(value)`, `value` a finite number (else `SignalError`)."""
 
 
-def from_series(series: Series, *, interpolation: Literal["linear", "hold"] = "linear") -> Signal:
-    """The signal that reads `series`: sample *i* is at `start + i / rate` seconds, the first and last values hold
-    beyond the ends, and between samples the value is interpolated `linear`ly or `hold`s the earlier sample's."""
-    return cast("Signal", _core.from_series(series, interpolation=interpolation))
+class SeriesLike(Protocol):
+    """A series in the shared format (docs/formats.md): control's `Series`, or any object with these fields."""
+
+    @property
+    def values(self) -> Sequence[float] | NDArray[np.float64]:
+        """The samples."""
+        ...
+
+    @property
+    def rate(self) -> float:
+        """Samples per second."""
+        ...
+
+    @property
+    def start(self) -> float:
+        """Seconds of the first sample."""
+        ...
+
+
+def from_series(series: SeriesLike, *, interpolation: Literal["linear", "hold"] = "linear") -> Signal:
+    """The signal that reads `series`, a `Series` or any object with its `values`, `rate` and `start`: sample *i* is at
+    `start + i / rate` seconds, the first and last values hold beyond the ends, and between samples the value is
+    interpolated `linear`ly or `hold`s the earlier sample's. Read as `from_values` reads them (a unit is ignored); a
+    missing field or one that breaks a `Series` rule is a `FormatError` naming it."""
+    for field in ("values", "rate", "start"):
+        if not hasattr(series, field):
+            raise FormatError.at(field, "missing: a series has values, rate and start")
+    return from_values(series.values, series.rate, start=series.start, interpolation=interpolation)
 
 
 def from_values(

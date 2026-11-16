@@ -273,9 +273,8 @@ publishing on TestPyPI and PyPI, `uv run poe release 0.1.0rc1`, then `0.1.0`.
   `Event`; chaining needs a tuple subclass plus changes to the stubs and the generator, and inputs stay keyword-only
   (see design-decisions). Signals already chain, through `Chain`. Revisit if named intermediates prove a real burden.
 
-- **`from_series` for any series in the format.** It takes control's own `Series`; a series another package wrote in the same
-  format (values, rate, start) is turned into a signal by hand with `from_values(series.values, series.rate)`. *Wanted:* accept
-  any object with those fields, without importing the package that made it.
+- **`from_series` for any series in the format.** Done: it takes control's `Series` or any object with `values`, `rate` and
+  `start` (the `SeriesLike` protocol), read as `from_values` reads them; a missing field is a `FormatError` naming it.
 
 ## Not in v1
 
