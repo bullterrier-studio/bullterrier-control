@@ -1,7 +1,9 @@
 # Roadmap
 
-Small batches of work, in order. Each batch gets its own plan before work starts, ends merged into `main` with the whole
-gate green and an independent review done, and leaves the worked examples it names passing. Sizes: **S** about one
+This file records what shipped. Planned work is tracked outside this repository.
+
+Small batches of work, in the order they were built. Each batch got its own plan before work started, ended merged into `main` with the whole
+gate green and an independent review done, and left the worked examples it names passing. Sizes: **S** about one
 working session, **M** two or three, **L** four or more. Decisions behind the batches: [design-decisions.md](design-decisions.md).
 
 | # | Batch | Size | State |
@@ -18,7 +20,7 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | C3b | Operations on events and series | M | done |
 | C4 | Patch files, CLI (`sample`, `list`, `plot`), curve gallery | M | done |
 | R0 | Rust core: workspace, gates, `slew` and `follow` in Rust | M | done |
-| R0b | Rust core: CI and a wheel per platform | S | done (first GitHub run pending) |
+| R0b | Rust core: CI and a wheel per platform | S | done |
 | R0.5 | Code-first API: the spec in Python and Rust, then the Python improvements | M | done |
 | R1 | Rust core: the formats | M | done |
 | R2 | Rust core: parameters | M | done |
@@ -32,7 +34,6 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | R6 | Rust core: cleanup, the public crate | S | done |
 | C6 | Time shapers for animation: `repeat`, `integrate`, `spring` | M | done |
 | W1 | WebAssembly package: the core in Node and the browser | M | done |
-| C5 | First release (after R6: it ships the Rust core) | S | |
 
 C2a went first: it added the inputs mechanism every later source uses. C2b, C2c and C2d then depend only on C2a and can
 run in any order. `bullterrier-audio` can run in parallel: the two share only the formats.
@@ -133,10 +134,6 @@ it becomes a signal. (`slew` and `clip` shipped in C1.)
 - Series: `normalise` (between two percentiles, to a `fraction` series that states its `scaling`).
 - Example 7: strong kicks only, thinned, through `envelope`.
 - Example 9: the first four kicks after a reveal, thinned (`window` then `thin`).
-- Open candidate, not scheduled: `within`, keeping the events that fall inside the spans of other events (a section, a held
-  note), so "the kicks during the drop" is `select` then `within`. `window` covers a known time range; `within` needs a second
-  events input kind (the spans) and may be unnecessary if the consumer (video) takes events from audio's labelled sections
-  instead: decide when video's mappings are designed.
 
 ## C4 Patch files, CLI, gallery (done)
 
@@ -164,7 +161,7 @@ The Python suite runs unchanged against the Rust core throughout.
   bindings), maturin as build backend, Rust gates as strict as the Python ones (each proven by a known-bad input),
   `slew` and `follow` rendered in Rust through a transitional boundary (`_core.render`, removed in R3). Done when their tests pass
   unchanged and the gate is green.
-- **R0b CI and wheels (done; first GitHub run pending).** Every workflow that imports the package builds the core; a wheel per
+- **R0b CI and wheels (done).** Every workflow that imports the package builds the core; a wheel per
   platform (Linux x86_64 and aarch64, macOS arm64 and x86_64, Windows x86_64), each installed and run before release.
 - **R0.5 Code-first API.** The programmatic API is the product; see the section below.
 - **R1 Formats (done).** `Series`, `Event`, `Grid` and `Bundle` are Rust types (`crates/core/src/formats/`) that load, check
@@ -251,32 +248,10 @@ Done when: every example in `docs/api.md` runs as a test (Python now; the Rust c
 `crates/wasm` (`bullterrier-control-wasm`) gives the core to JavaScript: `Patch.fromToml`, `patch.build(bundleJson?)`,
 `built.names()`, `built.sample(name, Float64Array)` and `things()`; errors are `Error`s named as Python names them. `poe
 wasm-test` builds it for Node and the browser, samples every example patch from Python and from Node and expects equal
-values, bit for bit. Not on npm yet (C5 decides). Decisions: [design-decisions.md](design-decisions.md), "WebAssembly
+values, bit for bit. Decisions: [design-decisions.md](design-decisions.md), "WebAssembly
 package (batch W1)".
 
-## C5 First release
+## Also shipped
 
-GitHub repository under `bullterrier-studio`, first CI run (the workflows have only been linted so far), trusted
-publishing on TestPyPI and PyPI, `uv run poe release 0.1.0rc1`, then `0.1.0`.
-
-## Later, with a trigger
-
-- **Conventional names**, when `bullterrier-audio` writes its first analysis: list once in `docs/formats.md` the event
-  labels and series names producers and consumers share (`kick`, `snare`, `hat`, section labels, band names, and C3b's
-  `beat`, `downbeat`, `sub`), so the producer and every consumer do not each decide them. The format does not validate
-  them.
-
-- **A source that reads a series**, when a consumer needs to save a graph built from a bundle's `series.<name>` (today a patch
-  that reads one cannot be saved from the graph; keep the patch).
-
-- **Method chaining on events** (`lib.window(...).thin(...)`): considered and deferred. Operations return a plain tuple of
-  `Event`; chaining needs a tuple subclass plus changes to the stubs and the generator, and inputs stay keyword-only
-  (see design-decisions). Signals already chain, through `Chain`. Revisit if named intermediates prove a real burden.
-
-- **`from_series` for any series in the format.** Done: it takes control's `Series` or any object with `values`, `rate` and
+- **`from_series` for any series in the format.** It takes control's `Series` or any object with `values`, `rate` and
   `start` (the `SeriesLike` protocol), read as `from_values` reads them; a missing field is a `FormatError` naming it.
-
-## Not in v1
-
-- Real-time output (a live clock driving MIDI or OSC). Offline first; later as an optional extra.
-- Mapping a signal onto a parameter of something else: that is video's.

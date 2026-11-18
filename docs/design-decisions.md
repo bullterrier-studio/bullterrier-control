@@ -972,7 +972,7 @@ door and back); the 17 that remain in Python are ported in R5.
 - **Bundle-built graphs still cannot be saved** (`series.<name>` becomes a source-less leaf). *Reason:* a source that reads
   a series is a feature with no consumer yet; the refusal names the way out (keep the patch that read the series).
 - **Every Rust block of `docs/api.md` is a doctest** (the crate root and the `lib` module carry them); no block is a target
-  any more. The crate keeps `publish = false` and version `0.0.0` until C5.
+  any more. The crate keeps `publish = false` and version `0.0.0` until the first release.
 - **Measured, report only** (this machine, 2026-11-04, the extension `uv sync` builds, the R0 script: 4-minute song at 30 fps,
   1000 events): `envelope` 1.2 ms, `slew(envelope)` 26 ms, `follow(envelope)` 27 ms, ten slews with an `lfo` mix 284 ms (R0
   Python 2267-4124 ms, after R3 541-1064 ms), a cached slew read per frame 1.2 us (15-28 us, then 1.4-1.7 us). Peak memory of
@@ -1051,7 +1051,7 @@ script or a note does not run for the next contributor.
   `TypeError`: wasm-bindgen would otherwise read it as an empty string or array.
 - **Two targets, no npm publish yet.** `--target nodejs` is what the tests load, `--target web` what a page loads; the tests
   also load the web build (`initSync`) and compare it. *Reason:* the browser build is the one that matters and must not be
-  untested; a package on npm is a release (C5) and needs a name, a licence file and a `package.json`, none of which exist yet.
+  untested; a package on npm is a release and needs a name, a licence file and a `package.json`, none of which exist yet.
 - **Exact equality, no tolerance.** Every example patch (`examples/*.toml`, `examples/gallery/*.toml`, found by glob, so a new
   shaper's gallery patch joins the corpus) is sampled by Python (the oracle, `tests/wasm/oracle.py`) and by Node every 0.0371 s
   over 64 s (and before 0), and the values must be equal bit for bit (`Object.is`: -0 is not 0). *Measured* on Apple silicon, 2026-11-04: all
