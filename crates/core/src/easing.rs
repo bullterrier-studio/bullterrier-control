@@ -696,7 +696,7 @@ mod tests {
             prop_assert!((curve.apply(p) + curve.apply(1.0 - p) - 1.0).abs() <= 1e-9);
         }
 
-        // whatever a bezier's numbers, its text parses back to the same curve, bit for bit
+        // whatever a bezier's numbers, its text parses back to the same curve (a format fact: the numbers are written in full)
         #[test]
         fn a_bezier_written_out_parses_back_to_itself(
             x1 in 0.0_f64..=1.0,

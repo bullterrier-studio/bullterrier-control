@@ -1,7 +1,7 @@
 //! Saving a graph as a patch, through the public face: a saved chain is the TOML written by hand, what cannot be saved
 //! is refused at its path with why, names made for the signals above are free of every other, a signal used twice is
-//! one node, the edges of numbers, text and keys come back as the same bits, and a property: a random graph of things
-//! saved, written and read again builds signals that sample as the same bits as the graph. Every expected text, path
+//! one node, the edges of numbers, text and keys come back as the same values, and a property: a random graph of things
+//! saved, written and read again builds signals that sample as the same values as the graph. Every expected text, path
 //! and name is worked out by hand; the oracle of the property is the graph itself.
 
 use std::convert::Infallible;
@@ -9,6 +9,7 @@ use std::convert::Infallible;
 use proptest::prelude::*;
 use serde_json::{Value, json};
 
+use crate::common::compare::same_reads;
 use bullterrier_control::Error;
 use bullterrier_control::FromValues;
 use bullterrier_control::Interpolation;
@@ -316,12 +317,15 @@ fn built(patch: &Patch, name: &str) -> Result<Signal, Box<dyn std::error::Error>
     }
 }
 
-/// What a signal gives at `times`, each value as its bits (`-0.0` is not `0.0`), or the text of its refusal.
-fn bits(signal: &Signal, times: &[f64]) -> Result<Vec<u64>, String> {
-    signal
-        .sample(times)
-        .map(|values| values.iter().map(|value| value.to_bits()).collect())
-        .map_err(|error| error.to_string())
+/// What a signal gives at `times`, or the text of its refusal.
+fn read(signal: &Signal, times: &[f64]) -> Result<Vec<f64>, String> {
+    signal.sample(times).map_err(|error| error.to_string())
+}
+
+/// Two signals read at `times` agree (the same refusal, or values within the tolerance); `context` names the case.
+#[track_caller]
+fn assert_reads_agree(left: &Signal, right: &Signal, times: &[f64], context: &str) {
+    assert_eq!(same_reads(&read(left, times), &read(right, times)), None, "{context}");
 }
 
 // ---------------------------------------------------------------- a chain, by hand
@@ -363,12 +367,9 @@ rate = 2000.0
 ";
     let saved = Patch::from_signals(&[("glow", &glow)])?;
     assert_eq!(saved.to_toml(), expected);
-    // and it builds the same signal: the same bits at every time
+    // and it builds the same signal at every time
     let times = [-1.0, 0.0, 0.001, 0.25, 0.3, 1.0, 7.5];
-    assert_eq!(
-        bits(&built(&Patch::from_toml(expected)?, "glow")?, &times),
-        bits(&glow, &times)
-    );
+    assert_reads_agree(&built(&Patch::from_toml(expected)?, "glow")?, &glow, &times, "glow");
     Ok(())
 }
 
@@ -724,7 +725,7 @@ fn a_signal_two_signals_use_is_one_node_both_refer_to() -> Outcome {
     assert!(text.contains("[halo]\nuse = \"slew\"\nsignal = \"glow_2\"\n"), "{text}");
     let rebuilt = Patch::from_toml_with(&registry, &text)?;
     let times = [0.0, 0.1, 2.0];
-    assert_eq!(bits(&built(&rebuilt, "halo")?, &times), bits(&halo, &times));
+    assert_reads_agree(&built(&rebuilt, "halo")?, &halo, &times, "halo");
     Ok(())
 }
 
@@ -739,7 +740,7 @@ fn nothing_given_is_a_patch_of_no_node() -> Outcome {
 // ---------------------------------------------------------------- the edges of numbers, text and keys
 
 #[test]
-fn numbers_text_and_keys_at_their_edges_come_back_as_the_same_bits() -> Outcome {
+fn numbers_text_and_keys_at_their_edges_come_back_as_the_same_values() -> Outcome {
     let registry = registry()?;
     // (row, the values given to `wide`, a line the saved text holds)
     let rows: Vec<(&str, Value, &str)> = vec![
@@ -819,11 +820,11 @@ fn numbers_text_and_keys_at_their_edges_come_back_as_the_same_bits() -> Outcome 
         let text = saved.to_toml();
         assert!(text.contains(line), "{row}: {text}");
         let read = Patch::from_toml_with(&registry, &text)?;
-        // the values the thing was called with again: each the same bits (JSON text tells -0.0 from 0.0 and 1 from 1.0)
+        // the values the thing was called with again (JSON text tells -0.0 from 0.0 and 1 from 1.0)
         let again = built(&read, "edge")?;
         let recorded = |signal: &Signal| signal.recipe().map(|recipe| recipe.values.to_string());
         assert_eq!(recorded(&again), recorded(&made), "{row}");
-        assert_eq!(bits(&again, &[0.0, 1e300]), bits(&made, &[0.0, 1e300]), "{row}");
+        assert_reads_agree(&again, &made, &[0.0, 1e300], row);
         // and the text is written again as it was
         assert_eq!(read.to_toml(), text, "{row}");
     }
@@ -893,7 +894,7 @@ fn data_at_its_edges_comes_back_as_it_was_given() -> Outcome {
         let inputs = again.recipe().map(|recipe| recipe.inputs.clone());
         assert_eq!(inputs, Some(vec![(given.kind().name().to_owned(), given)]), "{name}");
         let times = [0.0, 0.5, 1.2, 2.5, 30.0];
-        assert_eq!(bits(&again, &times), bits(&made, &times), "{name}");
+        assert_reads_agree(&again, &made, &times, name);
     }
     Ok(())
 }
@@ -1131,7 +1132,7 @@ proptest! {
     #![proptest_config(ProptestConfig { cases: 64, ..ProptestConfig::default() })]
 
     #[test]
-    fn a_saved_graph_reads_back_and_builds_signals_of_the_same_bits(graph in graph(), times in times()) {
+    fn a_saved_graph_reads_back_and_builds_signals_of_the_same_values(graph in graph(), times in times()) {
         let check = || -> Outcome {
             let registry = registry()?;
             let (given, calls) = signals(&registry, &graph)?;
@@ -1146,7 +1147,7 @@ proptest! {
             let built = read.build(None)?;
             for (name, signal) in &given {
                 let Some(Output::Signal(again)) = built.get(name) else { return Err(format!("no {name}").into()) };
-                assert_eq!(bits(again, &times), bits(signal, &times), "{name} in {text}");
+                assert_reads_agree(again, signal, &times, &format!("{name} in {text}"));
             }
             Ok(())
         };

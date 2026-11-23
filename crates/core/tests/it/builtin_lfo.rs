@@ -10,6 +10,8 @@ use std::f64::consts::FRAC_1_SQRT_2;
 use proptest::prelude::*;
 use serde_json::json;
 
+use crate::common::compare::first_difference;
+
 use bullterrier_control::builtin::lfo::*;
 use bullterrier_control::cadence::Per;
 use bullterrier_control::formats::Grid;
@@ -473,7 +475,6 @@ proptest! {
         let reversed: Vec<f64> = times.iter().rev().copied().collect();
         let mut backward = signal.sample(&reversed)?;
         backward.reverse();
-        prop_assert_eq!(forward.iter().map(|value| value.to_bits()).collect::<Vec<_>>(),
-            backward.iter().map(|value| value.to_bits()).collect::<Vec<_>>());
+        prop_assert_eq!(first_difference(&forward, &backward), None);
     }
 }

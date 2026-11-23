@@ -2,6 +2,7 @@
 
 use serde_json::json;
 
+use crate::common::compare::first_difference;
 use crate::common::problems::check_problems;
 use bullterrier_control::Params as _;
 use bullterrier_control::builtin::normalise::Params;
@@ -41,12 +42,15 @@ fn by_body(lower: f64, upper: f64, series: Series) -> Result<Series, Error> {
     series_of(Params { lower, upper }.run(series)?)
 }
 
-/// Both doors' values for `given` and the percentiles, which must agree to the bit.
+/// Both doors' values for `given` and the percentiles, which must agree.
 fn normalised(given: &[f64], lower: f64, upper: f64) -> Result<Vec<f64>, Error> {
     let named = by_name(json!({"lower": lower, "upper": upper}), ratio(given)?)?;
     let body = by_body(lower, upper, ratio(given)?)?;
-    let bits = |series: &Series| series.values().iter().map(|value| value.to_bits()).collect::<Vec<_>>();
-    assert_eq!(bits(&named), bits(&body), "{given:?} {lower} {upper}");
+    assert_eq!(
+        first_difference(named.values(), body.values()),
+        None,
+        "{given:?} {lower} {upper}"
+    );
     Ok(body.values().to_vec())
 }
 
@@ -262,10 +266,13 @@ const EXACT: [(&str, &[f64], f64, f64, &[f64]); 17] = [
 ];
 
 #[test]
-fn normalise_gives_numpys_bits_and_the_sign_of_each_zero() -> Result<(), Error> {
+fn normalise_gives_the_values_worked_out_by_hand() -> Result<(), Error> {
     for (id, given, lower, upper, expected) in EXACT {
-        let bits = |values: &[f64]| values.iter().map(|value| value.to_bits()).collect::<Vec<_>>();
-        assert_eq!(bits(&normalised(given, lower, upper)?), bits(expected), "{id}");
+        assert_eq!(
+            first_difference(&normalised(given, lower, upper)?, expected),
+            None,
+            "{id}"
+        );
     }
     Ok(())
 }

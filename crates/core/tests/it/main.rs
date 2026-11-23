@@ -27,6 +27,7 @@ mod builtin_steps;
 mod builtin_thin;
 mod builtin_window;
 mod cadence;
+mod compare;
 mod formats_unit;
 mod hashing;
 mod inputs;

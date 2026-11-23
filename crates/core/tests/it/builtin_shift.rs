@@ -2,6 +2,8 @@
 
 use serde_json::json;
 
+use crate::common::compare::first_difference;
+
 use bullterrier_control::builtin::shift::Params;
 use bullterrier_control::formats::{Event, EventOptions};
 use bullterrier_control::inputs::{Input, InputKind};
@@ -71,7 +73,7 @@ fn shifted(offset: f64, events: &[Event]) -> Result<Vec<Event>, Error> {
 }
 
 fn close(left: f64, right: f64) -> bool {
-    left.to_bits() == right.to_bits() || (left - right).abs() <= 1e-12
+    first_difference(&[left], &[right]).is_none()
 }
 
 /// `(id, offset, times given, times moved)`: most are multiples of 1/8, which floats hold exactly.

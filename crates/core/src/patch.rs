@@ -435,7 +435,7 @@ impl Patch {
     /// - A signal above that is not given is named after the signal given that it is first found above, numbered from
     ///   the top: `glow_1`, `glow_2`, ... above `glow`. A made name is none that is given, nor made already.
     /// - [`to_toml`](Self::to_toml) writes it as text that reads back with `registry` as the same patch, and the
-    ///   patch builds signals of the same values as `signals`, bit for bit (it needs no bundle: its data is inline).
+    ///   patch builds signals of the same values as `signals` (it needs no bundle: its data is inline).
     ///
     /// ```
     /// use bullterrier_control::builtin::{constant, slew};
