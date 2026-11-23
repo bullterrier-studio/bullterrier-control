@@ -12,7 +12,7 @@ fn close(expected: f64, actual: f64) -> bool {
     if expected.is_nan() || actual.is_nan() {
         return expected.is_nan() && actual.is_nan();
     }
-    expected == actual
+    expected.to_bits() == actual.to_bits()
         || (expected.is_finite()
             && actual.is_finite()
             && (expected - actual).abs() <= TOLERANCE * expected.abs().max(actual.abs()).max(1.0))
