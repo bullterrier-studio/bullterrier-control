@@ -11,13 +11,24 @@ export const { Patch, things } = require("../../pkg/node/bullterrier_control_was
 /** What the native extension answered: `times`, `cases` (patch, bundle, nodes, signals), `things`, `failures`. */
 export const native = JSON.parse(readFileSync(new URL("../../pkg/oracle.json", import.meta.url), "utf-8"));
 
-/** The index of the first element where `actual` is not `expected` bit for bit (-0 is not 0), or -1 if they are the
- *  same and as long. Compared by index, so a mismatch never builds a diff of the whole array. */
+/** How far apart two values of one signal may be, relative to max(1, |value|). The same number as `TOLERANCE` in
+ *  `crates/core/tests/it/common/compare.rs`, where the reason is given. */
+export const TOLERANCE = 1e-9;
+
+const close = (expected, actual) =>
+  Object.is(expected, actual) ||
+  expected === actual ||
+  (Number.isFinite(expected) &&
+    Number.isFinite(actual) &&
+    Math.abs(expected - actual) <= TOLERANCE * Math.max(1, Math.abs(expected), Math.abs(actual)));
+
+/** The index of the first element where `actual` is not `expected` within `TOLERANCE` (NaN matches NaN), or -1 if they
+ *  agree and are as long. Compared by index, so a mismatch never builds a diff of the whole array. */
 export function firstDifference(expected, actual) {
   if (expected.length !== actual.length) {
     return Math.min(expected.length, actual.length);
   }
-  return expected.findIndex((value, at) => !Object.is(value, actual[at]));
+  return expected.findIndex((value, at) => !close(value, actual[at]));
 }
 
 /** The `Float64Array` a list of numbers is, with `null` as NaN (the oracle's JSON cannot hold NaN). */

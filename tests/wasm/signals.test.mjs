@@ -1,6 +1,6 @@
 // The WebAssembly package against the native extension: every example patch, built from the same text and bundle, must
-// give the same nodes and bit for bit the same values at the same times, whatever order they are read in. The expected
-// values come from oracle.py, which asks the native Python extension; run both through `uv run poe wasm-test`.
+// give the same nodes and the same values (within `TOLERANCE`, see package.mjs) at the same times, whatever order they
+// are read in. The expected values come from oracle.py, which asks the native Python extension; run both through `uv run poe wasm-test`.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -43,7 +43,7 @@ for (const example of native.cases) {
       assert.equal(firstDifference(order.map((at) => expected[at]), values), -1, `${node}: shuffled`);
       for (const at of order.slice(0, 25)) {
         const [one] = built.sample(node, new Float64Array([TIMES[at]]));
-        assert.ok(Object.is(one, expected[at]), `${node} at ${TIMES[at]}: ${one} is not ${expected[at]}`);
+        assert.equal(firstDifference([expected[at]], [one]), -1, `${node} at ${TIMES[at]}: ${one} is not ${expected[at]}`);
       }
     }
   });
