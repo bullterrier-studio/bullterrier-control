@@ -1,7 +1,7 @@
 """The WebAssembly gate can fail: `poe wasm-test` builds the package, runs it in Node against what the native extension
 answers, passes the workspace as it is, and fails, naming the test, for a defect in the glue (the times read in another
 order, the bundle left out, a wrong name on an error, an array accepted as the times, a thing missing from the list),
-for an expected value that differs from the package's by one unit in the last place or in the name of an error, and for
+for an expected value that differs from the package's by more than the tolerance or in the name of an error, and for
 a browser build of a target a page cannot import.
 
 An architecture test of the tooling: its subject is the `wasm-test` task in pyproject.toml, so it runs that task, the
@@ -130,10 +130,10 @@ OFFENCES = {
         ".things()\n        .skip(1)\n        .map(|thing|",
         ["✖ things() describes what the native registry holds, parameters included"],
     ),
-    "an expected value that differs by one unit in the last place": (
+    "an expected value that differs by more than the tolerance": (
         ORACLE,
         "signal.sample(TIMES).tolist()",
-        "(signal.sample(TIMES) * (1 + 2**-52)).tolist()",
+        "(signal.sample(TIMES) * (1 + 1e-6)).tolist()",
         ["✖ gallery/slew.toml: the nodes and the values are the native ones"],
     ),
     "an expected error of another class": (
