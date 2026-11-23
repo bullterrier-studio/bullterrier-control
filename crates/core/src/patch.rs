@@ -468,7 +468,7 @@ impl Patch {
     /// the header, then each node in file order, a blank line before each: `use`, `signal`, its inputs in the order
     /// its thing declares them (a reference, or the data inline as a bundle writes it), then its parameters in the
     /// order its table declares them. A number is written as it is held (a decimal as a decimal, a whole number as a
-    /// whole one), each decimal as the same bits; text and a key are quoted and escaped as TOML needs. The same patch
+    /// whole one), each decimal as the same number; text and a key are quoted and escaped as TOML needs. The same patch
     /// gives the same text.
     ///
     /// ```

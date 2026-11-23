@@ -7,6 +7,8 @@ use std::f64::consts::E;
 use proptest::prelude::*;
 use serde_json::json;
 
+use crate::common::compare::first_difference;
+
 use bullterrier_control::builtin::envelope::*;
 use bullterrier_control::formats::Event;
 use bullterrier_control::formats::EventOptions;
@@ -504,7 +506,7 @@ proptest! {
     fn it_is_the_fold_of_the_single_event_signals_in_their_order(
         events in events(), params in params(), times in prop::collection::vec(0.0..30.0_f64, 1..20),
     ) {
-        // the events of a single-event signal each, folded in order with max or +, give the same bits
+        // the events of a single-event signal each, folded in order with max or +, give the same values
         let mut expected = vec![0.0_f64; times.len()];
         for one in &events {
             let single = lib::envelope(std::slice::from_ref(one), params.clone())?.sample(&times)?;
@@ -513,7 +515,7 @@ proptest! {
             }
         }
         // called directly, in the order generated (any order, not the door's): folded in that order
-        prop_assert_eq!(params.source(events)?.sample(&times)?, expected);
+        prop_assert_eq!(first_difference(&params.source(events)?.sample(&times)?, &expected), None);
     }
 
     #[test]

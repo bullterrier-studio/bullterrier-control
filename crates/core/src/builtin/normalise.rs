@@ -127,7 +127,7 @@ fn two_to(k: i32) -> f64 {
 }
 
 /// The `q` quantile of `sorted` (ascending, at least one value) as numpy 2.5's `quantile` reads it by default (method
-/// "linear": Hyndman and Fan, type 7), to the bit: at index `q * (n - 1)`, between the values around it in proportion.
+/// "linear": Hyndman and Fan, type 7): at index `q * (n - 1)`, between the values around it in proportion.
 fn quantile(sorted: &[f64], q: f64) -> f64 {
     let last = sorted.len() - 1;
     #[expect(clippy::cast_precision_loss, reason = "an index past 2^53 does not fit in memory")]

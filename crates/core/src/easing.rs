@@ -21,7 +21,7 @@
 //!   [`Error::Ease`] listing the valid forms.
 //! - Progress is clipped to 0..1 (an infinity too; NaN is undefined, but never a panic). The ends are exact for every
 //!   curve: 0 gives 0.0 and 1 gives 1.0.
-//! - The same bits on every target: the curves use only `+ - * /` (no `powi`, `powf` or libm call).
+//! - The same values on every target, to rounding: the curves use only `+ - * /` (no `powi`, `powf` or libm call).
 
 use std::fmt;
 use std::str::FromStr;

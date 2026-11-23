@@ -166,8 +166,8 @@ fn by_the_defaults_normalise_reads_the_5th_and_98th_percentiles() -> Result<(), 
     Ok(())
 }
 
-/// `(id, values, lower, upper, outputs)` to the bit, the outputs as numpy 2.5.4 gives them through the Python
-/// body this replaced (the sign of each zero too), but for the row that says otherwise.
+/// `(id, values, lower, upper, outputs)`, the outputs as numpy 2.5.4 gives them through the Python
+/// body this replaced, but for the row that says otherwise.
 #[allow(clippy::type_complexity, reason = "a table of rows, read as one")]
 const EXACT: [(&str, &[f64], f64, f64, &[f64]); 17] = [
     // index 1.6 between 0.3 and 1 (scaled by 1/2): from 1 back, 1 - 0.7 * 0.4, not 0.3 + 0.7 * 0.6

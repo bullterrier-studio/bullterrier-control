@@ -16,7 +16,7 @@ publish = false
 [workspace.dependencies]
 bullterrier-control = { path = "crates/core" }
 bullterrier-control-macros = { path = "crates/macros" }
-# libm: `exp` as pure Rust, the same bits on every target (std's calls the platform's, which differs by an ulp); exact pin so a
+# libm: `exp` as pure Rust, the same result on every target, to rounding (std's calls the platform's, which differs by an ulp); exact pin so a
 # release cannot move a result
 libm = "=0.2.16"
 numpy = "0.30"

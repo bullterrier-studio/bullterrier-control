@@ -198,7 +198,7 @@ The Python suite runs unchanged against the Rust core throughout.
   walks by loop, not recursion (batch R4c)".
 - **R5a Inputs and operations (done).** `Source`, `Shaper` and `Operation` take `type Inputs`; the `lib::` signature of a
   source with inputs follows api.md rule 2; `Signal::retimed`; `follow`'s `exp` is `libm`'s. `delay`, `hold`, `latch`,
-  `every`, `thin`, `shift`, `beats`, `quantize` and `normalise` run in Rust (13 of 21), each bit-identical to its old
+  `every`, `thin`, `shift`, `beats`, `quantize` and `normalise` run in Rust (13 of 21), each agreeing with its old
   Python body in a differential harness. Decisions: [design-decisions.md](design-decisions.md), "Built-ins with data in Rust
   (batch R5a)".
 - **R5b The rest (done).** `clip`, `gate`, `remap`, `noise`, `steps`, `keyframes`, `lfo` and `envelope` run in Rust
@@ -247,8 +247,8 @@ Done when: every example in `docs/api.md` runs as a test (Python now; the Rust c
 
 `crates/wasm` (`bullterrier-control-wasm`) gives the core to JavaScript: `Patch.fromToml`, `patch.build(bundleJson?)`,
 `built.names()`, `built.sample(name, Float64Array)` and `things()`; errors are `Error`s named as Python names them. `poe
-wasm-test` builds it for Node and the browser, samples every example patch from Python and from Node and expects equal
-values, bit for bit. Decisions: [design-decisions.md](design-decisions.md), "WebAssembly
+wasm-test` builds it for Node and the browser, samples every example patch from Python and from Node and expects the same
+values within one tolerance. Decisions: [design-decisions.md](design-decisions.md), "WebAssembly
 package (batch W1)".
 
 ## Also shipped

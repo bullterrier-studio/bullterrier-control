@@ -5,7 +5,7 @@
 
 The named curves are Robert Penner's easing equations; the Bezier form and its meaning are CSS Easing Level 1
 (`cubic-bezier(x1, y1, x2, y2)`: the handles of a curve from (0, 0) to (1, 1)). The curves are the Rust core's
-(`easing::Ease`): a Bezier is solved by 50 bisections, every curve gives the same bits on every machine.
+(`easing::Ease`): a Bezier is solved by 50 bisections, every curve gives the same values on every machine, to rounding.
 
 Promises:
 - `curve(name)` takes a name in `EASES` or a `cubic-bezier(x1, y1, x2, y2)` (whitespace is free; x1 and x2 in 0..1, y1

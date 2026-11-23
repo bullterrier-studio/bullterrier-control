@@ -122,7 +122,7 @@ fn json(path: &str, value: &DeValue<'_>, spoiled: &mut Vec<Problem>) -> Value {
 /// `patch` as TOML text that decodes and reads back as it, with the registry it holds the things of: the header,
 /// then each node in order (`use`, `signal`, its inputs in the order its thing declares them, its parameters in the
 /// order its table declares them), a blank line before each. A number is written as what it is (a decimal as a
-/// decimal, a whole number as a whole one), each decimal in the shortest form that reads back as the same bits.
+/// decimal, a whole number as a whole one), each decimal in the shortest form that reads back as the same number.
 pub(super) fn write(patch: &Patch) -> String {
     let mut text = format!("format = {}\nversion = {VERSION}\n", quoted(FORMAT));
     for (name, node) in &patch.nodes {
@@ -210,7 +210,7 @@ fn json_value(value: &Value) -> String {
     }
 }
 
-/// `number` (finite) as a TOML decimal: the shortest text that reads back as the same bits, always with a point or
+/// `number` (finite) as a TOML decimal: the shortest text that reads back as the same number, always with a point or
 /// an exponent (`1.0`, `-0.0`, `1e-320`, `1e308`), never as a whole number.
 fn decimal(number: f64) -> String {
     format!("{number:?}")

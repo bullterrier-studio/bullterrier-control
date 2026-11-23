@@ -286,7 +286,7 @@ is in [docs/formats.md](https://github.com/bullterrier-studio/bullterrier-contro
 ## In the browser and Node
 
 The Rust core builds as a WebAssembly package (`uv run poe wasm-test` builds it into `pkg/node` and `pkg/web`; not on npm yet).
-It reads a patch and samples its signal nodes, and gives the same values as Python, bit for bit.
+It reads a patch and samples its signal nodes, and gives the same values as Python, within 1e-9 (the tolerance in `tests/wasm/package.mjs`).
 
 ```js
 import { Patch, things } from "./pkg/node/bullterrier_control_wasm.js"; // browser: pkg/web, after `await init()`

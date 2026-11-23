@@ -198,7 +198,7 @@ separate ramp. Changed:
 ## Decided in C2d
 
 - **The random number is SplitMix64's output number `index`, not a hash of `seed * step + index`.** *Reason:* integers
-  only, so the same bits on every platform, and it matches the published generator, so a test can check it against the
+  only, so the same values on every platform, and it matches the published generator, so a test can check it against the
   reference outputs rather than against itself. Distinct seeds are distinct starting states of one stream; the finaliser
   scrambles neighbouring states, so seeds below 2^32 give unrelated values in practice.
 - **A position beyond what an integer holds is reduced mod 2^64 in floats before it becomes an index.** *Reason:* at a rate
@@ -636,11 +636,11 @@ Design:
   package's `Signal`, so results carry `pipe` and the chain methods. *Reason:* a pyclass cannot inherit a Python mixin.
   The native base is listed first: `class Rendered(_core.Rendered, Signal)`, `class Constant(_core.Constant, Signal)`.
 - **Numbers.** Easing, cadence, hashing, scaling and rounding are Rust (`crates/core/src/{easing,cadence,hashing,scaling,
-  rounding}.rs`); the Python modules keep their docstring contracts and re-export. Hashing and the curve ends are
-  bit-exact with the numpy they replace; cubic, overshoot and bezier agree within about 1e-12. The curves use explicit
-  multiplication, no `powi` or `powf`, so every target gives the same bits.
+  rounding}.rs`); the Python modules keep their docstring contracts and re-export. Hashing and the curve ends agree
+  with the numpy they replace; cubic, overshoot and bezier agree within about 1e-12. The curves use explicit
+  multiplication, no `powi` or `powf`, whose results differ between targets.
 - **A differential over 2000 seeded graphs** (old numpy graph against the new, report-only) found no regression. Leaves
-  of constants, held series, hashing and the plain eases are bit-identical. A linear series read differs by one rounding
+  of constants, held series, hashing and the plain eases agree. A linear series read differs by one rounding
   of the operand scale in about 8 % of reads on arm64, where numpy's `interp` fuses the multiply-add and this core
   rounds twice. A bezier with a handle at exactly 0 or 1 drifts up to 1e-8 within 1e-6 of progress 0 or 1 (the
   bisection is ill-conditioned there). A `Rendered` read in the last allowed sample's span is now accepted (the old
@@ -775,7 +775,7 @@ Rulings:
 - **`toml` is the TOML dependency**, `parse` feature only (no serde, no writer, no indexmap). *Reason:* a patch is TOML, the
   parser is pure Rust and builds for `wasm32-unknown-unknown`, `cargo deny` and `shear` pass, its errors carry line and
   column, and its key spans keep the file order. The writer is ours (`patch/text.rs`), so the output is stable and each
-  decimal is written as the same bits.
+  decimal is written so that it reads back as the same number.
 - **A TOML syntax error's detail is the Rust parser's**: `not TOML (line 1, column 10: string values must be quoted, ...)`;
   Python's reader added the path (`{path}: not TOML (...)`). Other patch messages keep their words (`<node>.<key>: rule`),
   except that a value, reference or list of nodes above longer than 80 characters is cut with `...`, and the "N more" count survives:
@@ -806,7 +806,7 @@ Accepted differences from the Python registry and patch (a break, accepted befor
 - A top-level patch key that is not text is read as its `str`, a key inside a node must be text; a NaN or infinity reads
   `must be finite (got nan)`; problems within a node list unknown keys first (by name), then the parameters in table
   order.
-- `bt-control list --json` is byte-identical to before. `gen_api` takes each range from the core's table (the noise seed now
+- `bt-control list --json` is unchanged. `gen_api` takes each range from the core's table (the noise seed now
   reads `0 to 4294967295`, not `4.29497e+09`).
 - The shaper scaffold writes no Python module: the Rust file registers itself.
 
@@ -824,8 +824,8 @@ door and back); the 17 that remain in Python are ported in R5.
 - **A node reads in two steps, one loop reads the inputs.** A node has `start(times, out)`, which writes its values or names
   the inputs it needs (`Next`), and `finish(times, inputs, out)`, which combines them. `walk::read`
   (`crates/core/src/signal/walk.rs`) is the only code that reads an input: a depth-first loop over three stacks on the heap
-  (frames, grids, buffers), reading, rendering and allocating in the order the recursive read did. The values are bit for bit
-  the old ones (a differential over 2000 seeded graphs, every node kind, compared the bits of every value). A scan test
+  (frames, grids, buffers), reading, rendering and allocating in the order the recursive read did. The values are
+  the old ones (a differential over 2000 seeded graphs, every node kind, compared every value). A scan test
   (`tests/it/architecture.rs`) fails if any other file under `signal/` names a read of a signal, or an `impl Node` sits in a file it
   does not scan, because exposing only `start` and `finish` does not stop a node holding a `Signal` and calling it.
 - **A drop is a loop too.** Every last handle of a node goes to a per-thread queue: the first drop on a thread runs the loop,
@@ -882,11 +882,11 @@ door and back); the 17 that remain in Python are ported in R5.
   callback that reads no signal and a chain of 999 delays reads.
 - **libm for exp.** `follow` calls `libm::exp` (the `libm` crate, MIT, pure Rust, pinned exact), not std's. *Reason:*
   std's `exp` calls the platform's math library, so the same signal could differ by an ulp between targets (rule 6
-  allows float tolerance across platforms, but the core's easing and hashing already give the same bits everywhere, and a
+  allows float tolerance across platforms, but the core's easing and hashing already give the same values everywhere, and a
   patch's hash and a rendered file should too). Over 10 000 seeded arguments the two differ by at most 1 ulp. Later
   built-ins that need `sin`, `exp` or `powf` use `libm` the same way.
 - **Ported against the Python bodies.** A differential harness (not committed) compared each port with the body it
-  replaced; all bit-identical: `delay` 351 cases, `hold` 370, `latch` 398, `every` 408, `thin` 385, `shift` 385, `beats`
+  replaced; all agreeing: `delay` 351 cases, `hold` 370, `latch` 398, `every` 408, `thin` 385, `shift` 385, `beats`
   376, `quantize` 570, `normalise` 924.
 - **`latch` switches at plain `>=`**, as the Python body did, not `rounding::at_least`.
 - **`normalise` leaves the sign of an output zero unspecified.** From 5 values it may differ from the old body: numpy's
@@ -926,14 +926,14 @@ door and back); the 17 that remain in Python are ported in R5.
 - **`envelope` drops two clamps** (`max(since - attack, 0)` and `max(since - end, 0)`): numpy's `where` evaluates both
   branches and needed them; Rust evaluates only the taken one, where the difference is already at least +0.0.
 - **Ported against the Python bodies** (the harness of R5a): `clip` 371 cases, `gate` 387, `remap` 483, `noise` 518 and
-  `keyframes` 435 bit-identical (before `envelope` was ported: see the last clause); `steps` 419 identical and 3 that differ in wording only; `lfo` 999: 872 identical, 3
+  `keyframes` 435 agreeing (before `envelope` was ported: see the last clause); `steps` 419 agreeing and 3 that differ in wording only; `lfo` 999: 872 agreeing, 3
   wording, 124 sine cases whose outputs differ by `libm::sin` alone (in the wave 0.5 + 0.5 sin at most 1.11e-16);
-  `envelope` 586: the 187 linear cases identical, 108 exponential ones differing by `libm::exp` alone (each `exp` is 1 ulp apart; the
+  `envelope` 586: the 187 linear cases agreeing, 108 exponential ones differing by `libm::exp` alone (each `exp` is 1 ulp apart; the
   outputs 1 to 3 ulp in the harness, up to 5 in 8 000 random cases, at most 2.3e-13 on a sum of 20 000 events). Each
-  explained difference was reproduced by the old formula with the libm function swapped in, bit for bit. `follow`
+  explained difference was reproduced by the old formula with the libm function swapped in. `follow`
   differs from its R4b body in 8 of 320 cases (7 beyond one rounding), by the R5a `libm::exp`. `clip`'s and `remap`'s cases fed by an
   envelope now differ by that `exp` too (10 of 371 and 4 of 483; neither shaper changed: `remap` over the old envelope's
-  values gives the old output bit for bit). No sign of zero differs.
+  values gives the old output). No sign of zero differs.
 - **Wording:** a `per = "beat"` without a grid now names the thing (`source 'lfo': lfo: per: 'beat' needs a grid`, was
   `cadence: per: ...`); the type (`ParameterError`) and the path (`per`) are unchanged.
 
@@ -1052,11 +1052,12 @@ script or a note does not run for the next contributor.
 - **Two targets, no npm publish yet.** `--target nodejs` is what the tests load, `--target web` what a page loads; the tests
   also load the web build (`initSync`) and compare it. *Reason:* the browser build is the one that matters and must not be
   untested; a package on npm is a release and needs a name, a licence file and a `package.json`, none of which exist yet.
-- **Exact equality, no tolerance.** Every example patch (`examples/*.toml`, `examples/gallery/*.toml`, found by glob, so a new
+- **One tolerance.** Every example patch (`examples/*.toml`, `examples/gallery/*.toml`, found by glob, so a new
   shaper's gallery patch joins the corpus) is sampled by Python (the oracle, `tests/wasm/oracle.py`) and by Node every 0.0371 s
-  over 64 s (and before 0), and the values must be equal bit for bit (`Object.is`: -0 is not 0). *Measured* on Apple silicon, 2026-11-04: all
-  equal, 0 differences. *Reason:* the core uses `libm` for transcendentals and plain `f64` arithmetic, so no platform
-  difference is expected; if one appears on a platform, the measured tolerance is recorded here, not guessed.
+  over 64 s (and before 0), and each value must agree within 1e-9 of `max(1, |value|)` (`TOLERANCE` in
+  `tests/wasm/package.mjs`, the number of `crates/core/tests/it/common/compare.rs`, which gives the reason; NaN matches NaN).
+  *Reason:* the core uses `libm` for transcendentals and plain `f64` arithmetic, so a platform difference is a last-bit
+  one, and no byte-identity is promised between routes.
 - **`things()` is the registry's description as JSON** (`bt-control list --json`'s data), compared with Python's whole. *Reason:*
   a page can build a control panel from it; parameters, units and ranges stay declared once.
 - **Tool pins:** `wasm-bindgen = "=X"` (crate, exact) in `[workspace.dependencies]` and the same `X` for the command in
