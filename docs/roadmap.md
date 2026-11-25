@@ -35,8 +35,8 @@ working session, **M** two or three, **L** four or more. Decisions behind the ba
 | C6 | Time shapers for animation: `repeat`, `integrate`, `spring` | M | done |
 | W1 | WebAssembly package: the core in Node and the browser | M | done |
 
-C2a went first: it added the inputs mechanism every later source uses. C2b, C2c and C2d then depend only on C2a and can
-run in any order. `bullterrier-audio` can run in parallel: the two share only the formats.
+C2a went first: it added the inputs mechanism every later source uses. C2b, C2c and C2d then depended only on C2a and were
+built in any order. `bullterrier-audio` was built in parallel: the two share only the formats.
 
 ## C0 Formats
 
@@ -224,23 +224,23 @@ What music-driven animation needs beyond C3a ([design-decisions.md](design-decis
 
 ## R0.5 Code-first API (done)
 
-The programmatic API, in Python and later in Rust, is the product; patch files are a serialisation of the same graph,
-built only through it ([design-decisions.md](design-decisions.md), "API first"). Weak spots in today's Python API: `lib`
+The programmatic API, in Python and in Rust, is the product; patch files are a serialisation of the same graph,
+built only through it ([design-decisions.md](design-decisions.md), "API first"). Weak spots in the Python API before this batch: `lib`
 is dynamic (no stubs, so no completion of `rise=` and mypy sees `Any`); shapers nest (`clip(slew(x))`) and read
 inside-out, not as the pipeline; a measured curve needs three concepts (`from_series(Series(rate=..., values=...,
 unit=Unit.RATIO))`).
 - `docs/api.md`: the code-first API in Python and Rust side by side, one worked example per concept (a curve from values,
   keyframes, an envelope on events, shaping a chain, combining, sampling a timeline, a seeded noise, a beat grid, a
-  plugin). The Rust column is the target R1 to R5 build to: Rust type and trait names, parameters as structs with
+  plugin). The Rust column is what R1 to R5 built: Rust type and trait names, parameters as structs with
   `Default`, `signal.sample(&times)`, errors as `Result`.
 - Python: a typed `lib` through a generated stub (`lib.pyi` from the parameter models: every source, shaper and operation
   with its keyword parameters, defaults and docstring; a drift test: regenerated equals committed); chaining (built-in
   shapers as typed methods on `Signal` from the same generator, `signal.pipe(shaper, **params)` for any shaper including
   plugins); a one-call entry for a curve from values (`btc.from_values(values, rate=10)`), keeping `Series` and
-  `from_series` for data from files. The final shape is decided in the batch's plan, from the spec.
-- The README's quick start uses the code-first API first; patch files come later, as the extra.
+  `from_series` for data from files. The final shape was settled from the spec.
+- The README's quick start uses the code-first API first; patch files follow it.
 
-Done when: every example in `docs/api.md` runs as a test (Python now; the Rust column becomes doctests as R1 to R5 land);
+Done when: every example in `docs/api.md` runs as a test (Python; the Rust column runs as doctests of the crate);
 `lib` completes its keywords in an IDE and mypy checks them; the stub's drift test passes; the gate is green.
 
 ## W1 WebAssembly package

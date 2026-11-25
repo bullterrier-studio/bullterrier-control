@@ -21,7 +21,7 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
   and each side tests against the schema. Specified in `docs/formats.md` (batch C0).
 - **One file type, the Bundle.** Series, Event lists and a Grid travel together in one JSON file with a `format` and a
   `version`. *Reason:* one thing to load, validate and version; audio's `analyse()` result is one file. *Cost:* a consumer that
-  wants one signal reads the whole file; acceptable at the sizes involved, and a binary version can follow as `version` 2.
+  wants one signal reads the whole file; acceptable at the sizes involved, and a binary version can follow as a later `version`.
 - **Grid stores beat times, not a tempo.** Tempo is derived from the intervals. *Reason:* a tempo map plus beats can disagree;
   beat times are what beat trackers produce and what a renderer needs, and tempo changes then need no extra field.
 - **Non-finite numbers are rejected in files.** *Reason:* Python's JSON accepts `NaN` and `Infinity`, other languages' parsers
@@ -57,7 +57,7 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
   need no relearning. *Cost:* each repository owns its copy of the tooling scripts and tests; a fix to one is made in the
   others by hand. Image-specific parts (effects, gallery, subject finding) were left out.
 - **The version is 0.0.0 until the first release.** `poe release` accepts only a version above the one in `pyproject.toml`, so
-  the first release (0.1.0rc1, then 0.1.0) needs a lower starting point.
+  0.0.0 is below any first release.
 
 ## Core (batch C1)
 
@@ -491,9 +491,9 @@ Taught in `docs/api.md`, Python and Rust side by side; every Python example ther
   unit=Unit.RATIO))`); the common case is one call, and `from_values` pairs with `from_series`, which stays for data from
   files. `events(times, label=...)` does the same for `Event(...)`, which still works. The names are the plain ones;
   `curve` and `signal` say less.
-- **The Rust column is the target.** `docs/api.md` shows the Rust API R1 to R5 build to (parameters as a struct with
+- **The Rust column is the target.** `docs/api.md` shows the Rust API that R1 to R5 built (parameters as a struct with
   `Default`, validated when the signal is built and returned as `Result`), so the Python API is not shaped by Python
-  alone; the page says it is not implemented, and its Rust blocks become doctests as the crates land.
+  alone; its Rust blocks are doctests of the crate.
 - **The Rust API rules** (`docs/api.md`) follow the Rust API Guidelines: a cheap-clone `Signal`, parameter structs with
   `Default` (the cost: a struct literal without `..Default::default()` stops compiling when a field is added, which is why
   the page always teaches it; `#[non_exhaustive]` with setters is decided before 1.0), one `#[non_exhaustive]` error enum,

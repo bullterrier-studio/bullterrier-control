@@ -134,9 +134,9 @@ If you know a library that already does all of this, we would like to hear of it
 
 ## Install
 
-Requires Python 3.12+. Pre-alpha, not yet on PyPI. The shapers are written in Rust, so installing from GitHub compiles
+Requires Python 3.12+. Pre-alpha, not on PyPI. The shapers are written in Rust, so installing from GitHub compiles
 the extension and needs a Rust toolchain from [rustup](https://rustup.rs/) (a distribution's `cargo` is too old).
-Releases will ship ready-built wheels, one per platform for every Python from 3.12: Linux x86_64 and aarch64 (glibc
+CI builds ready-built wheels, one per platform for every Python from 3.12: Linux x86_64 and aarch64 (glibc
 2.28+), macOS Apple silicon and Intel, Windows x86_64. Any other platform installs the source package and compiles
 the extension with rustup ([why these](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/design-decisions.md#the-rust-core-batch-r0)). From GitHub:
 
@@ -173,7 +173,7 @@ glow.sample([0.0, 0.1, 0.2, 0.3, 1.0])  # values at those times, in seconds
 ```
 
 A consumer can read a whole timeline in one call, since `sample` takes an array; reading one time per call gives the
-same values. [docs/api.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/api.md) has the full tour, in Python and in the Rust API it is built toward.
+same values. [docs/api.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/api.md) has the full tour, in Python and in Rust.
 
 Keyframes: values at chosen times, eased between ([docs/examples.md](https://github.com/bullterrier-studio/bullterrier-control/blob/main/docs/examples.md) works this one out by hand):
 
@@ -285,7 +285,7 @@ is in [docs/formats.md](https://github.com/bullterrier-studio/bullterrier-contro
 
 ## In the browser and Node
 
-The Rust core builds as a WebAssembly package (`uv run poe wasm-test` builds it into `pkg/node` and `pkg/web`; not on npm yet).
+The Rust core builds as a WebAssembly package (`uv run poe wasm-test` builds it into `pkg/node` and `pkg/web`; not on npm).
 It reads a patch and samples its signal nodes, and gives the same values as Python, within 1e-9 (the tolerance in `tests/wasm/package.mjs`).
 
 ```js
@@ -323,7 +323,7 @@ bt-control schema                    # the JSON Schema of a bundle, for tools in
 
 ## Status
 
-Pre-alpha, not yet on PyPI. The formats, patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`)
+Pre-alpha, not on PyPI. The formats, patch files, the command line (`validate`, `schema`, `list`, `sample`, `plot`)
 and the core exist, with the sources `constant`, `keyframes`, `envelope`, `latch`,
 `lfo`, `steps` and `noise`, the shapers `clip`, `delay`, `follow`, `gate`, `hold`, `integrate`, `remap`, `repeat`, `slew` and `spring`, and the operations
 `beats`, `every`, `normalise`, `quantize`, `select`, `shift`, `thin` and `window`.
