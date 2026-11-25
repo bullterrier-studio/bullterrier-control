@@ -14,7 +14,8 @@ public: no absolute paths, no references to folders outside the repository.
 uv sync && uv run poe setup          # once per clone: environment (builds the Rust extension: needs rustup), git hooks, commit template, cargo tools
 uv run pytest tests/builtin -n 0     # the tests near your change, while you work
 uv run poe fast                      # the inner loop, as often as you like: format, lint, types, quick tests
-uv run poe check                     # the gate, before you report or merge (then `uv run lint-imports`)
+uv run poe check                     # the gate, before you report or merge (then `uv run lint-imports`); skipped in seconds when only docs differ from main
+uv run poe check-all                 # the gate with no docs-only skip (the push hook runs this)
 uv run poe full                      # `check` and the gate proofs: before a tag (`poe release` runs it) and in CI
 ```
 
