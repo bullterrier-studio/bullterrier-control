@@ -32,7 +32,7 @@ uv run poe full                      # `check` and the gate proofs: before a tag
 | use the core from a browser or Node | `crates/wasm/src/lib.rs`, `tests/wasm/`; README, "In the browser and Node"; `uv run poe wasm-test` builds `pkg/` and compares it with the native extension |
 | see what a source or shaper looks like | `docs/gallery.md`; `uv run poe gallery` redraws it from `examples/gallery/` |
 | see a worked example with numbers | `docs/examples.md` and `examples/` |
-| find what shipped | `docs/roadmap.md`: work goes in small batches, each planned before it starts |
+| find what shipped | `docs/roadmap.md`: work goes in small batches |
 
 **State:** the formats, the core (signals, `Rendered`, parameters, registry, `lib`), the code-first API (`from_values`, `events`, shapers as typed methods and `Signal.pipe`; `docs/api.md`), inputs (`points`, `events`, `grid`, `values`, `series`), easing, cadence, hashing and scaling, and
 the sources `constant`, `keyframes`, `envelope`, `latch`, `lfo`, `steps` and `noise`, the shapers `clip`, `slew`, `follow`,
@@ -270,7 +270,7 @@ What this project does differently from `docs/rules.md`, each with its reason.
 - **Dependencies:** numpy is the one runtime dependency, and the Rust crates `Cargo.toml` names (`deny.toml` limits which; the core
   never depends on PyO3 or numpy). Another needs a reason in `docs/design-decisions.md`: control must install without librosa,
   torch, Pillow or any media library. matplotlib is the one optional extra (`plot`), for `bt-control plot` and the gallery only.
-- **Offline only in v1:** no live clock, MIDI or OSC output.
+- **Offline only:** no live clock, MIDI or OSC output.
 - **CI:** `build` installs each wheel and samples a patch that uses the extension (`slew`), its own smoke command.
 - **Defects, rule 4:** outside input includes a signal from another package. The one skip allowed: a worked example in
   `docs/examples.md` waiting for the source it names under **Needs**.

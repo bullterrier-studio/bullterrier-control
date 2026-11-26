@@ -21,7 +21,7 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
   and each side tests against the schema. Specified in `docs/formats.md` (batch C0).
 - **One file type, the Bundle.** Series, Event lists and a Grid travel together in one JSON file with a `format` and a
   `version`. *Reason:* one thing to load, validate and version; audio's `analyse()` result is one file. *Cost:* a consumer that
-  wants one signal reads the whole file; acceptable at the sizes involved, and a binary version can follow as a later `version`.
+  wants one signal reads the whole file; acceptable at the sizes involved. The file is JSON only.
 - **Grid stores beat times, not a tempo.** Tempo is derived from the intervals. *Reason:* a tempo map plus beats can disagree;
   beat times are what beat trackers produce and what a renderer needs, and tempo changes then need no extra field.
 - **Non-finite numbers are rejected in files.** *Reason:* Python's JSON accepts `NaN` and `Infinity`, other languages' parsers
@@ -47,7 +47,7 @@ contributors are in [CLAUDE.md](../CLAUDE.md). The ecosystem-wide decisions (the
   sample at or before the time (C1: interpolating would let a read depend on input after the time read).
   *Reason:* random access in seconds with no hidden history, without forbidding the shapers every DAW has.
 - **Parameters are declared once, with unit, range and description.** Pydantic models until R2; Rust tables since ("Parameters in Rust").
-- **Offline only in v1.** Real-time output (a live clock to MIDI or OSC) is later, as an optional extra.
+- **Offline only.** The library does not output in real time (no live clock to MIDI or OSC).
 - **Order:** formats first (C0), then control's core and audio's analysis in parallel (`docs/roadmap.md`).
 
 ## Project
@@ -696,8 +696,7 @@ Rulings:
   exception into a refusal message; the same pass-through there is a follow-up. An overridden `__iter__`,
   `__getitem__` or `items` of a list or dict subclass is not called: its contents are read.
 - **Unchecked construction stays possible in Rust**: `Keyframe::at` and an `Input` variant built by hand skip the rules
-  (documented). *Reason:* newtypes with private fields would add types for no consumer yet; R4b revisits it if sources
-  take `Input` and rely on the promise.
+  (documented). *Reason:* newtypes with private fields would add types for no consumer.
 
 Accepted differences from the Python inputs (a break, accepted before the first release; every path and verdict of
 `tests/test_inputs.py` is unchanged):
@@ -972,7 +971,7 @@ door and back); the 17 that remain in Python are ported in R5.
 - **Bundle-built graphs still cannot be saved** (`series.<name>` becomes a source-less leaf). *Reason:* a source that reads
   a series is a feature with no consumer yet; the refusal names the way out (keep the patch that read the series).
 - **Every Rust block of `docs/api.md` is a doctest** (the crate root and the `lib` module carry them); no block is a target
-  any more. The crate keeps `publish = false` and version `0.0.0` until the first release.
+  any more. The crate keeps `publish = false` and version `0.0.0`; the Python package's version is the release's.
 - **Measured, report only** (this machine, 2026-11-04, the extension `uv sync` builds, the R0 script: 4-minute song at 30 fps,
   1000 events): `envelope` 1.2 ms, `slew(envelope)` 26 ms, `follow(envelope)` 27 ms, ten slews with an `lfo` mix 284 ms (R0
   Python 2267-4124 ms, after R3 541-1064 ms), a cached slew read per frame 1.2 us (15-28 us, then 1.4-1.7 us). Peak memory of

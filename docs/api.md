@@ -46,7 +46,7 @@ Decided by the owner on 2026-10-29. They clarify the earlier decision that param
 3. **Parameters are a plain struct per thing**, declared with `#[derive(Params)]`: public fields, a doc comment and a
    `#[param(..)]` attribute each; the derive writes `Default` and the `ParamTable` that checks values (`Params::parse`,
    strict, every broken rule listed). Checked when passed in (the call returns `Result`). Struct literals always end in `..Default::default()`, so a
-   field added later breaks no call. `cargo-semver-checks` runs from the first publish.
+   field added later breaks no call.
 4. **`events` and `from_values` take an options struct and return `Result`**, like everything else. No builders.
    `Signal::from_values(&values, rate, FromValues { start }, Interpolation)` is implemented.
 5. **One error type per module family** (`Error` for rendering, `FormatError` for files, `ParamError` for a parameter

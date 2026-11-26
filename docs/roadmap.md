@@ -154,8 +154,8 @@ it becomes a signal. (`slew` and `clip` shipped in C1.)
 The package becomes a Rust crate, `bullterrier-control`, with this Python package as its interface (as polars is): for
 speed, threads without the GIL, small memory, reading signals from a Rust video renderer without Python, and a core
 that builds for WebAssembly. Foundation first, then the engine, the built-ins last, each ported once and its Python
-body deleted. Until a built-in is ported, the engine calls its Python body, the path third-party Python plugins keep.
-The Python suite runs unchanged against the Rust core throughout.
+body deleted. Third-party Python plugins keep the Python path. The Python suite ran unchanged against the Rust core
+throughout.
 
 - **R0 Foundation (done).** Cargo workspace (`crates/core`: pure Rust, no Python, builds for wasm32; `crates/python`: the
   bindings), maturin as build backend, Rust gates as strict as the Python ones (each proven by a known-bad input),
