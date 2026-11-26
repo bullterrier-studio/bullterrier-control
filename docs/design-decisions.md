@@ -693,7 +693,7 @@ Rulings:
 - **An exception a user's object raises passes through unchanged** (a mapping whose `__getitem__` raises, an `__iter__` or
   `tolist` that raises): the first one is kept, nothing more is read, and it reaches the caller. *Reason:* it is the
   caller's own bug, not a bad value, as for a Python `compute` (R3). The formats and parameters still turn such an
-  exception into a refusal message; the same pass-through there is a follow-up. An overridden `__iter__`,
+  exception into a refusal message. An overridden `__iter__`,
   `__getitem__` or `items` of a list or dict subclass is not called: its contents are read.
 - **Unchecked construction stays possible in Rust**: `Keyframe::at` and an `Input` variant built by hand skip the rules
   (documented). *Reason:* newtypes with private fields would add types for no consumer.
