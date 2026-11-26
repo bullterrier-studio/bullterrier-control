@@ -16,7 +16,8 @@ uv run pytest tests/builtin -n 0     # the tests near your change, while you wor
 uv run poe fast                      # the inner loop, as often as you like: format, lint, types, quick tests
 uv run poe check                     # the gate, before you report or merge (then `uv run lint-imports`); skipped in seconds when only docs differ from main
 uv run poe check-all                 # the gate with no docs-only skip (the push hook runs this)
-uv run poe full                      # `check` and the gate proofs: before a tag (`poe release` runs it) and in CI
+uv run poe gate-tests                # the gate proofs and the tools' own tests: after changing a gate or a tool (CI runs them)
+uv run poe full                      # `check`, the build and the gate proofs: before a tag (`poe release` runs it) and in CI
 ```
 
 | To ... | Look at |
@@ -277,8 +278,7 @@ What this project does differently from `docs/rules.md`, each with its reason.
 - **Tests:** property examples are an envelope under `max` never above its largest strength, a gate's output two-valued, a
   slew-limited signal never faster than its limit; the private kernel that stays inline is `slew::run`; proptest regression files are
   one per module; a test that builds chains or graphs bounds their size; mutants run with `PYTHONDONTWRITEBYTECODE=1`.
-- **Proofs:** the slow scaffold tests of `tools/dev.py` are marked `gate` too, with the files they run against in
-  `project-triggers`. The proof of the WebAssembly gate is also marked `node` (it needs Node; CI runs the proofs on Linux only).
+- **Proofs:** the slow scaffold tests of `tools/dev.py` are marked `gate` too (`poe gate-tests`, CI). The proof of the WebAssembly gate is also marked `node` (it needs Node; CI runs the proofs on Linux only).
   The package's own gates (`wasm-check`, `wasm-test`) are `project-gates`, run in CI by `project.yml`.
 
 ## Skills

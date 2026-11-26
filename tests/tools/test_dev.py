@@ -98,8 +98,7 @@ WINDOWS = pytest.mark.skipif(
 )
 
 
-# marked `gate` (not a proof of a gate, but as slow as one: a cold cargo build each): `poe check` runs them when their
-# inputs change ([tool.gate-proofs] triggers), `poe full` and CI always
+# marked `gate` (not a proof of a gate, but as slow as one: a cold cargo build each): `poe gate-tests` runs them
 @pytest.mark.gate
 @WINDOWS
 @pytest.mark.parametrize(
